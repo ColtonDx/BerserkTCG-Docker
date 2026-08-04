@@ -1,0 +1,80 @@
+# Development stack: hot-reloading server + client, plus Postgres for when
+# persistence lands. Bring it up with `docker compose up`.
+#
+# Source is bind-mounted, but `node_modules` are kept inside the container
+# (anonymous volumes below) so Linux-built native modules are not clobbered by
+# whatever is on the host.
+
+services:
+  server:
+    build:
+      context: .
+      target: dev
+    command: npm run dev --workspace=@berserk/server
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 3001
+      CORS_ORIGIN: http://localhost:5173
+      CARD_DIR: /app/art-assets/cards
+      DATABASE_URL: postgresql://berserk:berserk@db:5432/berserk
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      # Usernames promoted to operator on boot, comma-separated. An operator
+      # can reset another player's password; there is no recovery email.
+      ADMIN_USERS: ${ADMIN_USERS:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+    ports:
+      - '3001:3001'
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/server/node_modules
+      - /app/apps/web/node_modules
+      - /app/packages/engine/node_modules
+      - /app/packages/protocol/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      target: dev
+    command: npm run dev --workspace=@berserk/web
+    environment:
+      # Empty so the browser talks to Vite, which proxies to `server`.
+      VITE_SERVER_URL: ''
+      VITE_SERVER_PROXY: http://server:3001
+    ports:
+      - '5173:5173'
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/server/node_modules
+      - /app/apps/web/node_modules
+      - /app/packages/engine/node_modules
+      - /app/packages/protocol/node_modules
+    depends_on:
+      - server
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: berserk
+      POSTGRES_PASSWORD: berserk
+      POSTGRES_DB: berserk
+    ports:
+      - '5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Schema and card data, run once when the data directory is empty.
+      # `docker compose down -v` to reinitialise after changing them.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U berserk -d berserk']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

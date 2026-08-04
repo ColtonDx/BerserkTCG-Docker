@@ -1,0 +1,20 @@
+**/node_modules
+**/dist
+**/dist-types
+**/coverage
+**/*.tsbuildinfo
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+**/.vite
+Dockerfile*
+docker-compose*.yml
+*.md
+Docs/
+scripts/
+
+# Source scans — hundreds of megabytes, and the app only ever uses the cards
+# already cut out of them by scripts/extract-cards.py.
+art-assets/PDFs/

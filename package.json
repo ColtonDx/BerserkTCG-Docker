@@ -1,0 +1,29 @@
+{
+  "name": "berserk-tcg",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Browser-based digital implementation of the Berserk TCG",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@berserk/server & npm run dev --workspace=@berserk/web",
+    "build": "npm run build --workspace=@berserk/engine && npm run build --workspace=@berserk/protocol && npm run build --workspace=@berserk/server && npm run build --workspace=@berserk/web",
+    "typecheck": "tsc --build --force",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.0"
+  }
+}

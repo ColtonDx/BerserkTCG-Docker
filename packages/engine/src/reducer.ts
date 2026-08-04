@@ -1,0 +1,1596 @@
+import {
+  counterFor,
+  selects,
+  BOOST_COUNTERS,
+  targetPlayer,
+  type Ability,
+  type Selector,
+  type StatLine,
+  type Trigger,
+} from './abilities.js';
+import { toDraft, type Draft } from './draft.js';
+import { nextInt, type Rng } from './rng.js';
+import { legalActions, quickOpens } from './legal.js';
+import type { CardInstanceId, PlayerId } from './ids.js';
+import { ok, violation, type Result, type RuleViolation } from './result.js';
+import {
+  battleResult,
+  canCommit,
+  canVanguard,
+  checkWinConditions,
+  cityLevel,
+  conditionHolds,
+  definitionOf,
+  hpOf,
+  isCharacter,
+  moveOf,
+  nextRangeBand,
+  powerOf,
+  presenceIn,
+  refreshBoard,
+  legalTargets,
+  subtypesOf,
+  targetingAbilities,
+  turnOrdinal,
+  OPENED_ON_TURN,
+  uniqueConflict,
+  validatePayment,
+  HAND_LIMIT,
+  type EngineContext,
+} from './rules.js';
+import { bottomCard, drawCards, mulligan, MIN_KEPT_HAND, STARTING_HAND_SIZE } from './setup.js';
+import type {
+  BattleState,
+  BattleStep,
+  CardInstance,
+  GameAction,
+  GameEvent,
+  GameState,
+  PhaseDef,
+  QuickTrigger,
+} from './types.js';
+import { cityDistance, moveToCity, moveToZone, zoneKey } from './zones.js';
+
+/**
+ * The single entry point for changing game state.
+ *
+ * `reduce(ctx, state, actor, action)` is pure: same inputs, same outputs, no
+ * I/O, no clock, no `Math.random()`. Everything else in the system — server,
+ * client, AI, tests, replays — is built on that guarantee. If you find
+ * yourself wanting to read the time or hit a database in here, the value
+ * belongs in the action payload instead.
+ *
+ * Section references in comments point at Rules.md.
+ */
+
+export interface ReduceOutput {
+  readonly state: GameState;
+  readonly events: readonly GameEvent[];
+}
+
+export type ReduceResult = Result<ReduceOutput, RuleViolation>;
+
+/** Actions that belong to a running battle, and so answer to it rather than to priority. */
+function isBattleAction(action: GameAction): boolean {
+  switch (action.type) {
+    case 'DESIGNATE_VANGUARD':
+    case 'COMMIT_CHARACTER':
+    case 'BATTLE_PASS':
+    case 'ASSIGN_DAMAGE':
+    // §11 ② — the defender's combat open happens on the attacker's turn.
+    case 'OPEN_CARD':
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function reduce(
+  ctx: EngineContext,
+  state: GameState,
+  actor: PlayerId,
+  action: GameAction,
+): ReduceResult {
+  if (state.status.kind === 'finished') {
+    return violation('GAME_OVER', 'The match has already ended.');
+  }
+  if (!state.players[actor]) {
+    return violation('NOT_YOUR_TURN', `${actor} is not a player in this match.`);
+  }
+
+  const draft = toDraft(state);
+  const events: GameEvent[] = [];
+
+  // Mulligans happen before the first turn, and both players decide
+  // independently, so priority does not apply yet. Rules.md §9.4.
+  if (state.status.kind === 'setup') {
+    const result = reduceSetup(ctx, draft, actor, action, events);
+    if (!result.ok) return result;
+    return finish(state, draft, events);
+  }
+
+  // A Quick window is an interrupt: while one is open the game is stopped and
+  // only the player being asked may act, whoever's turn it is. Rules.md §13.
+  if (state.quick && action.type !== 'CONCEDE') {
+    if (actor !== state.quick.waitingOn) {
+      return violation('NOT_YOUR_PRIORITY', 'Waiting on your opponent to answer.', '§13');
+    }
+    if (action.type !== 'OPEN_CARD' && action.type !== 'PASS_PRIORITY') {
+      return violation('WRONG_PHASE', 'You may open a Quick card, or pass.', '§13');
+    }
+  }
+
+  // A battle overrides priority: it runs its own steps and each waits on a
+  // named player, which for most of them is the *defender* — and it is not
+  // their turn. Rules.md §11 has the defender opening, committing and
+  // assigning damage throughout the attacker's Main phase.
+  const inBattle = state.battle !== null && isBattleAction(action);
+
+  // Conceding is always legal, including out of turn.
+  if (
+    action.type !== 'CONCEDE' &&
+    !inBattle &&
+    state.quick === null &&
+    state.turn.priorityPlayer !== actor
+  ) {
+    return violation('NOT_YOUR_PRIORITY', 'You do not have priority right now.');
+  }
+
+  const result = applyAction(ctx, draft, actor, action, events);
+  if (!result.ok) return result;
+
+  refreshBoard(ctx, draft, events);
+  checkWinConditions(draft, events);
+
+  // An action can be the last thing a phase had to offer — the turn's one open
+  // (§10 ③), or the last card out of a hand. Settling here as well as on entry
+  // means the player is never left holding a "next phase" button that is the
+  // only thing on the table.
+  settle(ctx, draft, events);
+
+  return finish(state, draft, events);
+}
+
+function finish(previous: GameState, draft: Draft<GameState>, events: GameEvent[]): ReduceResult {
+  draft.version = previous.version + 1;
+  // Events are immutable values; the draft's log is the mutable mirror of the
+  // same shape, so the cast is safe and confined to this line.
+  draft.log.push(...(events as Draft<GameEvent>[]));
+  return ok({ state: draft as GameState, events });
+}
+
+/* ------------------------------------------------------------------- setup */
+
+function reduceSetup(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  action: GameAction,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  if (!draft.mulliganPending.includes(actor)) {
+    return violation('ALREADY_ACTED', 'You have already kept your opening hand.', '§9');
+  }
+
+  const owedBottoms = draft.pendingBottom[actor] ?? 0;
+
+  /** Settle this seat, and start the match once both have settled. */
+  const settle = (): void => {
+    draft.mulliganPending = draft.mulliganPending.filter((id) => id !== actor);
+    if (draft.mulliganPending.length === 0) {
+      draft.status = { kind: 'playing' };
+      beginTurn(ctx, draft, draft.turn.activePlayer, events, { firstTurn: true });
+    }
+  };
+
+  switch (action.type) {
+    case 'MULLIGAN': {
+      if (owedBottoms > 0) {
+        return violation('ALREADY_ACTED', 'Finish bottoming cards first.', 'DesignNotes 5');
+      }
+      if ((draft.handTarget[actor] ?? 0) <= MIN_KEPT_HAND) {
+        return violation('ALREADY_ACTED', 'You must keep at least one card.', 'DesignNotes 5');
+      }
+      // `mulligan` works on immutable state; splice the result back in.
+      const next = mulligan(draft as GameState, actor);
+      spliceState(draft, next, events);
+      return ok(true);
+    }
+
+    case 'BOTTOM_CARD': {
+      if (owedBottoms <= 0) {
+        return violation('ALREADY_ACTED', 'You have no cards left to bottom.', 'DesignNotes 5');
+      }
+      const card = draft.cards[action.card];
+      if (!card || card.zone !== 'hand' || card.controller !== actor) {
+        return violation('CARD_NOT_IN_ZONE', 'That card is not in your hand.', 'DesignNotes 5');
+      }
+      spliceState(draft, bottomCard(draft as GameState, actor, action.card), events);
+      // Bottoming is the last thing a keep is waiting on.
+      if ((draft.pendingBottom[actor] ?? 0) === 0) settle();
+      return ok(true);
+    }
+
+    case 'KEEP_HAND': {
+      if (owedBottoms > 0) {
+        return violation('ALREADY_ACTED', 'Finish bottoming cards first.', 'DesignNotes 5');
+      }
+      // The decision comes first and the cost after: a player who has
+      // mulliganed now pays for the hand they have chosen to keep, rather
+      // than paying for one they may be about to throw away.
+      const owed = handSize(draft, actor) - (draft.handTarget[actor] ?? STARTING_HAND_SIZE);
+      if (owed > 0) {
+        draft.pendingBottom = toDraft({ ...draft.pendingBottom, [actor]: owed });
+        return ok(true);
+      }
+      settle();
+      return ok(true);
+    }
+
+    case 'CONCEDE':
+      concede(draft, actor, events);
+      return ok(true);
+
+    default:
+      return violation(
+        'WRONG_PHASE',
+        'Only mulligan decisions are legal before the match begins.',
+        '§9',
+      );
+  }
+}
+
+/**
+ * Copies the result of an immutable setup helper back into the draft and
+ * forwards whatever it appended to the log as events.
+ */
+function spliceState(draft: Draft<GameState>, next: GameState, events: GameEvent[]): void {
+  events.push(...next.log.slice(draft.log.length));
+  draft.cards = toDraft(next.cards);
+  draft.zoneOrder = toDraft(next.zoneOrder);
+  draft.pendingBottom = toDraft(next.pendingBottom);
+  draft.handTarget = toDraft(next.handTarget);
+  draft.rng = toDraft(next.rng);
+}
+
+/* ----------------------------------------------------------------- actions */
+
+function applyAction(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  action: GameAction,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const phase = currentPhase(draft);
+
+  switch (action.type) {
+    case 'CONCEDE':
+      concede(draft, actor, events);
+      return ok(true);
+
+    case 'END_PHASE':
+      return endPhase(ctx, draft, actor, events);
+
+    case 'SET_CARD':
+      return setCard(draft, actor, action.card, action.city, events);
+
+    case 'OPEN_CARD':
+      return settled(
+        ctx,
+        draft,
+        events,
+        openCard(ctx, draft, actor, action.card, action.pay, action.targets ?? [], events),
+      );
+
+    case 'MOVE_CHARACTER':
+      return moveCharacter(ctx, draft, actor, action.card, action.city, events);
+
+    case 'DISCARD_CARD':
+      return discardCard(draft, actor, action.card, events);
+
+    case 'MULLIGAN':
+    case 'BOTTOM_CARD':
+    case 'KEEP_HAND':
+      return violation('WRONG_PHASE', 'The opening hand has already been settled.', '§9');
+
+    case 'DECLARE_BATTLE':
+      return settled(ctx, draft, events, declareBattle(ctx, draft, actor, action.city, events));
+
+    case 'DESIGNATE_VANGUARD':
+      return settled(ctx, draft, events, designateVanguard(ctx, draft, actor, action.card, events));
+
+    case 'COMMIT_CHARACTER':
+      return settled(ctx, draft, events, commitCharacter(ctx, draft, actor, action.card, events));
+
+    case 'BATTLE_PASS':
+      return settled(ctx, draft, events, battlePass(ctx, draft, actor, events));
+
+    case 'ASSIGN_DAMAGE':
+      return settled(
+        ctx,
+        draft,
+        events,
+        assignDamage(ctx, draft, actor, action.card, action.hits, events),
+      );
+
+    // RULES: abilities (§13) and the pending-resolution stack (§14) are still
+    // to build. Each must validate legality itself — never trust that the
+    // client only offers legal moves.
+    case 'PASS_PRIORITY': {
+      // Declining a Quick window. Rules.md §13. Outside one there is nothing
+      // to pass on yet — that is the §14 stack, which is not built.
+      if (!draft.quick) {
+        return violation('WRONG_PHASE', 'Nothing is waiting on you.', '§14');
+      }
+      events.push({ type: 'QUICK_DECLINED', player: actor });
+      draft.quick = null;
+      // Play was frozen where the window opened; let it carry on.
+      settleBattle(ctx, draft, events);
+      settle(ctx, draft, events);
+      return ok(true);
+    }
+
+    case 'USE_ABILITY':
+      return violation(
+        'NOT_IMPLEMENTED',
+        `${action.type} is not implemented yet.`,
+        action.type === 'USE_ABILITY' ? '§13' : '§14',
+      );
+
+    default: {
+      const exhaustive: never = action;
+      throw new Error(`Unhandled action: ${JSON.stringify(exhaustive)} in phase ${phase.id}`);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ battle */
+
+/**
+ * The Battle phase. Rules.md §11 runs five steps in a fixed order, each
+ * waiting on one player, so it is driven as a small state machine hanging off
+ * `state.battle` rather than folded into the turn's phases — battle is
+ * declared from within Main and returns there (§10 ④(4)).
+ *
+ * Quick effects and interrupts (§13–14) are not built, so the combat-open
+ * step here is just each side's one optional open, defender first.
+ */
+
+/** Rules.md §10 ④(4) — declare against a city you do not occupy, once each. */
+function declareBattle(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cityIndex: number,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  if (draft.battle) {
+    return violation('ALREADY_ACTED', 'A battle is already under way.', '§11');
+  }
+  const city = draft.cities[cityIndex];
+  if (!city) return violation('ILLEGAL_TARGET', 'No such city.', '§5');
+  if (city.occupiedBy === actor) {
+    return violation('ILLEGAL_TARGET', 'You already occupy that city.', '§10');
+  }
+  if (draft.turn.battledCities.includes(cityIndex)) {
+    return violation('ALREADY_ACTED', 'That city has already been battled this turn.', '§10');
+  }
+  // Something has to lead the attack, so there must be a character able to.
+  if (canVanguard(ctx, draft, actor, cityIndex).length === 0) {
+    return violation('ILLEGAL_TARGET', 'You have no unlocked character there to lead.', '§11');
+  }
+
+  const defender = opponentOf(draft, actor);
+  draft.battle = toDraft({
+    city: cityIndex,
+    attacker: actor,
+    defender,
+    step: 'vanguard',
+    waitingOn: actor,
+    vanguard: null,
+    participants: [],
+    opened: [],
+    passes: 0,
+    assigning: [],
+    pending: [],
+    struck: [],
+  });
+  draft.turn.battledCities = toDraft([...draft.turn.battledCities, cityIndex]);
+
+  // Being attacked is what wakes a city up. Rules.md §5 — until then it lies
+  // face-down and neutral, and contributes nothing to City Level.
+  if (!city.faceUp) {
+    city.faceUp = true;
+    events.push({
+      type: 'CITY_FLIPPED',
+      city: cityIndex,
+      faceUp: true,
+      cityLevel: cityLevel(draft),
+    });
+  }
+
+  events.push({ type: 'BATTLE_DECLARED', city: cityIndex, attacker: actor });
+  events.push({ type: 'BATTLE_STEP', step: 'vanguard', waitingOn: actor });
+  // The defender may want to answer before a vanguard is even named.
+  offerQuick(ctx, draft, actor, 'combat', events);
+  return ok(true);
+}
+
+function battleStep(
+  draft: Draft<GameState>,
+  step: BattleStep,
+  waitingOn: PlayerId,
+  events: GameEvent[],
+): void {
+  const battle = draft.battle;
+  if (!battle) return;
+  battle.step = step;
+  battle.waitingOn = waitingOn;
+  events.push({ type: 'BATTLE_STEP', step, waitingOn });
+}
+
+/**
+ * Is the battle asking this player something they could actually answer?
+ *
+ * A combat open with nothing openable in the contested city, or a commitment
+ * step with nobody left to commit, is a prompt whose only answer is "no" —
+ * and being made to say so out loud, on the opponent's turn, is worse than
+ * not being asked. The damage step always has an answer, and the vanguard
+ * step is a real choice even when there is only one candidate: declining it
+ * calls the battle off.
+ */
+function battleOffersAChoice(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  battle: BattleState,
+): boolean {
+  if (battle.step !== 'opens' && battle.step !== 'commit') return true;
+
+  const wanted = battle.step === 'opens' ? 'OPEN_CARD' : 'COMMIT_CHARACTER';
+  return legalActions(ctx, draft as GameState, battle.waitingOn).some(
+    (action) => action.type === wanted,
+  );
+}
+
+/**
+ * Answers for a player who has nothing to say, so a battle never stops on a
+ * question with one possible answer. Bounded, because each pass either ends a
+ * step or counts toward the two that end commitment.
+ */
+function settleBattle(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  for (let guard = 0; guard < 8; guard++) {
+    if (draft.quick) return;
+    const battle = draft.battle;
+    if (!battle || battleOffersAChoice(ctx, draft, battle)) return;
+    const result = battlePass(ctx, draft, battle.waitingOn, events);
+    if (!result.ok) return;
+  }
+}
+
+/**
+ * Runs {@link settleBattle} after anything that could have moved a battle on.
+ * Applied at the dispatch site rather than inside each handler so that every
+ * route into a step — including a combat open — is covered by one rule.
+ */
+function settled(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  events: GameEvent[],
+  result: Result<true, RuleViolation>,
+): Result<true, RuleViolation> {
+  if (result.ok) settleBattle(ctx, draft, events);
+  return result;
+}
+
+/** Rules.md §11 ① — name the lead character and lock it. */
+function designateVanguard(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const battle = draft.battle;
+  if (!battle || battle.step !== 'vanguard') {
+    return violation('WRONG_PHASE', 'No vanguard is being designated.', '§11');
+  }
+  if (actor !== battle.attacker) {
+    return violation('NOT_YOUR_TURN', 'Only the attacker names the vanguard.', '§11');
+  }
+  const eligible = canVanguard(ctx, draft, actor, battle.city);
+  if (!eligible.some((card) => card.instanceId === cardId)) {
+    return violation('ILLEGAL_TARGET', 'That character cannot lead the attack.', '§11');
+  }
+
+  const card = draft.cards[cardId];
+  if (!card) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§11');
+  card.locked = true;
+  battle.vanguard = cardId;
+  battle.participants = toDraft([cardId]);
+  events.push({ type: 'VANGUARD_DESIGNATED', card: cardId });
+  // §13 — "when this character attacks". The vanguard is in the fight the
+  // moment it is named, and its own conditions can now see the battle.
+  fireAbilities(ctx, draft, card as CardInstance, 'attack', events);
+  offerQuick(ctx, draft, actor, 'attack', events);
+
+  // §11 ② — the defender's optional open comes first.
+  beginOpens(ctx, draft, events);
+  return ok(true);
+}
+
+/** Rules.md §11 ② — one optional open each, defender first. */
+function beginOpens(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const battle = draft.battle;
+  if (!battle) return;
+  battleStep(draft, 'opens', battle.defender, events);
+}
+
+/** Moves past whoever has just opened or declined. */
+function advanceOpens(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const battle = draft.battle;
+  if (!battle) return;
+  if (!battle.opened.includes(battle.defender)) {
+    battleStep(draft, 'opens', battle.defender, events);
+    return;
+  }
+  if (!battle.opened.includes(battle.attacker)) {
+    battleStep(draft, 'opens', battle.attacker, events);
+    return;
+  }
+  beginCommit(ctx, draft, events);
+}
+
+/**
+ * Rules.md §11 ③ — players alternate committing, attacker first.
+ *
+ * The occupying defender is the exception: their whole garrison joins at
+ * once, locked or not, because holding a city means defending it with
+ * everything there.
+ */
+function beginCommit(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const battle = draft.battle;
+  if (!battle) return;
+
+  const city = draft.cities[battle.city];
+  if (city?.occupiedBy === battle.defender) {
+    for (const card of presenceIn(ctx, draft, battle.city, battle.defender)) {
+      if (battle.participants.includes(card.instanceId)) continue;
+      battle.participants.push(card.instanceId);
+      events.push({
+        type: 'CHARACTER_COMMITTED',
+        card: card.instanceId,
+        player: battle.defender,
+      });
+    }
+  }
+
+  battle.passes = 0;
+  battleStep(draft, 'commit', battle.attacker, events);
+}
+
+/** Rules.md §11 ③ — add one character, locking it. */
+function commitCharacter(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const battle = draft.battle;
+  if (!battle || battle.step !== 'commit') {
+    return violation('WRONG_PHASE', 'Nothing is being committed.', '§11');
+  }
+  if (actor !== battle.waitingOn) {
+    return violation('NOT_YOUR_TURN', 'It is not your turn to commit.', '§11');
+  }
+  if (!canCommit(ctx, draft, battle, actor).some((card) => card.instanceId === cardId)) {
+    return violation('ILLEGAL_TARGET', 'That character cannot join the battle.', '§11');
+  }
+
+  const card = draft.cards[cardId];
+  if (!card) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§11');
+  card.locked = true;
+  battle.participants.push(cardId);
+  battle.passes = 0;
+  events.push({ type: 'CHARACTER_COMMITTED', card: cardId, player: actor });
+  // §13 — joining the attack is attacking, for a character on that side.
+  if (actor === battle.attacker) {
+    fireAbilities(ctx, draft, card as CardInstance, 'attack', events);
+  }
+
+  battleStep(draft, 'commit', otherSide(battle, actor), events);
+  return ok(true);
+}
+
+const otherSide = (battle: BattleState, player: PlayerId): PlayerId =>
+  player === battle.attacker ? battle.defender : battle.attacker;
+
+/** Declines whatever the current step asks. Rules.md §11. */
+function battlePass(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const battle = draft.battle;
+  if (!battle) return violation('WRONG_PHASE', 'No battle is under way.', '§11');
+  if (actor !== battle.waitingOn) {
+    return violation('NOT_YOUR_TURN', 'The battle is not waiting on you.', '§11');
+  }
+
+  switch (battle.step) {
+    case 'vanguard':
+      // §11 ① — no vanguard, no battle. Nothing has been locked or spent.
+      endBattle(ctx, draft, events, { withoutFighting: true });
+      return ok(true);
+
+    case 'opens':
+      battle.opened.push(actor);
+      advanceOpens(ctx, draft, events);
+      return ok(true);
+
+    case 'commit': {
+      battle.passes += 1;
+      // §11 ③ — two passes in a row ends the commitment step.
+      if (battle.passes >= 2) {
+        beginDamage(ctx, draft, events);
+        return ok(true);
+      }
+      battleStep(draft, 'commit', otherSide(battle, actor), events);
+      return ok(true);
+    }
+
+    case 'damage':
+      return violation('ILLEGAL_TARGET', 'Damage must be assigned, not passed.', '§11');
+  }
+}
+
+/** Rules.md §11 ④ — highest Range strikes first, a band at a time. */
+function beginDamage(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const battle = draft.battle;
+  if (!battle) return;
+
+  // §11 ④ — with one side wiped out there is nothing left to strike at, so
+  // the exchange stops and the result is read off who is still standing.
+  const standing = (player: PlayerId): number =>
+    battle.participants.filter((id) => {
+      const card = draft.cards[id];
+      return card && card.zone === 'city' && card.controller === player;
+    }).length;
+
+  const band = nextRangeBand(ctx, draft, battle);
+  if (band.length === 0 || standing(battle.attacker) === 0 || standing(battle.defender) === 0) {
+    endBattle(ctx, draft, events);
+    return;
+  }
+  battle.assigning = toDraft(band);
+  battle.pending = toDraft([]);
+
+  const first = band[0];
+  const card = first ? draft.cards[first] : undefined;
+  battleStep(draft, 'damage', card ? card.controller : battle.attacker, events);
+}
+
+/** Rules.md §11 ④ — split one character's Power among enemy participants. */
+function assignDamage(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  hits: readonly { readonly target: CardInstanceId; readonly amount: number }[],
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const battle = draft.battle;
+  if (!battle || battle.step !== 'damage') {
+    return violation('WRONG_PHASE', 'No damage is being assigned.', '§11');
+  }
+  const next = battle.assigning[0];
+  if (next !== cardId) {
+    return violation('NOT_YOUR_TURN', 'Another character strikes first.', '§11');
+  }
+
+  const striker = draft.cards[cardId];
+  if (!striker) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§11');
+  if (striker.controller !== actor) {
+    return violation('NOT_YOUR_TURN', 'That is not your character.', '§11');
+  }
+
+  const power = powerOf(ctx, draft, striker);
+  const total = hits.reduce((sum, hit) => sum + hit.amount, 0);
+  if (total !== power) {
+    return violation('ILLEGAL_TARGET', `All ${power} Power must be assigned; ${total} was.`, '§11');
+  }
+
+  // Targets must be enemy participants still standing. A character destroyed
+  // by an earlier band has left the field and cannot be hit again.
+  const enemies = new Set(
+    battle.participants.filter((id) => {
+      const card = draft.cards[id];
+      return card && card.zone === 'city' && card.controller !== actor;
+    }),
+  );
+  for (const hit of hits) {
+    if (hit.amount <= 0) {
+      return violation('ILLEGAL_TARGET', 'Every assignment must be at least 1.', '§11');
+    }
+    if (!enemies.has(hit.target)) {
+      return violation('ILLEGAL_TARGET', 'That is not an enemy in this battle.', '§11');
+    }
+  }
+
+  for (const hit of hits) {
+    battle.pending.push({ source: cardId, target: hit.target, amount: hit.amount });
+  }
+  // It has struck, and does not come round again however high its Range.
+  battle.struck.push(cardId);
+  battle.assigning.shift();
+
+  const following = battle.assigning[0];
+  if (following) {
+    const card = draft.cards[following];
+    battleStep(draft, 'damage', card ? card.controller : actor, events);
+    return ok(true);
+  }
+
+  resolveBand(ctx, draft, events);
+  return ok(true);
+}
+
+/**
+ * Applies a whole Range band at once. Rules.md §11 ④ — ties resolve
+ * simultaneously, so a character destroyed here has already dealt its damage.
+ */
+function resolveBand(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const battle = draft.battle;
+  if (!battle) return;
+
+  for (const hit of battle.pending) {
+    const target = draft.cards[hit.target];
+    if (!target) continue;
+    target.damage += hit.amount;
+    events.push({
+      type: 'DAMAGE_DEALT',
+      source: hit.source,
+      target: hit.target,
+      amount: hit.amount,
+    });
+  }
+  battle.pending = toDraft([]);
+
+  for (const id of battle.participants) {
+    const card = draft.cards[id];
+    if (!card || card.zone !== 'city') continue;
+    if (card.damage >= hpOf(ctx, draft, card)) {
+      moveToZone(draft, id, { player: card.owner, zone: 'trash' });
+      events.push({ type: 'CHARACTER_DESTROYED', card: id });
+    }
+  }
+
+  refreshBoard(ctx, draft, events);
+  beginDamage(ctx, draft, events);
+}
+
+/** Rules.md §11 ⑤ and §12 — apply the result and return to Main. */
+function endBattle(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  events: GameEvent[],
+  options: { withoutFighting?: boolean } = {},
+): void {
+  const battle = draft.battle;
+  if (!battle) return;
+
+  if (options.withoutFighting) {
+    draft.battle = null;
+    events.push({
+      type: 'BATTLE_ENDED',
+      city: battle.city,
+      result: 'stalemate',
+      occupier: null,
+    });
+    return;
+  }
+
+  const result = battleResult(ctx, draft, battle);
+  const city = draft.cities[battle.city];
+  let occupier: PlayerId | null = null;
+
+  if (result === 'occupation' && city) {
+    // §12 — you only take a city by attacking into it successfully.
+    if (city.occupiedBy !== battle.attacker) {
+      city.occupiedBy = battle.attacker;
+      occupier = battle.attacker;
+      events.push({ type: 'CITY_OCCUPIED', city: battle.city, player: battle.attacker });
+      // §12 — the city card's own effect: a fresh occupation draws two.
+      drawInto(draft, battle.attacker, 2, events);
+    }
+  } else if (result === 'mutual_destruction' && city && city.occupiedBy) {
+    city.occupiedBy = null;
+    events.push({ type: 'CITY_OCCUPIED', city: battle.city, player: null });
+  }
+
+  draft.battle = null;
+  events.push({ type: 'BATTLE_ENDED', city: battle.city, result, occupier });
+  refreshBoard(ctx, draft, events);
+  checkWinConditions(draft, events);
+}
+
+/** Rules.md §10 ④(2) — set one card from hand face-down in any city. */
+function setCard(
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  city: number,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  if (currentPhase(draft).id !== 'main') {
+    return violation('WRONG_PHASE', 'Cards may only be set during your Main phase.', '§10');
+  }
+  const card = draft.cards[cardId];
+  if (!card) return violation('UNKNOWN_CARD', 'No such card.');
+  if (card.zone !== 'hand' || card.controller !== actor) {
+    return violation('CARD_NOT_IN_ZONE', 'That card is not in your hand.', '§10');
+  }
+  if (!draft.cities[city]) {
+    return violation('ILLEGAL_TARGET', 'No such city.', '§5');
+  }
+
+  moveToCity(draft, cardId, city, { controller: actor, faceUp: false });
+  events.push({ type: 'CARD_SET', player: actor, card: cardId, city });
+  return ok(true);
+}
+
+/**
+ * Rules.md §7 — flip a Set Card face-up and pay its cost.
+ *
+ * The rulebook says a card opened above the City Level "simply becomes a Set
+ * Card again" with no cost paid, because in paper you flip before checking.
+ * A digital client knows the level up front, so we reject the attempt instead
+ * of consuming the player's one open per turn.
+ */
+/**
+ * Rules.md §11 ② — the combat open, which is the same open under different
+ * conditions: inside a battle, in the contested city, one per side.
+ */
+function battleOpenAllowed(
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  card: CardInstance,
+): Result<true, RuleViolation> {
+  const battle = draft.battle;
+  if (!battle) return ok(true);
+  if (battle.step !== 'opens') {
+    return violation('WRONG_PHASE', 'Cards cannot be opened during this step.', '§11');
+  }
+  if (actor !== battle.waitingOn) {
+    return violation('NOT_YOUR_TURN', 'It is not your combat open.', '§11');
+  }
+  if (card.cityIndex !== battle.city) {
+    return violation('ILLEGAL_TARGET', 'Only a card in the contested city may be opened.', '§11');
+  }
+  return ok(true);
+}
+
+function openCard(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  pay: readonly CardInstanceId[],
+  targets: readonly CardInstanceId[],
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const card = draft.cards[cardId];
+  if (!card) return violation('UNKNOWN_CARD', 'No such card.');
+  if (card.zone !== 'city' || card.faceUp || card.controller !== actor) {
+    return violation('CARD_NOT_IN_ZONE', 'That is not one of your Set Cards.', '§7');
+  }
+
+  // Three ways a card can be opened, and they have different rules.
+  //
+  // A Quick window (§13) is the loosest: Quick frees the *timing*, so the
+  // phase does not matter and the turn's one open is untouched — it is not
+  // your turn at all. It outranks the battle case below, because a window can
+  // open in the middle of one.
+  const inWindow = draft.quick !== null && draft.quick.waitingOn === actor;
+
+  // A battle brings its own open step (Rules.md §11 ②), which is separate from
+  // the turn's Open phase and from its one-open limit: the defender opens on
+  // the attacker's turn, and the attacker may already have opened this turn.
+  const inBattle = !inWindow && draft.battle !== null;
+
+  if (inWindow) {
+    if (!definitionOf(ctx, card as CardInstance).quick) {
+      return violation('WRONG_PHASE', 'Only a Quick card can be opened right now.', '§13');
+    }
+  } else if (inBattle) {
+    const allowed = battleOpenAllowed(draft, actor, card as CardInstance);
+    if (!allowed.ok) return allowed;
+  } else {
+    const phase = currentPhase(draft).id;
+    if (phase !== 'open') {
+      return violation('WRONG_PHASE', 'Cards may only be opened during your Open phase.', '§10');
+    }
+    if (draft.turn.openedThisTurn) {
+      return violation('ALREADY_ACTED', 'You may only open one card per turn.', '§10');
+    }
+  }
+
+  const city = card.cityIndex ?? -1;
+  const def = definitionOf(ctx, card as CardInstance);
+
+  // A card whose printed level or cost has not been captured cannot be opened.
+  // Treating unknown as free or as Level 0 would silently let illegal plays
+  // through; refusing says plainly what is missing. See Docs/CardData.md.
+  if (def.level === null || def.cost === null) {
+    return violation(
+      'NOT_IMPLEMENTED',
+      `${def.name}: this card's printed ${def.level === null ? 'level' : 'cost'} has not been captured yet, so it cannot be opened.`,
+      '§7',
+    );
+  }
+
+  const level = cityLevel(draft);
+  if (def.level > level) {
+    return violation(
+      'WRONG_PHASE',
+      `${def.name} is Level ${def.level}; only ${level} cit${level === 1 ? 'y is' : 'ies are'} face up.`,
+      '§7',
+    );
+  }
+  if (uniqueConflict(ctx, draft, def)) {
+    return violation('ILLEGAL_TARGET', `${def.name} is Unique and already on the field.`, '§8');
+  }
+
+  const payCards: CardInstance[] = [];
+  for (const id of pay) {
+    const payCard = draft.cards[id];
+    if (!payCard || payCard.zone !== 'hand' || payCard.controller !== actor) {
+      return violation('CARD_NOT_IN_ZONE', 'Cost must be paid with cards from your hand.', '§7');
+    }
+    payCards.push(payCard as CardInstance);
+  }
+
+  const payment = validatePayment(ctx, def.cost, payCards);
+  if (!payment.ok) return payment;
+
+  for (const id of pay) {
+    moveToZone(draft, id, { player: actor, zone: 'trash' });
+    events.push({ type: 'CARD_TRASHED', player: actor, card: id });
+  }
+  if (pay.length > 0) events.push({ type: 'COST_PAID', player: actor, cards: [...pay] });
+
+  card.faceUp = true;
+  // Remembered so "the turn it is opened" can still be asked later in the
+  // turn. Rules.md §7 — cleared when the card leaves the field.
+  card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+  if (!inBattle && !inWindow) draft.turn.openedThisTurn = true;
+  events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
+
+  // Rules.md §13 — an ability that goes off on opening does so now, while
+  // the card is still on the field. A Normal Effect leaves straight after.
+  const chosen = checkTargets(ctx, draft, card as CardInstance, targets);
+  if (!chosen.ok) return chosen;
+  fireAbilities(ctx, draft, card as CardInstance, 'open', events, chosen.value);
+
+  // Rules.md §3 — a Normal Effect resolves once and goes to the Trash.
+  if (def.kind === 'effect' && def.duration === 'normal') {
+    moveToZone(draft, cardId, { player: actor, zone: 'trash' });
+    events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
+  }
+
+  // A character opened into the contested city is now standing in it, which
+  // can flip the city and change what the battle is being fought over.
+  refreshBoard(ctx, draft, events);
+
+  if (inBattle && draft.battle) {
+    // §11 ② — one open each, then on to commitment.
+    draft.battle.opened.push(actor);
+    advanceOpens(ctx, draft, events);
+  }
+
+  // The other player may want to answer that. DesignNotes "When to offer a
+  // Quick" — including when the opener was the defender in a combat open,
+  // because "the opponent" is whoever did not do it.
+  offerQuick(ctx, draft, actor, 'cardOpened', events);
+
+  return ok(true);
+}
+
+/** Rules.md §10 ④(1) — lock an unlocked character and move it within its Move. */
+function moveCharacter(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  city: number,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  if (currentPhase(draft).id !== 'main') {
+    return violation('WRONG_PHASE', 'Characters may only move during your Main phase.', '§10');
+  }
+
+  const card = draft.cards[cardId];
+  if (!card) return violation('UNKNOWN_CARD', 'No such card.');
+  if (card.zone !== 'city' || !card.faceUp || card.controller !== actor) {
+    return violation('CARD_NOT_IN_ZONE', 'That character is not on the field.', '§10');
+  }
+  if (!isCharacter(ctx, card as CardInstance)) {
+    return violation('ILLEGAL_TARGET', 'Only characters can move.', '§10');
+  }
+  if (card.locked) {
+    return violation('ALREADY_ACTED', 'That character is locked.', '§6');
+  }
+  if (!draft.cities[city]) {
+    return violation('ILLEGAL_TARGET', 'No such city.', '§5');
+  }
+
+  const from = card.cityIndex ?? -1;
+  if (from === city) {
+    return violation('ILLEGAL_TARGET', 'That character is already there.', '§10');
+  }
+
+  const def = definitionOf(ctx, card as CardInstance);
+  const move = moveOf(ctx, draft, card as CardInstance);
+  const distance = cityDistance(from, city);
+  if (distance > move) {
+    return violation(
+      'ILLEGAL_TARGET',
+      `${def.name} has Move ${move} but that city is ${distance} away.`,
+      '§10',
+    );
+  }
+
+  // Rules.md §6 — moving locks the character.
+  card.locked = true;
+  card.cityIndex = city;
+  events.push({ type: 'CHARACTER_MOVED', card: cardId, from, to: city });
+  return ok(true);
+}
+
+/** Rules.md §10 ⑤ — discard down to seven cards at end of turn. */
+function discardCard(
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  if (currentPhase(draft).id !== 'end') {
+    return violation('WRONG_PHASE', 'You only discard during the End phase.', '§10');
+  }
+  const card = draft.cards[cardId];
+  if (!card || card.zone !== 'hand' || card.controller !== actor) {
+    return violation('CARD_NOT_IN_ZONE', 'That card is not in your hand.', '§10');
+  }
+  if (handSize(draft, actor) <= HAND_LIMIT) {
+    return violation('ALREADY_ACTED', `Your hand is already at ${HAND_LIMIT} cards.`, '§10');
+  }
+
+  moveToZone(draft, cardId, { player: actor, zone: 'trash' });
+  events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
+  return ok(true);
+}
+
+function concede(draft: Draft<GameState>, actor: PlayerId, events: GameEvent[]): void {
+  const player = draft.players[actor];
+  if (player) player.eliminated = true;
+
+  const winner = opponentOf(draft, actor);
+  events.push({ type: 'MATCH_ENDED', winner, reason: 'concede' });
+  draft.status = { kind: 'finished', winner, reason: 'concede' };
+}
+
+/* ------------------------------------------------------------------ phases */
+
+export function currentPhase(draft: Pick<GameState, 'phases' | 'turn'>): PhaseDef {
+  const phase = draft.phases[draft.turn.phaseIndex];
+  if (!phase) throw new Error(`Invalid phase index: ${draft.turn.phaseIndex}`);
+  return phase;
+}
+
+/** Two-player assumption, per Rules.md §2 ("strictly 2-player"). */
+function opponentOf(draft: Pick<GameState, 'seats'>, player: PlayerId): PlayerId {
+  const other = draft.seats.find((seat) => seat !== player);
+  if (!other) throw new Error(`No opponent found for ${player}`);
+  return other;
+}
+
+const handSize = (draft: Pick<GameState, 'zoneOrder'>, player: PlayerId): number =>
+  (draft.zoneOrder[zoneKey(player, 'hand')] ?? []).length;
+
+function endPhase(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  if (actor !== draft.turn.activePlayer) {
+    return violation('NOT_YOUR_TURN', 'Only the turn player ends a phase.', '§10');
+  }
+  // Rules.md §10 ⑤ — the turn cannot pass while over the hand limit.
+  if (currentPhase(draft).id === 'end' && handSize(draft, actor) > HAND_LIMIT) {
+    return violation(
+      'ALREADY_ACTED',
+      `Discard down to ${HAND_LIMIT} cards before ending your turn.`,
+      '§10',
+    );
+  }
+
+  advancePhase(ctx, draft, events);
+  return ok(true);
+}
+
+/** Advances one phase, rolling over into the opponent's turn after the End phase. */
+function advancePhase(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const nextIndex = draft.turn.phaseIndex + 1;
+
+  if (nextIndex >= draft.phases.length) {
+    beginTurn(ctx, draft, opponentOf(draft, draft.turn.activePlayer), events);
+    return;
+  }
+
+  draft.turn.phaseIndex = nextIndex;
+  draft.turn.priorityPlayer = draft.turn.activePlayer;
+  const arrived = currentPhase(draft).id;
+  events.push({ type: 'PHASE_CHANGED', phaseId: arrived, player: draft.turn.activePlayer });
+  if (arrived === 'main') offerQuick(ctx, draft, draft.turn.activePlayer, 'mainPhase', events);
+  if (arrived === 'end') offerQuick(ctx, draft, draft.turn.activePlayer, 'turnEnd', events);
+
+  settle(ctx, draft, events);
+}
+
+function beginTurn(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  player: PlayerId,
+  events: GameEvent[],
+  options: { firstTurn?: boolean } = {},
+): void {
+  const startingPlayer = draft.seats[0];
+  const turnNumber = options.firstTurn
+    ? 1
+    : player === startingPlayer
+      ? draft.turn.turnNumber + 1
+      : draft.turn.turnNumber;
+
+  draft.turn = {
+    activePlayer: player,
+    priorityPlayer: player,
+    phaseIndex: 0,
+    turnNumber,
+    openedThisTurn: false,
+    battledCities: [],
+  };
+
+  events.push({ type: 'TURN_STARTED', player, turnNumber });
+  events.push({ type: 'PHASE_CHANGED', phaseId: currentPhase(draft).id, player });
+  // Rules.md §13 — "at the start of your turn" abilities, before the phases
+  // run, so what they draw is in hand by the Draw step.
+  fireTurnTrigger(ctx, draft, player, 'turnStart', events);
+  offerQuick(ctx, draft, player, 'turnStart', events);
+  settle(ctx, draft, events);
+}
+
+/**
+ * Runs the automatic phases (Refresh, Draw, End) until the turn rests on a
+ * phase that needs a decision. Rules.md §10.
+ */
+function settle(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  // Bounded to stop a rules bug from spinning forever; two turns of phases is
+  // far more than any legal chain of automatic advances.
+  for (let guard = 0; guard < draft.phases.length * 2 + 2; guard++) {
+    if (draft.status.kind === 'finished') return;
+    // A window freezes the game where it stands. Rules.md §13.
+    if (draft.quick) return;
+
+    const phase = currentPhase(draft);
+    const player = draft.turn.activePlayer;
+
+    switch (phase.id) {
+      case 'refresh':
+        applyRefresh(draft, player, events);
+        break;
+      case 'draw':
+        if (!applyDraw(draft, player, events)) return; // deck-out ends the match
+        break;
+      case 'end':
+        applyEndOfTurn(ctx, draft, player, events);
+        // The turn player still has to discard down before passing.
+        if (handSize(draft, player) > HAND_LIMIT) return;
+        break;
+      default:
+        break;
+    }
+
+    // DesignNotes 7 — nothing is set yet on turn one, so there is no Open
+    // step; the Open phase only becomes meaningful from a player's second turn.
+    const skipOpen = phase.id === 'open' && draft.turn.turnNumber === 1;
+    if (!phase.autoAdvance && !skipOpen && !hasNothingToDo(ctx, draft, player)) return;
+
+    const nextIndex = draft.turn.phaseIndex + 1;
+    if (nextIndex >= draft.phases.length) {
+      beginTurn(ctx, draft, opponentOf(draft, player), events);
+      return;
+    }
+
+    draft.turn.phaseIndex = nextIndex;
+    draft.turn.priorityPlayer = player;
+    const arrived = currentPhase(draft).id;
+    events.push({ type: 'PHASE_CHANGED', phaseId: arrived, player });
+    // DesignNotes "When to offer a Quick" — reaching Main, and reaching the
+    // End phase, are two of the six moments worth interrupting.
+    if (arrived === 'main') offerQuick(ctx, draft, player, 'mainPhase', events);
+    if (arrived === 'end') offerQuick(ctx, draft, player, 'turnEnd', events);
+  }
+}
+
+/**
+ * Is there anything to do here but leave?
+ *
+ * A phase that offers only "next phase" is a click with no decision in it —
+ * an Open step with nothing openable, or a Main phase with an empty hand and
+ * every character locked. The engine already knows exactly what is possible,
+ * so it moves on rather than making the player say so.
+ *
+ * Deliberately phrased as "nothing else is legal" rather than as a list of
+ * cases: as actions are added — abilities, Quick effects — they count here
+ * for free, and a phase can never be skipped past something a player could
+ * have done.
+ */
+function hasNothingToDo(ctx: EngineContext, draft: Draft<GameState>, player: PlayerId): boolean {
+  // A battle has its own steps and its own waiting player; never skip through
+  // one. Rules.md §11. Nor a Quick window, which stops the game outright.
+  if (draft.battle || draft.quick) return false;
+
+  return legalActions(ctx, draft as GameState, player).every(
+    (action) => action.type === 'CONCEDE' || action.type === 'END_PHASE',
+  );
+}
+
+/** Rules.md §10 ① — unlock all of the turn player's locked cards. */
+function applyRefresh(draft: Draft<GameState>, player: PlayerId, events: GameEvent[]): void {
+  let count = 0;
+  for (const card of Object.values(draft.cards)) {
+    if (card.controller === player && card.zone === 'city' && card.locked) {
+      card.locked = false;
+      count++;
+    }
+  }
+  if (count > 0) events.push({ type: 'CARDS_UNLOCKED', player, count });
+}
+
+/**
+ * Rules.md §10 ② — draw 1, skipped on the first player's first turn.
+ * Rules.md §1 — being required to draw from an empty deck loses the match.
+ * Returns false if the match ended.
+ */
+function applyDraw(draft: Draft<GameState>, player: PlayerId, events: GameEvent[]): boolean {
+  const isFirstPlayersFirstTurn = draft.turn.turnNumber === 1 && player === draft.seats[0];
+  if (isFirstPlayersFirstTurn) return true;
+  return drawInto(draft, player, 1, events);
+}
+
+/**
+ * Draws cards, ending the match if the deck runs dry. Returns false if it did.
+ *
+ * Separate from `applyDraw` because that one carries the Draw-phase rule about
+ * the first player's first turn (Rules.md §10 ②), which has nothing to do with
+ * drawing for any other reason — occupying a city, say.
+ */
+function drawInto(
+  draft: Draft<GameState>,
+  player: PlayerId,
+  count: number,
+  events: GameEvent[],
+): boolean {
+  for (let i = 0; i < count; i++) {
+    const deck = draft.zoneOrder[zoneKey(player, 'deck')] ?? [];
+    if (deck.length === 0) {
+      const winner = opponentOf(draft, player);
+      const loser = draft.players[player];
+      if (loser) loser.eliminated = true;
+      draft.status = { kind: 'finished', winner, reason: 'deck_out' };
+      events.push({ type: 'MATCH_ENDED', winner, reason: 'deck_out' });
+      return false;
+    }
+    const next = drawCards(draft as GameState, player, 1);
+    draft.cards = toDraft(next.cards);
+    draft.zoneOrder = toDraft(next.zoneOrder);
+    events.push(...next.log.slice(draft.log.length));
+  }
+  return true;
+}
+
+/** Rules.md §10 ⑤ — all damage resets to 0. */
+function applyEndOfTurn(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  player: PlayerId,
+  events: GameEvent[],
+): void {
+  // Rules.md §13 — "at the end of the turn" abilities go off before the board
+  // is tidied, or a character that returns to hand would be tidied first.
+  fireTurnTrigger(ctx, draft, player, 'turnEnd', events);
+
+  let cleared = false;
+  for (const card of Object.values(draft.cards)) {
+    if (card.damage > 0) {
+      card.damage = 0;
+      cleared = true;
+    }
+    // "Until end of turn" needs no timer: the boosts are swept with the
+    // damage, in the phase the rules already tidy in. Rules.md §10 ⑤.
+    for (const key of BOOST_COUNTERS) {
+      if (card.counters[key] !== undefined) delete card.counters[key];
+    }
+  }
+  if (cleared) events.push({ type: 'DAMAGE_CLEARED' });
+}
+
+/**
+ * Applies a batch of actions in order, stopping at the first violation.
+ * Used by replay and by tests that need to reach a mid-game position.
+ */
+export function reduceAll(
+  ctx: EngineContext,
+  state: GameState,
+  actions: readonly { actor: PlayerId; action: GameAction }[],
+): ReduceResult {
+  let current = state;
+  const events: GameEvent[] = [];
+
+  for (const { actor, action } of actions) {
+    const result = reduce(ctx, current, actor, action);
+    if (!result.ok) return result;
+    current = result.value.state;
+    events.push(...result.value.events);
+  }
+
+  return ok({ state: current, events });
+}
+
+/* ------------------------------------------------------------ quick windows
+ *
+ * Rules.md §13 lets a Quick interject almost anywhere. Asking after every
+ * action turns the game into a dialogue box, so DesignNotes narrows it to six
+ * moments — and even then only when the player actually has a Quick set and
+ * can pay for it, which is what makes silence meaningful: no prompt means
+ * there was nothing to prompt about.
+ */
+
+/**
+ * Offers a Quick window to whoever did *not* do the thing.
+ *
+ * A no-op unless they have something to open. That check is the whole design:
+ * a window nobody could act in is a click with no decision in it, which is
+ * exactly what `hasNothingToDo` refuses to ask elsewhere.
+ */
+function offerQuick(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actedBy: PlayerId,
+  trigger: QuickTrigger,
+  events: GameEvent[],
+): void {
+  if (draft.quick || draft.status.kind !== 'playing') return;
+
+  const responder = draft.seats.find((seat) => seat !== actedBy);
+  if (!responder) return;
+  if (quickOpens(ctx, draft as GameState, responder).length === 0) return;
+
+  draft.quick = { waitingOn: responder, trigger };
+  events.push({ type: 'QUICK_OFFERED', player: responder, trigger });
+}
+
+/* --------------------------------------------------------------- abilities
+ *
+ * Rules.md §13. A triggered ability fires once and writes its result into the
+ * state; a continuous one is never resolved at all, it is read off the board
+ * by `powerOf` and friends. So everything below is about the triggered kind.
+ */
+
+/**
+ * Checks the player's chosen targets against what the card may point at.
+ *
+ * One per ability that asks, in printed order. Fewer is allowed — an ability
+ * with nobody legal to point at gets nobody, and the open still happens
+ * (Rules.md §13 resolves what it can). More, or an illegal one, is a client
+ * that has gone wrong or is lying, and is refused.
+ */
+function checkTargets(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  targets: readonly CardInstanceId[],
+): Result<readonly (CardInstanceId | undefined)[], RuleViolation> {
+  const asking = targetingAbilities(ctx, source, 'open');
+  if (targets.length > asking.length) {
+    return violation('ILLEGAL_TARGET', 'That card does not ask for that many targets.', '§13');
+  }
+
+  const chosen: (CardInstanceId | undefined)[] = [];
+  for (const [index, ability] of asking.entries()) {
+    const picked = targets[index];
+    if (picked === undefined) {
+      // Nothing chosen is a real outcome, not an error: the ability resolves
+      // and finds nobody.
+      chosen.push(undefined);
+      continue;
+    }
+    const allowed = legalTargets(ctx, draft, source, ability.target);
+    if (!allowed.some((card) => card.instanceId === picked)) {
+      return violation('ILLEGAL_TARGET', 'That character cannot be targeted.', '§13');
+    }
+    chosen.push(picked);
+  }
+  return ok(chosen);
+}
+
+/**
+ * Fires every ability on `source` that answers to this trigger.
+ *
+ * Conditions are checked here rather than by the caller so that a trigger
+ * with an unmet condition is a no-op rather than an omission — Rules.md §13
+ * has cost-free abilities resolving "the moment the condition is met, even if
+ * unfavorable to you", which means nobody gets to decide not to check.
+ */
+function fireAbilities(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  trigger: Trigger,
+  events: GameEvent[],
+  targets: readonly (CardInstanceId | undefined)[] = [],
+): void {
+  let asked = 0;
+  for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    if (ability.trigger !== trigger) continue;
+    const chosen = ability.target ? targets[asked++] : undefined;
+    if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) continue;
+    // An ability that asked for a target and got nobody has nothing to do.
+    if (ability.target && chosen === undefined) continue;
+    resolveEffect(ctx, draft, source, ability, events, chosen);
+  }
+}
+
+/** Runs one ability's effect. Rules.md §13. */
+function resolveEffect(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  ability: Ability,
+  events: GameEvent[],
+  chosen?: CardInstanceId | undefined,
+): void {
+  const effect = ability.effect;
+  const controller = source.controller;
+  events.push({
+    type: 'ABILITY_RESOLVED',
+    card: source.instanceId,
+    player: controller,
+    text: ability.text,
+  });
+
+  switch (effect.do) {
+    case 'buff': {
+      // Under a trigger this is "until end of turn", so it is written onto
+      // the card and cleared with damage in the End phase (Rules.md §10 ⑤).
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        for (const stat of ['power', 'hp', 'move'] as const) {
+          const change = effect.stats[stat];
+          if (change === undefined) continue;
+          const key = counterFor(stat);
+          card.counters[key] = (card.counters[key] ?? 0) + change;
+        }
+      }
+      return;
+    }
+
+    case 'draw': {
+      const player = targetPlayer(draft, controller, effect.player);
+      if (player) drawInto(draft, player, effect.count, events);
+      return;
+    }
+
+    case 'discard': {
+      const player = targetPlayer(draft, controller, effect.player);
+      if (player) forcedDiscard(draft, player, effect.count, events);
+      return;
+    }
+
+    case 'unlock': {
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) card.locked = false;
+      return;
+    }
+
+    case 'returnToHand': {
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        moveToZone(draft, card.instanceId, { player: card.owner, zone: 'hand' });
+        events.push({ type: 'CARD_RETURNED', player: card.owner, card: card.instanceId });
+      }
+      return;
+    }
+
+    // Continuous by nature: asked of the board by `cannotAttack`, never run.
+    case 'cannotAttack':
+      return;
+  }
+}
+
+/** The cards on the field an effect's selector reaches. */
+function selected(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  selector: Selector,
+  chosen?: CardInstanceId | undefined,
+): Draft<CardInstance>[] {
+  return Object.values(draft.cards).filter(
+    (card) =>
+      card.zone === 'city' &&
+      card.faceUp &&
+      selects(selector, source, card as CardInstance, (c) => subtypesOf(ctx, c), chosen),
+  );
+}
+
+/**
+ * Discards at random from a player's hand. Rules.md §13.
+ *
+ * Random because the *opponent* is the one losing cards and nobody has said
+ * they get to choose — the cards in this set say "your opponent discards",
+ * which is not the same as letting them pick their worst. Their own discards
+ * are a choice and go through `DISCARD_CARD` instead.
+ */
+function forcedDiscard(
+  draft: Draft<GameState>,
+  player: PlayerId,
+  count: number,
+  events: GameEvent[],
+): void {
+  for (let i = 0; i < count; i++) {
+    const hand = draft.zoneOrder[zoneKey(player, 'hand')] ?? [];
+    if (hand.length === 0) return;
+    const { value: index, rng } = nextInt(draft.rng as Rng, hand.length);
+    draft.rng = toDraft(rng);
+    const cardId = hand[index];
+    if (cardId === undefined) return;
+    moveToZone(draft, cardId, { player, zone: 'trash' });
+    events.push({ type: 'CARD_TRASHED', player, card: cardId });
+  }
+}
+
+/** Every face-up card on the field, so turn triggers can sweep the board. */
+function faceUpOnField(draft: Draft<GameState>): Draft<CardInstance>[] {
+  return Object.values(draft.cards).filter((card) => card.zone === 'city' && card.faceUp);
+}
+
+/**
+ * Runs a turn-edge trigger across the board. Rules.md §13.
+ *
+ * Most such abilities are written from their controller's side ("at the start
+ * of your turn") and so only fire on that player's turn. A card that says
+ * "the turn" instead fires on either, which matters because a defender can
+ * open during a battle on the attacker's turn (§11 ②) — a card that came down
+ * then should go home at the end of *that* turn, not wait for its own.
+ */
+function fireTurnTrigger(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  player: PlayerId,
+  trigger: Trigger,
+  events: GameEvent[],
+): void {
+  for (const card of faceUpOnField(draft)) {
+    for (const ability of definitionOf(ctx, card as CardInstance).abilities ?? []) {
+      if (ability.trigger !== trigger) continue;
+      // "Your turn" is the default; a card that says "the turn" answers to
+      // both. See `Ability.turns`.
+      if ((ability.turns ?? 'yours') === 'yours' && card.controller !== player) continue;
+      if (!conditionHolds(ctx, draft, card as CardInstance, ability.condition, draft.battle)) {
+        continue;
+      }
+      resolveEffect(ctx, draft, card as CardInstance, ability, events);
+    }
+  }
+}

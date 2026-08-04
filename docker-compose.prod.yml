@@ -1,0 +1,46 @@
+# Production-ish stack: one container serving both the API and the built
+# client. Run with:
+#   docker compose -f docker-compose.prod.yml up --build
+
+services:
+  app:
+    build:
+      context: .
+      target: prod
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      # Same-origin in this layout, so no cross-origin allowance is needed.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+      DATABASE_URL: postgresql://berserk:${POSTGRES_PASSWORD:-berserk}@db:5432/berserk
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      # Usernames promoted to operator on boot, comma-separated. An operator
+      # can reset another player's password; there is no recovery email.
+      ADMIN_USERS: ${ADMIN_USERS:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+    ports:
+      - '3001:3001'
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: berserk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-berserk}
+      POSTGRES_DB: berserk
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U berserk -d berserk']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

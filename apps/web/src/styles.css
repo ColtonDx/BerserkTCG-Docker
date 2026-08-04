@@ -1,0 +1,3254 @@
+/*
+ * Berserk TCG — manga palette: black and white, with red used sparingly for
+ * the things that matter (the active player, damage, danger, the Brand).
+ * Red is an accent, never a surface. If everything is red, nothing is.
+ */
+
+:root {
+  --bg: #000000;
+  --surface: #0c0c0d;
+  --surface-raised: #141416;
+  --border: #262629;
+  --border-strong: #3a3a3f;
+  --ink: #ededee;
+  --ink-dim: #9a9aa0;
+  --ink-faint: #6a6a70;
+  /* Sampled from the Brand on the wallpaper. */
+  --blood: #d81020;
+  --blood-bright: #ff3d2f;
+  --blood-deep: #7d0a14;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    15px/1.5 'Iowan Old Style',
+    'Palatino Linotype',
+    Palatino,
+    Georgia,
+    serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ----------------------------------------------------------------- lobby */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lobby {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Clears the Brand and katakana in the artwork rather than sitting over them. */
+  justify-content: flex-end;
+  padding: 0 24px 7vh;
+  background-color: #000;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+
+/* Keeps the controls legible over the bright clouds in the lower corners. */
+.lobby__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.35) 45%,
+    rgba(0, 0, 0, 0.86) 78%,
+    rgba(0, 0, 0, 0.95) 100%
+  );
+  pointer-events: none;
+}
+
+.embers {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lobby__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.lobby__name {
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+.lobby__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.lobby__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.lobby__divider::before,
+.lobby__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-strong), transparent);
+}
+
+.lobby__join {
+  display: flex;
+  gap: 8px;
+}
+
+.lobby__join input {
+  flex: 1;
+  min-width: 0;
+}
+
+.lobby__waiting {
+  margin: 0;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.lobby__hint {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.lobby__code {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 13px;
+  color: var(--ink);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.lobby__error {
+  margin: 0;
+  padding: 8px 12px;
+  width: 100%;
+  border-left: 2px solid var(--blood);
+  background: rgba(125, 10, 20, 0.18);
+  color: #ffd8d8;
+  font-size: 13px;
+  text-align: left;
+}
+
+.lobby__status {
+  margin: 6px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.lobby__status--connected {
+  color: var(--ink-dim);
+}
+
+.lobby__status--disconnected {
+  color: var(--blood-bright);
+}
+
+/* --------------------------------------------------------------- controls */
+
+button,
+input {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 11px 18px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  background: rgba(12, 12, 13, 0.86);
+  color: var(--ink);
+}
+
+input::placeholder {
+  color: var(--ink-faint);
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--blood);
+  outline-offset: 2px;
+}
+
+button {
+  cursor: pointer;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--blood);
+  background: rgba(125, 10, 20, 0.22);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  border-color: var(--blood);
+  background: rgba(125, 10, 20, 0.3);
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--blood);
+  border-color: var(--blood-bright);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------ match screen */
+
+.app {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100vh;
+}
+
+.app__header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.status {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+
+.status--disconnected {
+  color: var(--blood-bright);
+}
+
+.error {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--blood);
+  background: rgba(125, 10, 20, 0.16);
+  color: #ffd8d8;
+}
+
+/* ------------------------------------------------------------ the table
+ *
+ * Everything is placed against the board rather than stacked in a column,
+ * because the layout is about *sides*: the five cities are the halfway line,
+ * you are below it and the opponent above, and each player's corners mirror
+ * the other's the way they would across a real table.
+ *
+ * Bands are reserved at the edges so nothing has to fight for room: a side
+ * band at each end for the piles and the two rails, and a top and bottom band
+ * for the badge and hand. The city grid is padded by exactly those amounts,
+ * symmetrically — which is what keeps the halfway line on the halfway point.
+ */
+.board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+
+  /* Wide enough for a pile and for the two rails that flank the row. */
+  --side-band: max(134px, calc(var(--card-w, 84px) + 34px));
+  --edge-band: 116px;
+  /* Clear of the floating header, and the same at both ends so the corners
+   * stay a true mirror of each other. */
+  --corner-inset: 52px;
+}
+
+/* The shared row of five City cards. Rules.md §5.
+ *
+ * The far half is drawn smaller and a shade dimmer, so the opponent's board
+ * reads as further away.
+ *
+ * This was a real `rotateX` on the whole plane, which looked better — it
+ * keystoned, like a table. It had to go: inside that 3D context Chromium
+ * stopped hit-testing the cards on the *near* half, so the lane swallowed
+ * every right-click and every press-and-hold on your own board. Nothing
+ * recovered it — not `preserve-3d` down the tree, not perspective inside the
+ * transform, not dropping the lane's overflow or the card's own transform —
+ * only removing the rotation. Depth is not worth a board you cannot touch. */
+.cities {
+  position: absolute;
+  inset: 0;
+  padding: var(--edge-band) var(--side-band);
+}
+
+.cities__plane {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  height: 100%;
+}
+
+/* The far half: smaller and dimmer than yours, by a little. */
+.city__lane:first-child .card {
+  --depth: 0.9;
+}
+
+.city__lane:first-child {
+  filter: brightness(0.86);
+}
+
+/* Three rows with equal stretch above and below: the city card lands on the
+ * centre line, and all five land on the same one.
+ *
+ * The tilt is deliberately small. It has to suggest a surface, not a
+ * flight-sim horizon — anything steeper and the far cards stop being
+ * readable, which costs more than the depth is worth. */
+.city {
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.city--up {
+  border-color: var(--border);
+}
+
+/* Both lanes crowd the city between them, as they would on a table. */
+.city__lane {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.city__lane:first-child {
+  align-content: flex-end;
+}
+
+.city__lane:last-child {
+  align-content: flex-start;
+}
+
+/* A City is a card, and the five of them on the halfway line are what read as
+ * the board being split between two players. */
+.city__card {
+  position: relative;
+  overflow: hidden;
+  justify-self: center;
+  width: var(--card-w, 84px);
+  height: var(--card-h, 120px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  font-size: clamp(8px, 0.62vw, 11px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  box-shadow: 0 3px 16px rgb(0 0 0 / 70%);
+
+  /* Slow enough to watch a city stand up when it is taken. */
+  transition:
+    width 620ms cubic-bezier(0.3, 1.1, 0.5, 1),
+    height 620ms cubic-bezier(0.3, 1.1, 0.5, 1),
+    border-color 420ms ease,
+    box-shadow 420ms ease;
+}
+
+.city__face {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Along the foot of the card: the art says what this place is, so the
+   * writing only has to name it and stay readable over the print. */
+  justify-content: flex-end;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  padding: 0 3px 3px;
+  font-size: clamp(6px, 0.46vw, 9px);
+  line-height: 1.2;
+  transition: transform 620ms cubic-bezier(0.3, 1.1, 0.5, 1);
+}
+
+/* A scrim only where the writing is, so the art keeps the rest of the card. */
+.city__face::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 42%;
+  background: linear-gradient(to top, rgb(0 0 0 / 88%), rgb(0 0 0 / 55%) 55%, transparent);
+  pointer-events: none;
+}
+
+.city__name,
+.city__flag {
+  position: relative;
+}
+
+/* The printed face, filling the card under the writing. */
+.city__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+
+/* A city lies on its side until somebody holds it: face-down, or fought over
+ * and still nobody's. Standing one upright is how taking it reads.
+ *
+ * The card turns, so its face and its art turn with it — both are laid out
+ * upright and rotated, because rotating changes what a box looks like without
+ * changing the room it takes up. */
+.city--flat .city__card {
+  width: var(--card-h, 120px);
+  height: var(--card-w, 84px);
+}
+
+.city--flat .city__art,
+.city--flat .city__face {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--card-w, 84px);
+  height: var(--card-h, 120px);
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.city--down .city__card {
+  color: var(--ink-faint);
+}
+
+.city__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.city__flag {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.city__flag--you {
+  color: var(--blood-bright);
+}
+
+/* ------------------------------------------------------------ the corners */
+
+.corner {
+  position: absolute;
+  z-index: 15;
+}
+
+.corner--top-left {
+  top: var(--corner-inset);
+  left: 14px;
+}
+
+.corner--top-right {
+  top: var(--corner-inset);
+  right: 14px;
+}
+
+.corner--bottom-left {
+  bottom: var(--corner-inset);
+  left: 14px;
+}
+
+.corner--bottom-right {
+  bottom: var(--corner-inset);
+  right: 14px;
+}
+
+/* A deck is a stack of backs; a graveyard is its top card, face up. */
+.pile__card {
+  position: relative;
+  width: var(--card-w, 84px);
+  height: var(--card-h, 120px);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.pile__card[role='button'] {
+  cursor: pointer;
+}
+
+.pile--empty .pile__card {
+  border-style: dashed;
+  border-color: var(--border);
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board--stats .pile__label {
+  opacity: 0;
+}
+
+.pile__label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Offset slivers behind the face, so a pile reads as a pile. */
+.pile__shim {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+}
+
+.pile__shim--1 {
+  transform: translate(3px, -3px);
+}
+
+.pile__shim--2 {
+  transform: translate(6px, -6px);
+}
+
+.pile__art {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pile__back {
+  position: absolute;
+  inset: 0;
+  background: var(--card-back) center / cover no-repeat;
+}
+
+/* ---------------------------------------------------------- the nameplates */
+
+.nameplate {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.nameplate--top {
+  top: 8px;
+}
+
+.nameplate--bottom {
+  bottom: 8px;
+}
+
+/* No number here: Berserk has no life totals (Rules.md §1). Cities held is
+ * the nearest thing to a score, and it appears with the stats overlay. */
+.nameplate--red {
+  --seat: var(--blood);
+  --seat-bright: var(--blood-bright);
+}
+
+.nameplate--blue {
+  --seat: #2f6ea8;
+  --seat-bright: #4f9fe0;
+}
+
+.nameplate__disc {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: 0 2px 14px rgb(0 0 0 / 70%);
+}
+
+/* Each seat has a colour, taken from seat order so both players see the same
+ * person in the same one. It carries to the cities they hold. */
+.nameplate--red,
+.city--held.nameplate--red {
+  --seat: var(--blood);
+  --seat-bright: var(--blood-bright);
+}
+
+.nameplate--blue,
+.city--held.nameplate--blue {
+  --seat: #2f6ea8;
+  --seat-bright: #4f9fe0;
+}
+
+.nameplate .nameplate__disc {
+  border-color: color-mix(in srgb, var(--seat) 45%, var(--border-strong));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--seat) 55%, transparent),
+    0 0 16px color-mix(in srgb, var(--seat) 28%, transparent),
+    0 2px 14px rgb(0 0 0 / 70%);
+}
+
+/* Whose turn it is, on top of whose colour they are. */
+.nameplate--active .nameplate__disc {
+  border-color: var(--seat-bright);
+  box-shadow:
+    0 0 0 2px var(--seat),
+    0 0 26px color-mix(in srgb, var(--seat) 55%, transparent);
+}
+
+.nameplate__initial {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.nameplate--away .nameplate__initial {
+  color: var(--ink-faint);
+}
+
+/* Cities held, on the rim of the disc. */
+.nameplate__cities {
+  position: absolute;
+  right: -5px;
+  bottom: -3px;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 9px;
+  background: var(--blood);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.nameplate__name {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.nameplate--active .nameplate__name {
+  color: var(--ink);
+}
+
+/* A city glows in the colour of whoever holds it — the card itself, not the
+ * lanes around it, so the glow reads as the city changing hands rather than
+ * as the whole half of the board lighting up. */
+.city--held .city__card {
+  border-color: color-mix(in srgb, var(--seat) 70%, var(--border-strong));
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--seat) 35%, transparent),
+    0 3px 16px rgb(0 0 0 / 70%);
+}
+
+.city--held .city__flag {
+  color: var(--seat-bright);
+}
+
+.nameplate--away .nameplate__name {
+  color: var(--ink-faint);
+}
+
+/* ----------------------------------------------------- the opponent's hand */
+
+/* Their hand keeps as little of the table as ours does: tucked up past the
+ * top edge, and coming back down when the cursor goes looking for it. The
+ * box stays put and catches the cursor; only the fan moves. */
+.ohand {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: var(--ohand-reach, 128px);
+  transform: translateX(-50%);
+  z-index: 18;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 40px;
+  clip-path: inset(0 -100vw -100vh -100vw);
+}
+
+.ohand__fan {
+  display: flex;
+  align-items: flex-start;
+  transform: translateY(var(--ohand-dip, -30px));
+  transition: transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.ohand--open .ohand__fan {
+  transform: translateY(var(--ohand-top, 58px));
+}
+
+/* Small, and only the top edge of each back: a hand you cannot read should
+ * take no more room than the count it really is.
+ *
+ * Scoped under `.app--match` to out-specify the board card size further down,
+ * which is written at the same weight and would otherwise win by coming
+ * later — and did, which is why their hand was drawn at full size.
+ *
+ * The backs take no pointer events: the whole strip is one target, so
+ * reaching for their hand should not depend on hitting a card. */
+.app--match .ohand__fan .card,
+.ohand__fan .card {
+  pointer-events: none;
+  margin: 0 -16px;
+  transform-origin: 50% -35%;
+  width: calc(var(--card-w, 84px) * 0.72);
+  height: calc(var(--card-h, 120px) * 0.34);
+}
+
+.card--back {
+  border-color: var(--border);
+}
+
+/* ------------------------------------------------------------- the rails */
+
+.phase-rail {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+.phase--current {
+  color: var(--ink);
+  border-left: 2px solid var(--blood);
+  padding-left: 5px;
+  margin-left: -7px;
+}
+
+.phase-rail__turn,
+.phase-rail__level {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------- stats overlay */
+
+/* Each number sits on the thing it counts, so the overlay needs no legend. */
+.pile__count,
+.hand__count,
+.ohand__count {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  min-width: 30px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 82%);
+  border: 1px solid var(--blood-deep);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Under their fan rather than in the middle of the box, which now spans the
+ * whole top band and would put the number across their name. */
+.ohand__count {
+  top: auto;
+  bottom: 8px;
+  transform: translateX(-50%);
+}
+
+/* The character an effect is being pointed at. Rules.md §13. */
+.focus__card--aimed {
+  border-color: var(--blood);
+  box-shadow:
+    0 0 0 1px var(--blood) inset,
+    0 0 22px rgb(216 16 32 / 35%);
+}
+
+.pay__aim {
+  margin-top: 14px;
+}
+
+.pile {
+  position: relative;
+}
+
+/* The hand rests mostly below the bottom edge and rises when approached, so
+ * the table keeps the room.
+ *
+ * `.hand` itself never moves — it is a tall, transparent zone that catches the
+ * cursor on its way down, which matters because the seat bar sits along the
+ * very bottom and would otherwise intercept the approach. Only `.hand__fan`
+ * slides, so the target stays put while the cards come and go.
+ *
+ * Absolute rather than fixed: `.board--dimmed` sets a filter, and a filter
+ * would capture a fixed child anyway — this way the anchoring is the same
+ * whether the board is dimmed or not. */
+.hand {
+  position: absolute;
+  left: 50%;
+  bottom: var(--hand-bottom, 38px);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: max-content;
+  min-width: 320px;
+  height: var(--hand-reach, 190px);
+  /* Wide enough that a fanned card — including the end ones, which swing out
+   * furthest when they straighten under the cursor — stays inside the box.
+   * The box is also what catches the cursor, so a card hanging outside it
+   * would close the hand the moment you reached for that card. */
+  padding: 0 clamp(48px, 7vw, 110px);
+  transform: translateX(-50%);
+  /* The fan dips out through the *bottom* of this box rather than sliding on
+   * down the page — the badge sits directly below, and a hand drifting across
+   * a player's own name would be worse than no dip at all.
+   *
+   * Clipped rather than `overflow: hidden`, which would have to clip all four
+   * sides: a hovered card straightens and steps out sideways, and the end
+   * cards of a wide hand were being cut off against an edge with nothing on
+   * it. `clip-path` can hold the bottom and leave the sides open. */
+  clip-path: inset(-100vh -100vw 0 -100vw);
+}
+
+/* Once the hand is up there is nothing to hide, and the clip only gets in the
+ * way: the end cards of a fan dip lowest, so they were being cut off — and a
+ * clipped-away pixel takes no clicks either, which made those cards
+ * unreachable rather than merely untidy. */
+.hand--open {
+  clip-path: none;
+}
+
+.hand__fan {
+  display: flex;
+  align-items: flex-end;
+  transform: translateY(var(--hand-dip, 96px));
+  transition: transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.hand--open .hand__fan {
+  transform: translateY(0);
+}
+
+/* Overlapped, so a wide hand still fans instead of spanning the table. */
+.hand__fan .card {
+  margin: 0 -18px;
+  transform-origin: 50% 135%;
+  transition:
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    box-shadow 280ms ease;
+}
+
+/* The card under the cursor straightens and steps forward, so an overlapped
+ * hand can still be read one card at a time. `!important` because the fan
+ * angle for this card is an inline style. */
+.hand__fan .card:hover {
+  --rot: 0deg !important;
+  --lift: -26px !important;
+  --scale: 1.06;
+
+  z-index: 50 !important;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 65%);
+}
+
+.card {
+  width: 84px;
+  height: 116px;
+  padding: 6px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: normal;
+  /* Every transform on a card is composed here, from custom properties, so
+   * the fan, the locked tilt and the zone-change slide can all apply at once
+   * instead of overwriting one another. `--flip-*` is driven by useCardFlip. */
+  transform: translate(var(--flip-x, 0px), var(--flip-y, 0px)) translateY(var(--lift, 0px))
+    rotate(calc(var(--rot, 0deg) + var(--tilt, 0deg)))
+    scale(calc(var(--scale, 1) * var(--depth, 1)));
+  /* Locking turns the card (Rules.md §6). It is a move the player made, so it
+   * turns rather than snapping — with a little overshoot, the way a card
+   * pushed round settles back. `useCardFlip` overrides this while a card is
+   * crossing zones and restores it afterwards. */
+  transition: transform 520ms cubic-bezier(0.3, 1.24, 0.5, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}
+
+button.card {
+  text-align: left;
+  cursor: pointer;
+}
+
+button.card:hover {
+  border-color: var(--blood);
+  background: var(--surface-raised);
+}
+
+.card--hidden {
+  background:
+    var(--card-back) center / cover no-repeat,
+    repeating-linear-gradient(45deg, #141416, #141416 6px, #0f0f11 6px, #0f0f11 12px);
+}
+
+/* Locked cards are shown turned. Rules.md §6, DesignNotes 11. */
+.card--locked {
+  --tilt: 45deg;
+
+  opacity: 0.85;
+}
+
+/* An ability has moved this character's numbers (Rules.md §13). The change
+ * is invisible otherwise — the art shows what is printed, and printed is no
+ * longer what it hits for — so the card itself says something happened.
+ * Blue for lifted, and its opposite for pushed down. */
+.card--buffed {
+  border-color: #4f9fe0;
+  box-shadow:
+    0 0 0 1px rgb(79 159 224 / 55%) inset,
+    0 0 18px rgb(79 159 224 / 45%);
+}
+
+.card--weakened {
+  border-color: var(--blood-deep);
+  box-shadow:
+    0 0 0 1px rgb(125 10 20 / 55%) inset,
+    0 0 18px rgb(125 10 20 / 45%);
+}
+
+/* Mid-slide between zones: over everything, and not a drop target. */
+.card--flying {
+  z-index: 60 !important;
+  pointer-events: none;
+}
+
+.card__damage {
+  color: var(--blood-bright);
+}
+
+/* --------------------------------------------------- table chrome */
+
+/* The turn's one button, floating clear of the table. */
+.turn-button {
+  position: fixed;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 12px 22px;
+  font-family: inherit;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--blood);
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 55%);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.turn-button:hover:not(:disabled) {
+  background: var(--blood);
+  border-color: var(--blood-bright);
+  color: #fff;
+}
+
+.turn-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.turn-button__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.turn-button__phase {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+}
+
+.turn-button:hover:not(:disabled) .turn-button__phase {
+  color: rgb(255 255 255 / 70%);
+}
+
+.turn-button__waiting {
+  position: fixed;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  max-width: 96px;
+  text-align: right;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
+/* Keep the seat's own stats out from under the floating button. */
+.app--match .board {
+  position: absolute;
+  inset: 0;
+
+  /* Each hand clears its own badge: the badge is 8px in and 60px tall. */
+  --hand-bottom: 74px;
+  --hand-reach: calc(var(--card-h) * 1.42 + 46px);
+  --hand-dip: calc(var(--card-h) * 1.42 - 34px);
+  /* Their backs are drawn a third of a card tall, so hiding all but a sliver
+   * takes only a small dip — enough left showing to aim at, not enough to
+   * cost board space. */
+  --ohand-reach: calc(var(--card-h) * 0.34 + 96px);
+  --ohand-dip: calc(var(--card-h) * -0.24);
+  --ohand-top: 74px;
+}
+
+.app__menu {
+  margin-left: auto;
+  padding: 7px 14px;
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------- confirmation */
+
+.confirm,
+.over {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(6 6 7 / 78%);
+  backdrop-filter: blur(3px);
+}
+
+.confirm__panel,
+.over__panel {
+  min-width: 300px;
+  max-width: 420px;
+  padding: 26px 30px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 70%);
+}
+
+.confirm__title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.confirm__body {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+.confirm__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--blood);
+  border-color: var(--blood-bright);
+  color: #fff;
+}
+
+/* -------------------------------------------------------- match over */
+
+.over__title {
+  margin: 0 0 6px;
+  font-size: 34px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.over__title--win {
+  color: var(--blood-bright);
+}
+
+.over__reason {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.over__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------- phase banner
+ *
+ * Two pieces, arriving from opposite sides: the rules sweep in from the left,
+ * the bar and its text from the right. Each decelerates hard into the middle
+ * and then keeps creeping the way it came, which leaves the two halves
+ * pulling gently against each other for the couple of seconds it stays up.
+ *
+ * The drift is a second segment of the same keyframes rather than a separate
+ * animation, so arrival and creep can never fall out of step with each other.
+ * Per-keyframe `animation-timing-function` is what switches between them.
+ */
+.banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 30%;
+  height: clamp(96px, 15vh, 148px);
+  /* Under the hand overlay: mulliganing and discarding are the more urgent
+   * thing on screen, and this one always passes on its own. */
+  z-index: 44;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The semi-opaque band the wording sits on, faded out at both ends so it
+ * never reads as a solid bar laid across the board. */
+.banner__bar {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(6 6 7 / 0%) 0%,
+    rgb(6 6 7 / 84%) 14%,
+    rgb(6 6 7 / 84%) 86%,
+    rgb(6 6 7 / 0%) 100%
+  );
+  animation: banner-right 2800ms both;
+}
+
+.banner__rules {
+  position: absolute;
+  inset: 0;
+  animation: banner-left 2800ms both;
+}
+
+.banner__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--blood), transparent);
+}
+
+.banner__line:first-child {
+  top: 0;
+}
+
+.banner__line:last-child {
+  bottom: 0;
+}
+
+.banner__text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  /* A beat behind the bar, so the two read as two things. */
+  animation: banner-right 2800ms 90ms both;
+}
+
+.banner__title {
+  font-size: clamp(24px, 3.9vw, 52px);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 0 4px 26px rgb(0 0 0 / 90%);
+}
+
+.banner--yours .banner__title {
+  color: var(--blood-bright);
+}
+
+.banner__phase {
+  font-size: clamp(10px, 1.15vw, 15px);
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  /* Each phase name is its own element, so it fades in as its turn comes and
+   * the subheading reads as walking rather than flicking. */
+  animation: banner-phase 260ms ease-out both;
+}
+
+@keyframes banner-phase {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner__phase {
+    animation: none;
+  }
+}
+
+/* In from off-screen left, then a slow creep further right. */
+@keyframes banner-left {
+  0% {
+    transform: translateX(-62vw);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.1, 0.86, 0.18, 1);
+  }
+
+  22% {
+    transform: translateX(0);
+    opacity: 1;
+    animation-timing-function: linear;
+  }
+
+  84% {
+    transform: translateX(30px);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+
+/* In from off-screen right, then a slow creep further left. */
+@keyframes banner-right {
+  0% {
+    transform: translateX(62vw);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.1, 0.86, 0.18, 1);
+  }
+
+  22% {
+    transform: translateX(0);
+    opacity: 1;
+    animation-timing-function: linear;
+  }
+
+  84% {
+    transform: translateX(-30px);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner__bar,
+  .banner__rules,
+  .banner__text {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .cities {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .lobby {
+    padding-bottom: 8vh;
+  }
+}
+
+/* ------------------------------------------------------------ deck builder */
+
+.builder {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+.builder__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.builder__name {
+  flex: 1;
+  max-width: 340px;
+  font-size: 15px;
+}
+
+/* Deck size and mercenary count: the two numbers that decide legality. */
+.tally {
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.tally--legal {
+  border-color: var(--blood);
+  color: var(--ink);
+}
+
+.builder__body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 12px;
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.builder__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filters select,
+.filters input[type='text'],
+.filters input:not([type]) {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.filters__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.filters__count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+  align-content: start;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cell__art {
+  position: relative;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.cell__art img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.cell__art:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.cell--chosen .cell__art {
+  border-color: var(--blood);
+}
+
+.cell__count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--blood);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.cell__foot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.cell__id {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+}
+
+.cell__minus,
+.decklist__minus {
+  padding: 0 6px;
+  font-size: 14px;
+  line-height: 1.4;
+  border-radius: 2px;
+}
+
+/* Card colour, as printed. */
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  flex: none;
+}
+
+.swatch--white {
+  background: #e8e2d2;
+}
+.swatch--green {
+  background: #2f6b3a;
+}
+.swatch--black {
+  background: #1a1a1c;
+}
+.swatch--red {
+  background: var(--blood);
+}
+
+.builder__deck {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+
+.builder__deck h2 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.builder__decklist {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.decklist,
+.decks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.decklist li,
+.decks li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.decklist__count {
+  min-width: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.decklist__id {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+}
+
+.decklist__merc {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--blood-bright);
+}
+
+.builder__status {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.legal {
+  margin: 0 0 8px;
+  color: #8fd18f;
+  font-size: 13px;
+}
+
+.problems {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #ffc9c9;
+}
+
+.builder__saved {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.decks__open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.decks__tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.decks__ok,
+.decks__bad {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.decks__ok {
+  color: #8fd18f;
+}
+.decks__bad {
+  color: var(--ink-faint);
+}
+
+.decks__delete {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .builder__body {
+    grid-template-columns: 1fr;
+  }
+  .builder__deck {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 12px;
+  }
+}
+
+/* --------------------------------------------------------- sign in & seats */
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.tabs__tab {
+  flex: 1;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.tabs__tab--on {
+  border-color: var(--blood);
+  background: rgba(125, 10, 20, 0.28);
+}
+
+.lobby__skip {
+  border: none;
+  background: none;
+  padding: 4px 8px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+}
+
+.lobby__skip:hover {
+  background: none;
+  color: var(--ink-dim);
+}
+
+.lobby__account {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.lobby__account strong {
+  color: var(--ink-dim);
+}
+
+.app--waiting {
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+}
+
+.seats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.seats__seat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.seats__ready {
+  color: #8fd18f;
+}
+
+.seats__waiting {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.pick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+}
+
+.pick__deck {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+}
+
+.pick__deck--on {
+  border-color: var(--blood);
+  background: rgba(125, 10, 20, 0.28);
+}
+
+.pick__name {
+  flex: 1;
+}
+
+.pick__size {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.pick__illegal {
+  margin-top: 8px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+/* ------------------------------------------------- burn-away transition */
+
+/* Covers everything while the sheet burns off the board beneath it. */
+.burn {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------- lobby browser */
+
+.lobby__content--wide {
+  max-width: 560px;
+}
+
+.browse {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.browse__row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+}
+
+.browse__code {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 17px;
+  letter-spacing: 0.16em;
+  color: var(--ink);
+}
+
+.browse__host {
+  flex: 1;
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browse__seats {
+  font-variant-numeric: tabular-nums;
+  color: var(--blood-bright);
+}
+
+.browse__age {
+  font-size: 11px;
+  color: var(--ink-faint);
+  min-width: 62px;
+  text-align: right;
+}
+
+/* The join code is read aloud and typed, so give it room. */
+.lobby__code {
+  font-size: 26px;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ game table */
+
+/*
+ * The match screen fills the window and never scrolls: the board is a single
+ * view of a physical table, and having to scroll to see a city would be a
+ * poor way to play. Everything sizes off `--card-w`, so the whole table
+ * shrinks and grows together with the viewport.
+ */
+/* The match is played on a table, so it is played on a table. The wood is
+ * dark enough to sit under card art without competing with it; the scrim
+ * below takes the edges down further so the five cities and the two hands
+ * stay the brightest things on screen. */
+.app--match {
+  max-width: none;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  position: relative;
+  padding: 0;
+  gap: 0;
+  background:
+    url('../../../art-assets/table.jpeg') center / cover no-repeat fixed,
+    var(--bg);
+  /* A column rather than fixed grid rows: the error banner is conditional, so
+   * anything positional would hand the free space to the wrong child. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* Cards are 5:7. The width is bounded by the five-city row across, and by
+   * the three stacked bands down, so the smaller of the two wins. */
+  --card-w: clamp(46px, min(5.6vw, 8.2vh), 104px);
+  --card-h: calc(var(--card-w) * 1.434);
+}
+
+/* Vignette and a slight top-and-bottom fall-off, so the corners recede and
+ * the chrome sitting on them stays legible. Painted before the board, which
+ * is positioned and therefore lands on top. */
+.app--match::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(128% 96% at 50% 50%, rgb(0 0 0 / 28%) 0%, rgb(0 0 0 / 82%) 100%),
+    linear-gradient(
+      180deg,
+      rgb(0 0 0 / 62%) 0%,
+      rgb(0 0 0 / 18%) 26%,
+      rgb(0 0 0 / 18%) 74%,
+      rgb(0 0 0 / 62%) 100%
+    );
+  pointer-events: none;
+}
+
+.app--match .app__header {
+  position: absolute;
+  inset: 0 12px auto;
+  /* Above the hand overlay: mulliganing and discarding are modal, but Leave
+   * and Concede have to stay reachable from every state, or a player who does
+   * not want to finish the step has nowhere to go. */
+  z-index: 50;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  /* Floating chrome: it must not take a slice off the top, or the halfway
+   * line would sit below the middle of the page. */
+  pointer-events: none;
+}
+
+.app--match .app__header > * {
+  pointer-events: auto;
+}
+
+.app__leave {
+  margin-left: auto;
+  padding: 7px 12px;
+  font-size: 11px;
+}
+
+.app--match .cities {
+  min-height: 0;
+  gap: 6px;
+}
+
+.app--match .city {
+  min-height: 0;
+}
+
+.app--match .city__lane {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.app--match .city__lane:first-child {
+  align-content: flex-end;
+}
+
+.app--match .city__lane:last-child {
+  align-content: flex-start;
+}
+
+/* Bigger than a card on the table: the hand is what you actually read, while
+ * the board only has to be recognisable. Needs to out-specify
+ * `.app--match .card` below, which sets every card to the board size and
+ * would otherwise win by coming later. */
+.app--match .hand__fan .card {
+  width: calc(var(--card-w) * 1.42);
+  height: calc(var(--card-h) * 1.42);
+}
+
+.app--match .card {
+  width: var(--card-w);
+  height: var(--card-h);
+  padding: 4px;
+  font-size: clamp(8px, 0.62vw, 11px);
+  gap: 2px;
+}
+
+/* A locked card is the same card, turned — not a smaller one. Rules.md §6.
+ * Shrinking it read as the card mattering less, when locking is only a state.
+ * The lanes let a turned card overhang instead. */
+
+.app--match .city__card {
+  padding: 4px 6px;
+}
+
+/* Card art on the table. The tile is already card-shaped, so the art fills
+ * it and the damage marker sits over the top. */
+.card {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.card__art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card .card__damage {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.82);
+  color: var(--blood-bright);
+  font-size: clamp(9px, 0.7vw, 12px);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------- card menu & targeting */
+
+.card--grabbable {
+  cursor: grab;
+}
+
+.card--grabbable:active {
+  cursor: grabbing;
+}
+
+.card--own:hover,
+.card--grabbable:hover {
+  outline: 1px solid var(--blood);
+  outline-offset: -1px;
+}
+
+.cardmenu {
+  position: fixed;
+  z-index: 60;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: rgba(10, 10, 11, 0.97);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.cardmenu__title {
+  margin: 0 0 4px;
+  padding: 4px 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--border);
+}
+
+.cardmenu__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+  border-radius: 2px;
+}
+
+.cardmenu__item:hover {
+  background: rgba(125, 10, 20, 0.35);
+  border: none;
+}
+
+.cardmenu__hint {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+/* Areas that would take the card light up; the rest recede. */
+.city--target {
+  border-color: var(--blood);
+  box-shadow:
+    0 0 0 1px var(--blood),
+    inset 0 0 26px rgba(216, 16, 32, 0.22);
+  cursor: pointer;
+}
+
+.city--muted {
+  opacity: 0.4;
+}
+
+.cities--targeting .city {
+  transition:
+    opacity 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.targeting-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--blood);
+  border-radius: 3px;
+  background: rgba(10, 10, 11, 0.96);
+  font-size: 13px;
+}
+
+.board {
+  position: relative;
+}
+
+/* ------------------------------------------------------- hand, up close */
+
+.board--dimmed {
+  filter: brightness(0.32) saturate(0.6);
+  pointer-events: none;
+}
+
+.focus {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.focus__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(1500px, 96vw);
+}
+
+.focus__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.focus__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.focus__hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  padding: 6px;
+}
+
+.focus__card {
+  /* Big enough to actually read the card being chosen. */
+  width: clamp(110px, 12vw, 178px);
+  height: auto;
+  aspect-ratio: 703 / 1008;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  background: none;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease;
+}
+
+.focus__art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.focus__card--pick {
+  cursor: pointer;
+}
+
+.focus__card--pick:hover {
+  transform: translateY(-8px);
+  border-color: var(--blood);
+}
+
+.focus__card:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.focus__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------- inspector */
+
+.inspect {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.inspect__frame {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.inspect__art {
+  max-height: 84vh;
+  max-width: 90vw;
+  width: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  display: block;
+}
+
+.inspect__foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.inspect__subtypes {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-dim);
+  font-size: 0.78em;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* The printed ability, under the card. The art carries it too, but this is
+ * the line the engine was given — so a mismatch is the player's to spot. */
+.inspect__text {
+  margin: 10px 0 0;
+  max-width: 46ch;
+  border-left: 2px solid var(--border-strong);
+  padding-left: 12px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inspect__text--inert {
+  color: var(--ink-dim);
+}
+
+.inspect__pending {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.inspect__number {
+  color: var(--ink-faint);
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
+}
+
+.inspect__id {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------- peeking
+ *
+ * A card held up close while the button is down. It takes no pointer events
+ * of its own: the press that raised it has to keep reaching the card beneath,
+ * or letting go would never put it back down.
+ */
+.peek {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 55%);
+  pointer-events: none;
+  animation: peek-in 140ms ease-out;
+}
+
+.peek__art {
+  width: min(46vh, 84vw);
+  border-radius: 6px;
+  box-shadow: 0 26px 70px rgb(0 0 0 / 85%);
+}
+
+@keyframes peek-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+/* ------------------------------------------------------- looking through a
+ * graveyard. The Trash is public in full (Rules.md §15), so both players' can
+ * be opened — and opening one tells nobody.
+ */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.viewer__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 74%);
+  backdrop-filter: blur(3px);
+  cursor: default;
+}
+
+.viewer__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(880px, 94vw);
+  max-height: 82vh;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 22px 64px rgb(0 0 0 / 78%);
+}
+
+.viewer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.viewer__title {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.viewer__count {
+  margin-left: 6px;
+  color: var(--blood-bright);
+}
+
+.viewer__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.viewer__card {
+  cursor: zoom-in;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  transition: border-color 120ms ease;
+}
+
+.viewer__card:hover {
+  border-color: var(--blood);
+}
+
+.viewer__art {
+  display: block;
+  width: 100%;
+}
+
+.viewer__empty {
+  margin: 0;
+  padding: 30px 0;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.viewer__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ page turn
+ *
+ * The screen itself turns away. `::view-transition-old(root)` is the
+ * browser's snapshot of the outgoing page, so what swings is the menu the
+ * player was just looking at — not a sheet of paper drawn on top of it.
+ *
+ * Hinged at the right edge and swung toward the viewer, so it uncovers from
+ * the left: a page turning in a right-to-left book, which is the one this
+ * game comes out of. `rotateY` has to go *positive* for the free edge to come
+ * forward; negative sends it away and reads as a door closing.
+ *
+ * It turns through 90°, not 180°. Past square the page is on the far side of
+ * its own hinge, and with the hinge on the screen edge that is entirely off
+ * screen — a second half of the animation with nothing in it.
+ *
+ * The perspective is long and lives in the transform, because a perspective
+ * on an ancestor would not reach the snapshot through the pseudo-element tree
+ * between them. A page this wide looms as it lifts — the free edge is nearer
+ * the eye — and at a short perspective it keeps covering the screen until it
+ * is nearly square, cramming the whole reveal into the last moment.
+ */
+::view-transition-group(root) {
+  animation-duration: 760ms;
+}
+
+/* The default is a cross-fade between the two; this replaces it outright. */
+::view-transition-image-pair(root) {
+  isolation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* The incoming screen simply waits underneath. */
+::view-transition-new(root) {
+  z-index: 0;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+  transform-origin: right center;
+  animation: page-turn 760ms cubic-bezier(0.34, 0.05, 0.4, 1) forwards;
+}
+
+@keyframes page-turn {
+  from {
+    transform: perspective(4000px) rotateY(0deg);
+    filter: brightness(1);
+  }
+
+  to {
+    /* Dimming as it goes: the sheet turns out of the light it was lit by. */
+    transform: perspective(4000px) rotateY(92deg);
+    filter: brightness(0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------- paying to open
+ *
+ * Opening costs cards out of hand (Rules.md §7) and which ones is the
+ * player's call, so the hand comes forward the way it does for a mulligan.
+ * The engine's suggested payment is pre-selected: a player who does not care
+ * can just confirm.
+ */
+.pay__cost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.pay__pip {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+  font-weight: 600;
+  color: #050506;
+}
+
+.pay__pip--white {
+  background: #e8e3d6;
+}
+
+.pay__pip--red {
+  background: #c0303a;
+  color: #fff;
+}
+
+.pay__pip--green {
+  background: #3f7d52;
+  color: #fff;
+}
+
+.pay__pip--black {
+  background: #2a2a2e;
+  color: var(--ink);
+}
+
+.pay__pip--any {
+  background: #8d8d95;
+}
+
+.pay__tally {
+  margin-left: 8px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+}
+
+.pay__tally--ok {
+  color: var(--blood-bright);
+}
+
+/* Picked to pay with — about to be spent, so it reads as leaving. */
+.focus__card--paying {
+  outline: 2px solid var(--blood);
+  outline-offset: -2px;
+  opacity: 0.62;
+  transform: translateY(10px);
+}
+
+/* A Set Card that could be opened right now, on the board. */
+.card--openable {
+  cursor: pointer;
+  box-shadow:
+    0 0 0 1px var(--blood),
+    0 0 16px rgb(216 16 32 / 45%);
+}
+
+/* ------------------------------------------------------------------ battle
+ *
+ * A battle runs across both players' turns, so its prompt sits above the
+ * board where the defender will see it on the attacker's turn too.
+ */
+.battlebar {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  transform: translateX(-50%);
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 16px;
+  background: rgb(6 6 7 / 88%);
+  border: 1px solid var(--blood-deep);
+  border-radius: 3px;
+  box-shadow: 0 6px 26px rgb(0 0 0 / 70%);
+}
+
+.battlebar__where {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.battlebar__ask {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+
+.battlebar__ask--yours {
+  color: var(--ink);
+}
+
+/* A city that can be attacked, and a character being asked to fight. */
+.city--attackable {
+  border-color: var(--blood-deep);
+  cursor: pointer;
+}
+
+.city--attackable:hover {
+  border-color: var(--blood);
+  background: rgb(216 16 32 / 6%);
+}
+
+.card--battle {
+  cursor: pointer;
+  box-shadow:
+    0 0 0 2px var(--blood-bright),
+    0 0 22px rgb(255 61 47 / 55%);
+}
+
+/* ------------------------------------------------------- assigning damage */
+
+.assign__targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+}
+
+.assign__target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+}
+
+.assign__target--lethal {
+  border-color: var(--blood);
+  box-shadow: 0 0 18px rgb(216 16 32 / 30%);
+}
+
+.assign__art {
+  width: 104px;
+  border-radius: 2px;
+  display: block;
+}
+
+.assign__name {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.assign__hp {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.assign__target--lethal .assign__hp {
+  color: var(--blood-bright);
+}
+
+.assign__dial {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assign__dial .btn {
+  padding: 2px 10px;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.assign__amount {
+  min-width: 22px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.assign__left {
+  color: var(--blood-bright);
+}
+
+.assign__left--done {
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------- opening a card
+ *
+ * The card comes forward at readable size for a moment. Both players see it:
+ * an open is public, and what just came down is the thing an opponent most
+ * needs to know. It takes no pointer events, so play carries on underneath.
+ */
+.reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  background: radial-gradient(60% 50% at 50% 45%, rgb(0 0 0 / 62%), rgb(0 0 0 / 0%));
+  animation: reveal-in 320ms cubic-bezier(0.18, 0.9, 0.28, 1) both;
+}
+
+.reveal__card {
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px var(--blood-deep),
+    0 26px 70px rgb(0 0 0 / 85%),
+    0 0 60px rgb(216 16 32 / 28%);
+}
+
+.reveal__art {
+  display: block;
+  width: min(38vh, 76vw);
+}
+
+.reveal__label {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.reveal__who {
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.reveal__name {
+  font-size: clamp(15px, 1.6vw, 21px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-shadow: 0 3px 18px rgb(0 0 0 / 90%);
+}
+
+.reveal__fate {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--blood-bright);
+}
+
+/* The printed line, when the card came forward because its ability went off
+ * rather than because it was opened. Says why the numbers moved. */
+.reveal__ability {
+  max-width: 34ch;
+  margin-top: 2px;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+/* It stays: sink back toward the board it will sit on. */
+.reveal--settling {
+  animation: reveal-settle 400ms ease-in both;
+}
+
+/* It does not: Rules.md §3, a Normal effect resolves and is gone. */
+.reveal--spent {
+  animation: reveal-spend 400ms ease-in both;
+}
+
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.9);
+  }
+}
+
+@keyframes reveal-settle {
+  to {
+    opacity: 0;
+    transform: translateY(18px) scale(0.9);
+  }
+}
+
+@keyframes reveal-spend {
+  to {
+    opacity: 0;
+    transform: translateY(-14px) scale(1.06) rotate(-2deg);
+    filter: brightness(0.4);
+  }
+}
+
+/* ------------------------------------------- reading a card while deciding */
+
+/* During the mulligan there is nothing to click a card *for*, so a click is
+ * a look. Clicking anywhere puts it back. */
+.focus__zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 74%);
+  cursor: zoom-out;
+  animation: reveal-in 200ms ease-out both;
+}
+
+.focus__zoomart {
+  width: min(56vh, 88vw);
+  border-radius: 6px;
+  box-shadow: 0 24px 66px rgb(0 0 0 / 85%);
+}
+
+/* Femto has a face. */
+.nameplate__face {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* A whole card, not a portrait: the face sits in the upper third of the art
+ * box, so it is scaled up and pushed down to land inside the disc. Matches
+ * the badge picker in Settings, so what you chose is what you get. */
+.nameplate__face--card {
+  object-position: 50% 26%;
+  transform: scale(1.55);
+}
+
+/* A Quick window: the same shape as the other hand steps, because it is one
+ * — a row of cards to choose from, and a way to decline. */
+.quickwin__cost {
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+/* ------------------------------------------------------------- settings
+ *
+ * An overlay rather than a screen, so it can be reached from inside a match
+ * without leaving it. Scrolls on its own, because the badge picker is a grid
+ * of every named character and will only grow.
+ */
+
+.settings__panel {
+  align-items: stretch;
+  width: min(680px, 94vw);
+  max-height: 84vh;
+  /* A surface of its own, unlike the card overlays: this is a form, and form
+   * controls over a board read as floating rather than as a panel. */
+  padding: 22px 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: #08080a;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 70%);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.settings__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings__group:first-of-type {
+  border-top: none;
+}
+
+.settings__heading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.settings__row input[type='range'] {
+  flex: 1;
+  padding: 0;
+  accent-color: var(--blood);
+}
+
+.settings__label {
+  min-width: 66px;
+}
+
+.settings__value {
+  min-width: 46px;
+  text-align: right;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.settings__error,
+.settings__ok {
+  margin: 0;
+  font-size: 13px;
+}
+
+.settings__error {
+  color: var(--blood-bright);
+}
+
+.settings__ok {
+  color: var(--ink-dim);
+}
+
+/* The badges: card art cropped to a disc, the way it is drawn on the table. */
+.settings__icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 216px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.settings__icon {
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+}
+
+.settings__icon--on {
+  border-color: var(--blood);
+  box-shadow: 0 0 14px rgb(216 16 32 / 45%);
+}
+
+/* Card art is a whole card; the face is near its top, so it is scaled up and
+ * pushed down to land in the disc rather than showing a card in a circle. */
+.settings__iconart {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 26%;
+  transform: scale(1.55);
+}
+
+.settings__initial {
+  font-size: 22px;
+  letter-spacing: 0.06em;
+}
+
+.settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+
+/* The way out stays put, however far the badge grid pushes the panel down. */
+.settings__panel .focus__actions {
+  position: sticky;
+  bottom: -22px;
+  justify-content: flex-end;
+  margin: 0 -26px -22px;
+  padding: 14px 26px 22px;
+  background: linear-gradient(to top, #08080a 70%, rgb(8 8 10 / 0%));
+}
+
+.settings__search {
+  display: flex;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.settings__search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings__found {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.settings__person {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+}
+
+.settings__person--on {
+  border-color: var(--blood);
+}
+
+.settings__seen {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------------ touch
+ *
+ * A card is a tap, a press-and-hold and a drag at once. The browser's own
+ * gestures are all three's enemy: a long press raises a context menu, a drag
+ * pans the page, and a double tap zooms. None of that is wanted on a table.
+ */
+.card,
+.city,
+.btn,
+button {
+  touch-action: manipulation;
+}
+
+/* Dragging a card must not scroll the page instead. */
+.hand__fan .card,
+.city__lane .card {
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+/* Your own badge doubles as the switch for the counts, which is what a
+ * touchscreen has instead of holding Control. The rest of a badge is
+ * decorative and takes no pointer events, so this one has to opt back in. */
+.nameplate--switch {
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ------------------------------------------------ phones, held landscape
+ *
+ * A phone on its side is the same *shape* as the table — wide and short —
+ * which is why landscape is the orientation to support. What it is not is
+ * tall: 390-420px of height against a desktop's 900. Everything below is
+ * about that one number.
+ *
+ * Height, not width, so a short desktop window gets the same treatment
+ * rather than a phone getting it only when the browser admits what it is.
+ */
+
+@media (max-height: 540px) {
+  .app--match {
+    /* The card size normally takes the smaller of a width and a height
+     * budget. On a short screen the height budget wins by so much that the
+     * clamp floor took over, so it is set from height alone here. */
+    --card-w: clamp(38px, 9.4vh, 62px);
+  }
+
+  .app--match .board {
+    /* The bands reserved at top and bottom for the badge and the hand were
+     * 232px of a 412px screen, leaving the cities almost nothing. */
+    --edge-band: clamp(58px, 17vh, 84px);
+    --side-band: max(74px, calc(var(--card-w) + 18px));
+    --corner-inset: 26px;
+  }
+
+  .app--match .app__header {
+    padding: 4px 10px;
+    gap: 8px;
+  }
+
+  .app--match .app__header h1 {
+    font-size: 12px;
+    letter-spacing: 0.16em;
+  }
+
+  .app--match .corner {
+    transform: scale(0.82);
+  }
+
+  .app--match .corner--top-left,
+  .app--match .corner--bottom-left {
+    transform-origin: left center;
+  }
+
+  .app--match .corner--top-right,
+  .app--match .corner--bottom-right {
+    transform-origin: right center;
+  }
+
+  .phase-rail {
+    gap: 3px;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+  }
+
+  .nameplate__disc {
+    width: 38px;
+    height: 38px;
+  }
+
+  .nameplate__name {
+    font-size: 9px;
+  }
+
+  .turn-button {
+    padding: 8px 14px;
+    font-size: 11px;
+  }
+
+  /* The hand is the thing that has to stay readable, so it keeps its size
+   * relative to a card and loses only the deep dip — there is no room to
+   * hide most of a card off the bottom of a screen this short. */
+  .app--match {
+    --hand-reach: calc(var(--card-h) * 1.5 + 22px);
+    --hand-dip: calc(var(--card-h) * 1.5 - 26px);
+    --hand-bottom: 26px;
+    --ohand-reach: calc(var(--card-h) * 0.34 + 52px);
+    --ohand-top: 22px;
+  }
+
+  /* Below the header rather than behind it: the header is only 36px tall on
+   * a phone, and their hand's box started at the very top — so reaching for
+   * it hit the title bar instead. */
+  .app--match .ohand {
+    top: 38px;
+  }
+
+  .app--match .hand__fan .card {
+    width: calc(var(--card-w) * 1.5);
+    height: calc(var(--card-h) * 1.5);
+  }
+
+  /* Overlays: the mulligan's seven cards were sized for a desktop and put
+   * their own buttons below the fold, which made the hand step unfinishable
+   * on a phone. Everything in one is bounded by the height it has. */
+  .focus {
+    padding: 6px;
+    overflow-y: auto;
+  }
+
+  .focus__panel {
+    gap: 6px;
+    max-width: 100%;
+  }
+
+  .focus__title {
+    font-size: 13px;
+  }
+
+  .focus__hint {
+    font-size: 11px;
+  }
+
+  .focus__hand {
+    gap: 6px;
+    padding: 2px;
+  }
+
+  .focus__card {
+    width: auto;
+    height: clamp(96px, 44vh, 190px);
+  }
+
+  .focus__zoomart {
+    max-height: 78vh;
+  }
+
+  .settings__panel {
+    padding: 14px 16px;
+    max-height: 94vh;
+  }
+
+  .settings__panel .focus__actions {
+    margin: 0 -16px -14px;
+    padding: 10px 16px 14px;
+  }
+
+  .settings__icons {
+    max-height: 128px;
+  }
+
+  .assign__art {
+    height: clamp(70px, 26vh, 120px);
+  }
+}
