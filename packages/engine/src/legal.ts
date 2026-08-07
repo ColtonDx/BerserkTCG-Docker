@@ -1,7 +1,11 @@
+import { abilityKey } from './abilities.js';
 import { costTotal } from './cards.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { currentPhase } from './reducer.js';
 import {
+  activatedAbilities,
+  activationCost,
+  canActivate,
   canCommit,
   canVanguard,
   legalTargets,
@@ -74,6 +78,8 @@ export function legalActions(ctx: EngineContext, state: GameState, player: Playe
       actions.push(...setActions(state, hand));
       actions.push(...moveActions(ctx, state, player));
       actions.push(...battleDeclarations(ctx, state, player));
+      // §13 — a cost-bearing ability is used in its controller's Main phase.
+      actions.push(...abilityActions(ctx, state, player));
       actions.push({ type: 'END_PHASE' });
       break;
 
@@ -128,7 +134,73 @@ function battleDeclarations(ctx: EngineContext, state: GameState, player: Player
  */
 export function quickOpens(ctx: EngineContext, state: GameState, player: PlayerId): GameAction[] {
   const hand = cardsInZone(state, player, 'hand');
-  return openActions(ctx, state, player, hand, { ignoreTurnLimit: true, quickOnly: true });
+  return [
+    ...openActions(ctx, state, player, hand, { ignoreTurnLimit: true, quickOnly: true }),
+    // Rules.md §13 puts Quick abilities on the same footing as Quick cards:
+    // both are usable at any time, so a window is worth offering for either.
+    ...abilityActions(ctx, state, player, { quickOnly: true }),
+  ];
+}
+
+/**
+ * Cost-bearing abilities this player may use right now. Rules.md §13.
+ *
+ * `canActivate` decides the timing, so this only has to find the cards and
+ * work out whether each cost can actually be met — an ability whose price
+ * cannot be paid is never offered, exactly like an unopenable card.
+ */
+function abilityActions(
+  ctx: EngineContext,
+  state: GameState,
+  player: PlayerId,
+  scope: { quickOnly?: boolean } = {},
+): GameAction[] {
+  const hand = cardsInZone(state, player, 'hand');
+  const actions: GameAction[] = [];
+
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== 'city' || !card.faceUp || card.controller !== player) continue;
+
+    for (const entry of activatedAbilities(ctx, card)) {
+      if (scope.quickOnly === true && entry.ability.quick !== true) continue;
+      if (!canActivate(ctx, state, card, entry, player)) continue;
+
+      const payment = choosePayment(ctx, activationCost(entry.ability), hand);
+      if (!payment) continue;
+
+      // The cost's chosen ally comes first and the effect's target second,
+      // which is the order `reduce` reads them back in. The ally is settled
+      // here as a suggestion; the effect's target is offered one action per
+      // choice, so the board can light up the legal ones.
+      const prefix: CardInstanceId[] = [];
+      const lockAlly = entry.ability.cost?.lockAlly;
+      if (lockAlly) {
+        const ally = legalTargets(ctx, state, card, lockAlly, state.battle)[0];
+        if (!ally) continue;
+        prefix.push(ally.instanceId);
+      }
+
+      const aims = entry.ability.target
+        ? legalTargets(ctx, state, card, entry.ability.target, state.battle).map(
+            (option) => option.instanceId,
+          )
+        : [undefined];
+      // `canActivate` already refuses an ability with nobody to point at, so
+      // an empty list here means the ability asks for nobody at all.
+      for (const aim of aims) {
+        const choices = aim === undefined ? prefix : [...prefix, aim];
+        actions.push({
+          type: 'USE_ABILITY',
+          card: card.instanceId,
+          ability: abilityKey(entry.index),
+          ...(choices.length > 0 ? { targets: choices } : {}),
+          ...(payment.length > 0 ? { pay: payment } : {}),
+        });
+      }
+    }
+  }
+
+  return actions;
 }
 
 function battleActions(
@@ -266,12 +338,42 @@ function openActions(
     const payment = choosePayment(ctx, def.cost, hand);
     if (!payment) continue;
 
-    // A suggested target for each ability that asks for one, the way `pay`
-    // suggests a payment: legal as offered, and replaceable by any other
-    // legal choice. An ability with nobody to point at is offered nothing
-    // and simply finds nobody when it resolves.
-    const targets = targetingAbilities(ctx, card, 'open')
-      .map((ability) => legalTargets(ctx, state, card, ability.target)[0])
+    const asking = targetingAbilities(ctx, card, 'open');
+
+    // One open per legal target, rather than one open carrying a suggestion.
+    //
+    // The client renders what it is offered (see the note at the top of this
+    // file), and it cannot work a target list out for itself: which characters
+    // a card may point at depends on colour, Level, Distance and whether a
+    // battle is running — rules that live here. Offering each choice as its
+    // own action is what lets the board light up exactly the legal ones.
+    //
+    // Only for a card with a single asking ability, which is every one in the
+    // set today. A card with two would need the cross-product, so it keeps the
+    // older behaviour of one suggested target each and the reducer still
+    // accepts any other legal combination.
+    if (asking.length === 1) {
+      const ability = asking[0] as (typeof asking)[number];
+      const options = legalTargets(ctx, state, card, ability.target, state.battle);
+      // Nobody to point at is not a reason to refuse the open: the ability
+      // resolves and finds nobody (Rules.md §13).
+      if (options.length === 0) {
+        actions.push({ type: 'OPEN_CARD', card: card.instanceId, pay: payment });
+      } else {
+        for (const option of options) {
+          actions.push({
+            type: 'OPEN_CARD',
+            card: card.instanceId,
+            pay: payment,
+            targets: [option.instanceId],
+          });
+        }
+      }
+      continue;
+    }
+
+    const targets = asking
+      .map((ability) => legalTargets(ctx, state, card, ability.target, state.battle)[0])
       .filter((choice): choice is CardInstance => choice !== undefined)
       .map((choice) => choice.instanceId);
 

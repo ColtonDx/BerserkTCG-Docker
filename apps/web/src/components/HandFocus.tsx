@@ -101,31 +101,59 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
               const defId = 'defId' in card ? card.defId : null;
               const clickable = picking && legal(card.instanceId);
               return (
-                <button
-                  key={card.instanceId}
-                  type="button"
-                  className={clickable ? 'focus__card focus__card--pick' : 'focus__card'}
-                  disabled={picking && !clickable}
-                  onClick={() => {
-                    // A hold ends in a click; that one is not a choice.
-                    if (peek.consumed()) return;
-                    const action = actionFor(card.instanceId);
-                    if (clickable && action) {
-                      onAction(action);
-                      return;
-                    }
-                    // Nothing to do with it but look at it.
-                    if (defId) setZoomed((current) => (current === defId ? null : defId));
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    if (defId) onInspect(defId);
-                  }}
-                  title={defId ? nameOf(defId) : 'Card'}
-                  {...peek.bind(defId)}
-                >
-                  {defId ? <CardImage defId={defId} className="focus__art" /> : null}
-                </button>
+                // The magnifier is a sibling of the card, not a child of it:
+                // a button may not contain another interactive element, and
+                // nesting one inside made the whole tile ambiguous to click.
+                <div key={card.instanceId} className="focus__slot">
+                  <button
+                    type="button"
+                    className={clickable ? 'focus__card focus__card--pick' : 'focus__card'}
+                    disabled={picking && !clickable}
+                    onClick={() => {
+                      // A hold ends in a click; that one is not a choice.
+                      if (peek.consumed()) return;
+                      const action = actionFor(card.instanceId);
+                      if (clickable && action) {
+                        onAction(action);
+                        return;
+                      }
+                      // Nothing to do with it but look at it.
+                      if (defId) setZoomed((current) => (current === defId ? null : defId));
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if (defId) onInspect(defId);
+                    }}
+                    title={defId ? nameOf(defId) : 'Card'}
+                    {...peek.bind(defId)}
+                  >
+                    {defId ? <CardImage defId={defId} className="focus__art" /> : null}
+                  </button>
+
+                  {/* A look, on every step.
+                   *
+                   * Bottoming and discarding cannot be taken back, and until
+                   * this was here the only ways to read a card first were a
+                   * right click and a press-and-hold — one of which a
+                   * touchscreen does not have, and neither of which anybody
+                   * discovers. A card you are about to throw away for good is
+                   * exactly the one worth being sure about, and deciding on an
+                   * opening hand means reading it too. */}
+                  {defId && (
+                    <button
+                      type="button"
+                      className="focus__look"
+                      aria-label={`Inspect ${nameOf(defId)}`}
+                      title={`Inspect ${nameOf(defId)}`}
+                      onClick={() => {
+                        peek.cancel();
+                        onInspect(defId);
+                      }}
+                    >
+                      🔍
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -167,10 +195,14 @@ function hint(step: HandStep): string {
     const cards = step.costOfKeeping === 1 ? 'one card' : `${step.costOfKeeping} cards`;
     return `Keeping puts ${cards} on the bottom. Mulligan again to cost one more.`;
   }
+  // The magnifier is worth naming: the click that picks a card cannot be
+  // taken back, so the way to read one first should not have to be found.
   if (step.kind === 'bottom') {
     return step.owed === 1
-      ? 'Click a card to put it on the bottom of your deck.'
-      : `Click ${step.owed} cards to put on the bottom of your deck.`;
+      ? 'Click a card to put it on the bottom of your deck, or 🔍 to read it first.'
+      : `Click ${step.owed} cards to put on the bottom of your deck, or 🔍 to read one first.`;
   }
-  return step.over === 1 ? 'Click a card to discard it.' : `Click ${step.over} cards to discard.`;
+  return step.over === 1
+    ? 'Click a card to discard it, or 🔍 to read it first.'
+    : `Click ${step.over} cards to discard, or 🔍 to read one first.`;
 }

@@ -153,7 +153,7 @@ Do any of the following, in any order, any number of times:
 1. **Move a character** — choose one **unlocked** character and a destination city within its **Move** range; **lock it** and move it.
 2. **Set a card** — place one card from hand face-down in any city.
 3. **Use a special ability** — activate a character/Eternal ability.
-4. **Declare battle** — choose a city you do **not** occupy and declare battle. **Once per city per turn.** Resolves the Battle phase, then returns to Main.
+4. **Declare battle** — choose a city you do **not** occupy and declare battle. **Once per city per turn**, counted from the moment a vanguard is named (§11 ①) rather than from the declaration — an attack called off before it starts leaves the city attackable again. Resolves the Battle phase, then returns to Main.
 
 ### ⑤ End phase (終了フェイズ)
 
@@ -170,6 +170,8 @@ Declared during the Main phase against a city you don't occupy. Five steps in fi
 ### ① Vanguard Designation (先陣キャラクター指定)
 
 The attacker designates one friendly character in that city and **locks** it — it becomes the lead battle participant. **If no vanguard is designated, the Battle phase ends** and you return to Main.
+
+Naming the vanguard is what **commits** the attack, and it is what spends that city's one battle for the turn (§10 ④(4)). Backing out here costs nothing and the city may be attacked again this turn: nothing has been locked, opened or struck yet, and this step exists precisely to offer the way out. The city does **stay face up** either way (§5), so a declaration that is called off leaves the board exactly as a second one would find it.
 
 The **vanguard** is the character that started the attack: it was already on the field when the battle was declared, and it is chosen before ② — so a character opened _during_ the combat step can join the battle (③) but can never be the vanguard. Card abilities that read "if it is the vanguard" mean exactly this one character.
 

@@ -8,16 +8,26 @@ import { nameOf } from '../state/useCardNames.js';
  * Rules.md §11 ④.
  *
  * All of the Power has to be spent — a character cannot hold damage back — so
- * the Open button stays shut until the total is exact. The engine's suggestion
- * arrives pre-loaded, which is usually what a player wants: everything into
- * one target, because that is what kills something.
+ * Strike stays shut until the total is exact.
+ *
+ * Damage is dealt by *hitting people*: click a character to put one more into
+ * them, click again for another. It used to be a row of − and + buttons around
+ * a number, which is a spreadsheet of a decision — the eye ends up on the
+ * arithmetic instead of on the board, and the thing a player actually wants to
+ * know is who dies. So each blow lands on the card, the toll runs on the card,
+ * and a character the assignment would kill wears a skull. Counting skulls is
+ * the question being asked here.
+ *
+ * Nothing is assigned to begin with, for the same reason the payment dialog
+ * starts empty: the engine's suggestion would spend a character's whole Power
+ * on somebody the player never chose.
  */
 
 interface Props {
   readonly view: PlayerView;
-  /** The assignment the engine offered, as a starting point. */
+  /** The assignment the engine offered, which fixes the striker and the step. */
   readonly action: Extract<GameAction, { type: 'ASSIGN_DAMAGE' }>;
-  /** The striker's printed Power — the exact total to spend. */
+  /** The striker's current Power — the exact total to spend. */
   readonly power: number;
   readonly targets: readonly {
     readonly id: CardInstanceId;
@@ -26,26 +36,39 @@ interface Props {
     readonly damage: number;
   }[];
   readonly onConfirm: (action: GameAction) => void;
+  /** Read a character in full before deciding where the blow goes. */
+  readonly onInspect?: (defId: string) => void;
 }
 
-export function AssignDamage({ view, action, power, targets, onConfirm }: Props): JSX.Element {
+export function AssignDamage({
+  view,
+  action,
+  power,
+  targets,
+  onConfirm,
+  onInspect,
+}: Props): JSX.Element {
   const striker = view.cards[action.card];
   const strikerId = striker && 'defId' in striker ? striker.defId : null;
 
-  const [split, setSplit] = useState<Record<string, number>>(() => {
-    const start: Record<string, number> = {};
-    for (const hit of action.hits) start[hit.target] = (start[hit.target] ?? 0) + hit.amount;
-    return start;
-  });
+  const [split, setSplit] = useState<Record<string, number>>({});
 
   const spent = Object.values(split).reduce((sum, n) => sum + n, 0);
   const left = power - spent;
+  const dead = targets.filter((t) => t.damage + (split[t.id] ?? 0) >= t.hp).length;
 
-  const move = (id: string, by: number): void =>
+  /** One more blow into this character, if there is any Power left to spend. */
+  const strike = (id: string): void => {
+    if (left <= 0) return;
+    setSplit((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
+  };
+
+  /** Take one back. Nothing here is committed until Strike. */
+  const unstrike = (id: string): void =>
     setSplit((current) => {
-      const next = Math.max(0, (current[id] ?? 0) + by);
-      if (by > 0 && left <= 0) return current;
-      return { ...current, [id]: next };
+      const had = current[id] ?? 0;
+      if (had <= 0) return current;
+      return { ...current, [id]: had - 1 };
     });
 
   return (
@@ -53,51 +76,72 @@ export function AssignDamage({ view, action, power, targets, onConfirm }: Props)
       <div className="focus__panel">
         <h2 className="focus__title">{strikerId ? nameOf(strikerId) : 'This character'} strikes</h2>
         <p className="focus__hint">
-          Split {power} damage among the enemies in this battle.{' '}
           <strong className={left === 0 ? 'assign__left assign__left--done' : 'assign__left'}>
-            {left} left
-          </strong>
+            Assign damage {spent}/{power}
+          </strong>{' '}
+          — click a character to strike them, right-click to take one back.
+          {dead > 0 && <span className="assign__toll"> 💀 {dead} would be destroyed</span>}
         </p>
 
         <div className="assign__targets">
           {targets.map((target) => {
             const dealt = split[target.id] ?? 0;
-            const lethal = target.damage + dealt >= target.hp;
+            const total = target.damage + dealt;
+            const lethal = total >= target.hp;
             return (
               <div
                 key={target.id}
                 className={lethal ? 'assign__target assign__target--lethal' : 'assign__target'}
               >
-                <CardImage defId={target.defId} className="assign__art" />
+                <div className="focus__slot">
+                  <button
+                    type="button"
+                    className={dealt > 0 ? 'assign__hit assign__hit--struck' : 'assign__hit'}
+                    disabled={left <= 0 && dealt === 0}
+                    title={`Strike ${nameOf(target.defId)}`}
+                    aria-label={`Strike ${nameOf(target.defId)}. ${total} of ${target.hp} damage.`}
+                    onClick={() => strike(target.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      unstrike(target.id);
+                    }}
+                  >
+                    <CardImage defId={target.defId} className="assign__art" />
+                    {/* What this assignment is doing to them, on them. */}
+                    {dealt > 0 && <span className="assign__dealt">-{dealt}</span>}
+                    {lethal && (
+                      <span className="assign__skull" aria-hidden="true">
+                        💀
+                      </span>
+                    )}
+                  </button>
+
+                  {onInspect && (
+                    <button
+                      type="button"
+                      className="focus__look"
+                      aria-label={`Inspect ${nameOf(target.defId)}`}
+                      title={`Inspect ${nameOf(target.defId)}`}
+                      onClick={() => onInspect(target.defId)}
+                    >
+                      🔍
+                    </button>
+                  )}
+                </div>
+
                 <span className="assign__name">{nameOf(target.defId)}</span>
                 <span className="assign__hp">
-                  {target.damage + dealt} / {target.hp} damage{lethal ? ' — destroyed' : ''}
+                  {total} / {target.hp} damage{lethal ? ' — destroyed' : ''}
                 </span>
-                <div className="assign__dial">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => move(target.id, -1)}
-                    disabled={dealt === 0}
-                  >
-                    −
-                  </button>
-                  <span className="assign__amount">{dealt}</span>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => move(target.id, 1)}
-                    disabled={left <= 0}
-                  >
-                    +
-                  </button>
-                </div>
               </div>
             );
           })}
         </div>
 
         <div className="focus__actions">
+          <button type="button" className="btn" disabled={spent === 0} onClick={() => setSplit({})}>
+            Reset
+          </button>
           <button
             type="button"
             className="btn btn--primary"

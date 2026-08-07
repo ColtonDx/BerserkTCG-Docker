@@ -34,9 +34,18 @@ interface Props {
   readonly onConsiderOpen: (action: Extract<GameAction, { type: 'OPEN_CARD' }>) => void;
   readonly onPass: () => void;
   readonly onPeek: (defId: string | null) => void;
+  /** Read a card in full before answering. */
+  readonly onInspect: (defId: string) => void;
 }
 
-export function QuickWindow({ view, trigger, onConsiderOpen, onPass, onPeek }: Props): JSX.Element {
+export function QuickWindow({
+  view,
+  trigger,
+  onConsiderOpen,
+  onPass,
+  onPeek,
+  onInspect,
+}: Props): JSX.Element {
   const peek = usePeek(onPeek);
   const opens = view.legalActions.filter(
     (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> => action.type === 'OPEN_CARD',
@@ -57,17 +66,40 @@ export function QuickWindow({ view, trigger, onConsiderOpen, onPass, onPeek }: P
             if (!defId) return null;
             const cost = costOf(defId);
             return (
-              <button
-                key={action.card}
-                type="button"
-                className="focus__card"
-                onClick={() => onConsiderOpen(action)}
-                {...peek.bind(defId)}
-              >
-                <CardImage defId={defId} className="focus__art" />
-                <span className="focus__name">{nameOf(defId)}</span>
-                {cost && <span className="quickwin__cost">{cost}</span>}
-              </button>
+              // The magnifier is a sibling of the card, not inside it: a
+              // button may not contain another interactive element.
+              //
+              // This window is a hard stop in the middle of somebody else's
+              // turn, often mid-battle, and answering it costs cards out of
+              // hand — which made it the one place a card could not be read
+              // before it was committed to.
+              <div key={action.card} className="focus__slot">
+                <button
+                  type="button"
+                  className="focus__card"
+                  onClick={() => {
+                    if (peek.consumed()) return;
+                    onConsiderOpen(action);
+                  }}
+                  {...peek.bind(defId)}
+                >
+                  <CardImage defId={defId} className="focus__art" />
+                  <span className="focus__name">{nameOf(defId)}</span>
+                  {cost && <span className="quickwin__cost">{cost}</span>}
+                </button>
+                <button
+                  type="button"
+                  className="focus__look"
+                  aria-label={`Inspect ${nameOf(defId)}`}
+                  title={`Inspect ${nameOf(defId)}`}
+                  onClick={() => {
+                    peek.cancel();
+                    onInspect(defId);
+                  }}
+                >
+                  🔍
+                </button>
+              </div>
             );
           })}
         </div>

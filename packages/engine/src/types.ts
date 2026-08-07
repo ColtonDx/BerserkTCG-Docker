@@ -329,6 +329,17 @@ export type GameEvent =
   | { readonly type: 'QUICK_DECLINED'; readonly player: PlayerId }
   | {
       /**
+       * A player chose to use a cost-bearing ability and paid for it.
+       * Rules.md §13 — the cost is spent here, whatever the effect then
+       * finds. `ABILITY_RESOLVED` follows with the printed line.
+       */
+      readonly type: 'ABILITY_USED';
+      readonly player: PlayerId;
+      readonly card: CardInstanceId;
+      readonly ability: string;
+    }
+  | {
+      /**
        * A card's printed ability did something. Rules.md §13. Carries the
        * printed line so the feed can say what happened in the card's own
        * words rather than in the engine's.
@@ -371,6 +382,13 @@ export type GameEvent =
       readonly source: CardInstanceId;
       readonly target: CardInstanceId;
       readonly amount: number;
+      /**
+       * A blow struck in a battle (Rules.md §11 ④) rather than dealt by an
+       * effect (§13). Both mark the same damage, so nothing in the rules
+       * turns on it — but they do not *look* alike, and a client cannot tell
+       * them apart from the state that results.
+       */
+      readonly combat: boolean;
     }
   | { readonly type: 'CHARACTER_DESTROYED'; readonly card: CardInstanceId }
   | {

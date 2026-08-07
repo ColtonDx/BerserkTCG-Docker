@@ -18,13 +18,21 @@ import {
 import { CardImage, CITY_BACK, CITY_CAPITAL, CITY_FACE } from './CardImage.js';
 import { CardMenu, type CardMenuItem } from './CardMenu.js';
 import { BattleBar } from './BattleBar.js';
+import { BoostLinks, type BoostLink } from './BoostLinks.js';
 import { Nameplate, seatColour } from './Nameplate.js';
 import { ZonePile } from './ZonePile.js';
 import { useCardDrag, type CardDrag } from './useCardDrag.js';
 import { useCardFlip } from './useCardFlip.js';
 import { usePeek, type Peekable } from './usePeek.js';
 import { useStatsKey } from './useStatsKey.js';
-import { costOf, nameOf, statsOf, useCardNames } from '../state/useCardNames.js';
+import {
+  abilityOf,
+  costOf,
+  nameOf,
+  statsOf,
+  useCardNames,
+  type CardAbility,
+} from '../state/useCardNames.js';
 
 /**
  * The table.
@@ -42,9 +50,18 @@ import { costOf, nameOf, statsOf, useCardNames } from '../state/useCardNames.js'
  * Cards are acted on directly rather than through a list of buttons. In hand,
  * a click is a look and setting is a drag onto the area — the only thing a
  * card in hand can do (Rules.md §7), so a menu for it was a menu with one
- * item. On the table, a right click opens the card's menu. Every route reads
- * the same legal actions the server sent, so none can offer a move the engine
- * would reject.
+ * item. Every route reads the same legal actions the server sent, so none can
+ * offer a move the engine would reject.
+ *
+ * On the table a left click is *also* only a look, and everything that commits
+ * something is a deliberate gesture: a right click for the card's menu, a drag
+ * onto an area to move, and a drag onto the area it already stands in to
+ * attack there. A card that is lit — openable, or being asked to join a battle
+ * — answers a click with that, because it is the whole point of the moment.
+ *
+ * That division is load-bearing. A left click used to open the menu, which put
+ * "Attack" a careless click from a character standing anywhere attackable, and
+ * the same click reached the city underneath and declared the battle outright.
  *
  * Choosing something that needs an area (Set, Move) puts the board into
  * targeting: areas that would accept the card light up, the rest dim, and
@@ -76,6 +93,20 @@ interface BoardProps {
   readonly onOpenGrave: (player: string) => void;
   /** Consider opening a Set Card — the player still has to pay for it. */
   readonly onConsiderOpen: (action: Extract<GameAction, { type: 'OPEN_CARD' }>) => void;
+  /**
+   * Consider using a cost-bearing ability. Rules.md §13 — the same shape as
+   * opening: settle the price, then point it at somebody if it asks.
+   */
+  readonly onUseAbility: (action: Extract<GameAction, { type: 'USE_ABILITY' }>) => void;
+  /**
+   * A paid-for card waiting to be pointed at somebody. Rules.md §13 — while
+   * this is set the board is a target picker: the legal ones light up, the
+   * rest go quiet, and nothing else on a card can be clicked.
+   */
+  readonly aiming?: { readonly source: string; readonly options: readonly string[] } | null;
+  /** The target under the pointer, so the arrow can snap to it. */
+  readonly onAimHover?: (card: string | null) => void;
+  readonly onAimAt?: (card: string) => void;
   /** Dim the table while a hand step is in front of it. */
   readonly dimmed?: boolean;
 }
@@ -95,6 +126,10 @@ export function Board({
   onPeek,
   onOpenGrave,
   onConsiderOpen,
+  onUseAbility,
+  aiming = null,
+  onAimHover,
+  onAimAt,
   dimmed = false,
 }: BoardProps): JSX.Element {
   const [targeting, setTargeting] = useState<Targeting | null>(null);
@@ -108,6 +143,8 @@ export function Board({
   // Holding Control shows the counts; on a touchscreen there is no Control, so
   // the player's own badge is a switch for the same thing.
   const [pinnedStats, setPinnedStats] = useState(false);
+  // The card under the pointer, which is what the boost lines are drawn from.
+  const [hovered, setHovered] = useState<string | null>(null);
   const stats = useStatsKey() || pinnedStats;
   const peek = usePeek(onPeek);
   const touchDrag = useCardDrag({
@@ -156,10 +193,21 @@ export function Board({
   }, [view.version, view.cards]);
 
   const send = (cardId: string, kind: 'set' | 'move', city: number): void => {
+    // Dropped on the area it is already standing in: that cannot be a move,
+    // so it is the attack `dragPayload` offered it for. Rules.md §10 ④(4).
+    const dropped = view.cards[cardId];
+    const attack =
+      kind === 'move' && dropped?.cityIndex === city
+        ? view.legalActions.find(
+            (action) => action.type === 'DECLARE_BATTLE' && action.city === city,
+          )
+        : undefined;
+
     onAction(
-      kind === 'set'
-        ? { type: 'SET_CARD', card: cardId as never, city }
-        : { type: 'MOVE_CHARACTER', card: cardId as never, city },
+      attack ??
+        (kind === 'set'
+          ? { type: 'SET_CARD', card: cardId as never, city }
+          : { type: 'MOVE_CHARACTER', card: cardId as never, city }),
     );
     setTargeting(null);
     setDragging(null);
@@ -185,23 +233,21 @@ export function Board({
     );
 
   /**
-   * What clicking a card on the board does.
+   * What clicking a card on the board does: show it to you, and nothing else.
    *
-   * A locked character has spent its turn and an opponent's card is not yours
-   * to act on, so for both the only useful thing is a closer look — and
-   * making the player go through a menu for that is a menu that always has
-   * one item. Anything you *can* act on gets the menu instead.
+   * A left click is a *look*. It used to open the card's menu, which put
+   * "Attack" one careless click away from a character standing in a city that
+   * could be attacked — and because the click also reached the city
+   * underneath, simply clicking a character could declare a battle outright.
+   * Moves that commit something are deliberate now: the menu is a right
+   * click, and attacking is that or dragging the character onto its city.
+   *
+   * A face-down card the viewer may not identify has nothing to show, so it
+   * does nothing at all rather than opening an empty inspector.
    */
-  const clickCard = (at: { clientX: number; clientY: number }, card: ViewCard): void => {
+  const clickCard = (_at: { clientX: number; clientY: number }, card: ViewCard): void => {
     const defId = 'defId' in card ? card.defId : null;
-    const theirs = card.controller !== view.viewer;
-    const locked = card.locked;
-
-    if (defId && (theirs || locked)) {
-      onInspect(defId);
-      return;
-    }
-    openMenu(at, card);
+    if (defId) onInspect(defId);
   };
 
   const openMenu = (at: { clientX: number; clientY: number }, card: ViewCard): void => {
@@ -219,6 +265,26 @@ export function Board({
         ...(cost ? { hint: `pay ${cost}` } : {}),
         onPick: () => onConsiderOpen(open),
       });
+    }
+
+    // Rules.md §13's cost-bearing abilities. `legalActions` names one by its
+    // index on the card and offers one action per legal target, so they are
+    // grouped back up here: one menu entry per ability, however many people
+    // it could be pointed at. `canActivate` has already settled the timing and
+    // whether the price can be met, so anything listed is usable now.
+    if (defId) {
+      const used = new Set<string>();
+      for (const action of view.legalActions) {
+        if (action.type !== 'USE_ABILITY' || action.card !== card.instanceId) continue;
+        if (used.has(action.ability)) continue;
+        used.add(action.ability);
+        const printed = abilityOf(defId, action.ability);
+        items.push({
+          label: used.size > 1 ? `Use ability ${used.size}` : 'Use ability',
+          hint: abilityPrice(printed),
+          onPick: () => onUseAbility(action),
+        });
+      }
     }
 
     if (defId) items.push({ label: 'Inspect', onPick: () => onInspect(defId) });
@@ -265,6 +331,46 @@ export function Board({
   const classes = ['board'];
   if (dimmed) classes.push('board--dimmed');
   if (stats) classes.push('board--stats');
+  // Rules.md §13 — while a card is being pointed, the board is a target
+  // picker and everything that is not a candidate steps back.
+  if (aiming) classes.push('board--aiming');
+
+  /**
+   * What a card is, to the target picker.
+   *
+   * `target` is anything it may be pointed at, `source` the card doing the
+   * pointing, and everything else is out of it. Absent entirely when nothing
+   * is being aimed, so the ordinary board is untouched.
+   *
+   * Being a candidate is asked *first*, because a character opened into an
+   * area it is the only occupant of is a legal target for its own ability —
+   * "target 1 character in this area" means itself (Rules.md §13). Reading
+   * source before candidate would light that card as the pointer and leave
+   * the player unable to click the only choice they have.
+   */
+  const aimRole = (instanceId: string): 'source' | 'target' | 'muted' | undefined => {
+    if (!aiming) return undefined;
+    if (aiming.options.includes(instanceId)) return 'target';
+    return aiming.source === instanceId ? 'source' : 'muted';
+  };
+
+  // Both directions from whatever is under the pointer: what is lifting this
+  // card, and what this card is lifting. Rules.md §13 — a continuous ability
+  // reaches out from its own card, so a player hovering the *source* is asking
+  // the same question as one hovering a boosted character. Not drawn while a
+  // target is being chosen: there is already an arrow on screen, and adding
+  // more lines to it would only confuse which one is the question.
+  const links: BoostLink[] = [];
+  if (hovered && !aiming) {
+    for (const card of Object.values(view.cards)) {
+      if (isHidden(card) || !card.boostedBy) continue;
+      for (const source of card.boostedBy) {
+        if (card.instanceId === hovered || source === hovered) {
+          links.push({ from: source, to: card.instanceId });
+        }
+      }
+    }
+  }
 
   return (
     <div className={classes.join(' ')}>
@@ -320,6 +426,10 @@ export function Board({
               battleMoveFor={battleMoveFor}
               onBattleMove={onAction}
               peek={peek}
+              aimRole={aimRole}
+              onHover={setHovered}
+              {...(onAimAt ? { onAimAt } : {})}
+              {...(onAimHover ? { onAimHover } : {})}
             />
           ))}
         </div>
@@ -387,6 +497,8 @@ export function Board({
         </div>
       )}
 
+      {links.length > 0 && <BoostLinks links={links} version={view.version} />}
+
       {menu && (
         <CardMenu
           x={menu.x}
@@ -419,6 +531,10 @@ function CityColumn({
   declare,
   onDeclare,
   peek,
+  aimRole,
+  onHover,
+  onAimAt,
+  onAimHover,
 }: {
   city: ViewCity;
   view: PlayerView;
@@ -439,6 +555,11 @@ function CityColumn({
   declare?: GameAction | undefined;
   onDeclare: (action: GameAction) => void;
   peek: Peekable;
+  aimRole: (instanceId: string) => 'source' | 'target' | 'muted' | undefined;
+  /** The card under the pointer, for the boost lines. Rules.md §13. */
+  onHover: (card: string | null) => void;
+  onAimAt?: ((card: string) => void) | undefined;
+  onAimHover?: ((card: string | null) => void) | undefined;
 }): JSX.Element {
   const inCity = (player: PlayerId | undefined): ViewCard[] =>
     player === undefined
@@ -490,6 +611,10 @@ function CityColumn({
             onMenu={onCardMenu}
             onClickCard={onClickCard}
             peek={peek}
+            aim={aimRole(card.instanceId)}
+            onHover={onHover}
+            {...(onAimAt ? { onAimAt } : {})}
+            {...(onAimHover ? { onAimHover } : {})}
           />
         ))}
       </div>
@@ -539,6 +664,10 @@ function CityColumn({
               return open ? () => onOpenCard(open) : undefined;
             })()}
             marked={battleMoveFor(card.instanceId) ? 'battle' : undefined}
+            aim={aimRole(card.instanceId)}
+            onHover={onHover}
+            {...(onAimAt ? { onAimAt } : {})}
+            {...(onAimHover ? { onAimHover } : {})}
           />
         ))}
       </div>
@@ -549,16 +678,81 @@ function CityColumn({
 /**
  * How far a character's numbers have been moved from what is printed on it.
  *
- * Positive if anything is up, negative if anything is down, zero if it stands
- * as printed. The server sends the live numbers (`current`) precisely because
- * the client cannot work an ability out from the card database — so this is a
- * comparison, not a calculation.
+ * The server sends the live numbers (`current`) precisely because the client
+ * cannot work an ability out from the card database — so this is a comparison,
+ * not a calculation. Null when there is nothing to compare: a face-down card,
+ * a card in hand, anything that is not a character.
  */
-function statShift(card: ViewCard): number {
-  if (isHidden(card) || !card.current) return 0;
+interface StatDelta {
+  readonly power: number;
+  readonly hp: number;
+  readonly move: number;
+}
+
+function statDelta(card: ViewCard): StatDelta | null {
+  if (isHidden(card) || !card.current) return null;
   const printed = statsOf(card.defId);
-  if (!printed) return 0;
-  return card.current.power - printed.power + (card.current.hp - printed.hp);
+  if (!printed) return null;
+  return {
+    power: card.current.power - printed.power,
+    hp: card.current.hp - printed.hp,
+    move: card.current.move - printed.move,
+  };
+}
+
+/** Positive if anything is up, negative if down, zero if it stands as printed. */
+function statShift(card: ViewCard): number {
+  const delta = statDelta(card);
+  if (!delta) return 0;
+  return delta.power + delta.hp + delta.move;
+}
+
+const signed = (value: number): string => (value >= 0 ? `+${value}` : String(value));
+
+/**
+ * What using an ability will cost, in a few characters. Rules.md §13 and §6.
+ *
+ * Both kinds show, because they are paid from different places and a player
+ * deciding needs to know which: cards leave the hand, a "Tap" locks the card
+ * where it stands.
+ */
+function abilityPrice(ability: CardAbility | null): string {
+  if (!ability) return '';
+  const parts: string[] = [];
+  if (ability.cost) parts.push(`pay ${ability.cost}`);
+  if (ability.lockSelf) parts.push('lock it');
+  if (ability.quick) parts.push('quick');
+  return parts.join(' · ');
+}
+
+/**
+ * The marker a lifted character wears. Rules.md §13.
+ *
+ * Written the way the numbers are printed — Power over HP — so `+1/+0` reads
+ * off the card without a legend, with Move on its own when it has moved,
+ * because a Move bonus is a different kind of thing from a fighting one and
+ * folding it into the same pair would read as a third stat nobody has.
+ *
+ * Empty string when nothing has changed, so the badge is simply absent rather
+ * than sitting there saying `+0/+0` on every character on the board.
+ */
+function boostLabel(delta: StatDelta | null): string {
+  if (!delta) return '';
+  const parts: string[] = [];
+  if (delta.power !== 0 || delta.hp !== 0) {
+    parts.push(`${signed(delta.power)}/${signed(delta.hp)}`);
+  }
+  if (delta.move !== 0) parts.push(`⇢${signed(delta.move)}`);
+  return parts.join(' ');
+}
+
+/** The same thing spelled out, for a tooltip and for a screen reader. */
+function boostTitle(delta: StatDelta): string {
+  const parts: string[] = [];
+  if (delta.power !== 0) parts.push(`${signed(delta.power)} Power`);
+  if (delta.hp !== 0) parts.push(`${signed(delta.hp)} HP`);
+  if (delta.move !== 0) parts.push(`${signed(delta.move)} Move`);
+  return parts.join(', ');
 }
 
 /**
@@ -589,30 +783,45 @@ function hoverOrTap(set: (open: boolean | ((was: boolean) => boolean)) => void):
 }
 
 /**
- * Joins two sets of pointer handlers so both run.
+ * Joins sets of pointer handlers so all of them run.
  *
- * A card is a tap, a press-and-hold and a drag all at once, and each of those
- * wants `onPointerDown`. Spreading one after the other would silently drop
- * whichever came first — which is exactly how the peek stopped working the
- * first time this was wired up.
+ * A card is a tap, a press-and-hold, a drag and a hover all at once, and
+ * several of those want the same event: `onPointerDown` is the peek and the
+ * touch drag, `onPointerLeave` is the peek and the highlight that follows the
+ * pointer. Spreading one set after another silently drops whichever came
+ * first — which is exactly how the peek stopped working the first time this
+ * was wired up, and how leaving a card stopped clearing the target it had
+ * snapped the arrow to.
  */
-type PressHandler = ((event: PointerEvent<HTMLElement>) => void) | undefined;
+type PointerHandler = (event: PointerEvent<HTMLElement>) => void;
+type PointerProps = Partial<Record<string, PointerHandler | undefined>>;
 
-function merged<A extends { onPointerDown?: PressHandler }>(
-  first: A,
-  second: { onPointerDown?: PressHandler },
-): A {
-  if (!second.onPointerDown) return first;
-  return {
-    ...first,
-    onPointerDown: (event: PointerEvent<HTMLElement>) => {
-      first.onPointerDown?.(event);
-      second.onPointerDown?.(event);
-    },
-  };
+function joinPointer(...sets: readonly PointerProps[]): PointerProps {
+  const out: Record<string, PointerHandler> = {};
+  for (const set of sets) {
+    for (const [name, handler] of Object.entries(set)) {
+      if (!handler) continue;
+      const before = out[name];
+      out[name] = before
+        ? (event) => {
+            before(event);
+            handler(event);
+          }
+        : handler;
+    }
+  }
+  return out;
 }
 
-/** What dragging this card would mean, or undefined if it cannot be dragged. */
+/**
+ * What dragging this card would mean, or undefined if it cannot be dragged.
+ *
+ * A character's own area is added to the destinations when a battle can be
+ * declared there (Rules.md §10 ④(4)). Nothing else could ever be meant by
+ * dragging a character onto the city it is already standing in — a move needs
+ * somewhere else to go — so the gesture is free, and it gives attacking a
+ * deliberate drag to sit beside the right-click menu.
+ */
 function dragPayload(
   view: PlayerView,
   card: ViewCard,
@@ -620,7 +829,16 @@ function dragPayload(
 ): Targeting | undefined {
   if (isHidden(card)) return undefined;
   const cities = citiesFor(view, card.instanceId, kind);
-  return cities.length > 0 ? { card: card.instanceId, kind, cities } : undefined;
+
+  const here = card.cityIndex;
+  const canAttackHere =
+    kind === 'move' &&
+    here !== undefined &&
+    card.zone === 'city' &&
+    view.legalActions.some((action) => action.type === 'DECLARE_BATTLE' && action.city === here);
+
+  const all = canAttackHere && here !== undefined ? [...cities, here] : cities;
+  return all.length > 0 ? { card: card.instanceId, kind, cities: all } : undefined;
 }
 
 /**
@@ -787,6 +1005,10 @@ function CardTile({
   peek,
   onOpen,
   marked,
+  aim,
+  onAimAt,
+  onAimHover,
+  onHover,
 }: {
   card: ViewCard;
   /** A right click. Absent in hand, which has nothing to offer but a look. */
@@ -803,6 +1025,12 @@ function CardTile({
   onOpen?: (() => void) | undefined;
   /** Why it is lit, when it is not an open. */
   marked?: 'battle' | undefined;
+  /** What this card is to a target picker, if one is running. Rules.md §13. */
+  aim?: 'source' | 'target' | 'muted' | undefined;
+  onAimAt?: ((card: string) => void) | undefined;
+  onAimHover?: ((card: string | null) => void) | undefined;
+  /** Under the pointer, so the board can draw who is boosting whom. §13. */
+  onHover?: ((card: string | null) => void) | undefined;
 }): JSX.Element {
   // What the viewer is *allowed* to know and what is *face up on the table*
   // are different things, and conflating them is how a Set Card ends up
@@ -817,7 +1045,19 @@ function CardTile({
   // A redacted card in a city is face-down by definition — `view.ts` only
   // hides a Set Card, never a face-up one — so `faceUp` is a question worth
   // asking only about a card whose identity came through.
-  const setCard = !isHidden(card) && card.zone === 'city' && !card.faceUp;
+  const rawSetCard = !isHidden(card) && card.zone === 'city' && !card.faceUp;
+
+  // The one deliberate exception, and it is not a leak.
+  //
+  // While this card is the one being pointed (Rules.md §13) its controller has
+  // already chosen it and paid its cost — the open is happening, and the only
+  // thing still outstanding is who it lands on. Leaving it face-down through
+  // that meant choosing a victim for a grey rectangle. It is shown only to the
+  // controller, who may check their own Set Cards anyway (§7, and the
+  // press-and-hold already does exactly this), and only for the moment the
+  // question is on screen.
+  const revealing = aim === 'source' && !isHidden(card);
+  const setCard = rawSetCard && !revealing;
 
   // A card that can be opened says so, and asks when clicked — the menu is
   // the long way round for something that is the whole point of the phase.
@@ -826,14 +1066,24 @@ function CardTile({
   // Rules.md §6 — a locked card is turned; DesignNotes 11 shows that as a tilt.
   const classes = ['card'];
   if (card.locked) classes.push('card--locked');
-  // A character an ability has lifted glows, because the numbers that changed
-  // are not printed anywhere the player can see on the table. Rules.md §13.
+  // A character an ability has lifted glows *and says by how much*, because
+  // the numbers that changed are not printed anywhere the player can see on
+  // the table — the art still shows what it was printed with. Rules.md §13.
+  // The glow says something is happening; the marker says what.
+  const delta = statDelta(card);
   const shifted = statShift(card);
+  const boost = boostLabel(delta);
   if (shifted > 0) classes.push('card--buffed');
   if (shifted < 0) classes.push('card--weakened');
   if (isHidden(card) || setCard) classes.push('card--hidden');
   if (drag) classes.push('card--grabbable');
   if (openable) classes.push(marked === 'battle' ? 'card--battle' : 'card--openable');
+  // A target picker overrides the ordinary lighting: while one is running the
+  // only question on the table is who this card is being pointed at.
+  if (aim) classes.push(`card--aim-${aim}`);
+  // Turning face up as the question is asked, so the sequence reads as the
+  // card opening and *then* wanting a target.
+  if (revealing && rawSetCard) classes.push('card--revealing');
 
   // The animator matches cards across zones by id, and only moves the ones
   // whose zone actually changed — see `useCardFlip`.
@@ -851,16 +1101,51 @@ function CardTile({
 
   const grab = touchDrag?.bind(drag) ?? {};
 
+  /**
+   * What the pointer resting here means: the arrow snaps to a candidate while
+   * a target is being chosen (Rules.md §13), and otherwise the board draws the
+   * abilities running into and out of this card.
+   *
+   * Mouse only for the boost lines. A finger has no hover, and the
+   * compatibility mouse events a tap sends would leave lines drawn across a
+   * board with nothing under the pointer to explain them — a touchscreen reads
+   * the same thing off the card's own numbers and the inspector.
+   */
+  const hoverHandlers = {
+    onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+      if (aim === 'target') onAimHover?.(card.instanceId);
+      if (event.pointerType === 'mouse') onHover?.(card.instanceId);
+    },
+    onPointerLeave: (event: PointerEvent<HTMLElement>) => {
+      if (aim === 'target') onAimHover?.(null);
+      if (event.pointerType === 'mouse') onHover?.(null);
+    },
+  };
+
   const handlers = {
     onContextMenu: (event: { preventDefault: () => void; clientX: number; clientY: number }) => {
       // Held back either way: the browser's own menu over a card is never
       // what the player meant.
       event.preventDefault();
+      // Nothing has a menu while a target is being chosen — the only thing
+      // the board is asking is who.
+      if (aim) return;
       onMenu?.(event, card);
     },
-    onClick: (event: { clientX: number; clientY: number }) => {
+    onClick: (event: { clientX: number; clientY: number; stopPropagation: () => void }) => {
+      // The city underneath is itself a button — clicking it declares a
+      // battle there (Rules.md §10 ④(4)). A click that landed on a character
+      // was aimed at the character, so it stops here rather than running on
+      // and starting a fight the player never asked for.
+      event.stopPropagation();
       // A hold ends in a click, and that one is a look, not a decision.
       if (peek.consumed()) return;
+      // A running target picker owns every click on the table: landing the
+      // choice on a candidate, and doing nothing at all anywhere else.
+      if (aim) {
+        if (aim === 'target') onAimAt?.(card.instanceId);
+        return;
+      }
       // Opening, or joining a battle, is what the card is lit for and takes
       // precedence; otherwise a click is the card's menu or a closer look.
       if (onOpen) {
@@ -894,7 +1179,7 @@ function CardTile({
         title={own ? nameOf(own) : undefined}
         {...tracking}
         {...handlers}
-        {...merged(own ? peek.bind(own) : {}, grab)}
+        {...joinPointer(own ? peek.bind(own) : {}, grab, hoverHandlers)}
       />
     );
   }
@@ -905,10 +1190,19 @@ function CardTile({
       title={nameOf(card.defId)}
       {...tracking}
       {...handlers}
-      {...merged(peek.bind(card.defId), grab)}
+      {...joinPointer(peek.bind(card.defId), grab, hoverHandlers)}
     >
       <CardImage defId={card.defId} />
       {card.damage > 0 && <span className="card__damage">-{card.damage}</span>}
+      {boost && delta && (
+        <span
+          className={shifted > 0 ? 'card__boost card__boost--up' : 'card__boost card__boost--down'}
+          title={boostTitle(delta)}
+          aria-label={boostTitle(delta)}
+        >
+          {boost}
+        </span>
+      )}
     </div>
   );
 }

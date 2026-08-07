@@ -2,7 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { catalogueRegistry } from './data/registry.js';
 import { createEngine, type Engine } from './engine.js';
 import { asCardDefId, asMatchId, asPlayerId, type CardInstanceId, type PlayerId } from './ids.js';
-import { cannotAttack, hpOf, moveOf, powerOf, turnOrdinal } from './rules.js';
+import { SHIELD } from './abilities.js';
+import {
+  boostSources,
+  cannotAttack,
+  damageAfterReduction,
+  hpOf,
+  moveOf,
+  powerOf,
+  turnOrdinal,
+} from './rules.js';
+import { isHidden, viewFor } from './view.js';
 import type { CardInstance, GameAction, GameEvent, GameState } from './types.js';
 import { zoneSize } from './zones.js';
 
@@ -18,6 +28,9 @@ import { zoneSize } from './zones.js';
 const ALICE = asPlayerId('alice');
 const BOB = asPlayerId('bob');
 
+/** The green Mercenary, for decks that have to pay a green cost. */
+const GREEN = 'BK1-041';
+
 const registry = catalogueRegistry();
 let engine: Engine;
 
@@ -28,14 +41,22 @@ beforeEach(() => {
 /** A legal deck of one repeated card, which is all these tests need to deal. */
 const deckOf = (defId: string, count = 45): string[] => Array.from({ length: count }, () => defId);
 
-function started(): GameState {
+/**
+ * A match dealt from a deck of one repeated Mercenary.
+ *
+ * The colour matters, because a cost is paid with cards of that colour out of
+ * hand (Rules.md §7): a white hand simply cannot open a green card, and a test
+ * that forgets this fails on the payment long before it reaches the ability
+ * it meant to check. `BK1-001` is the white Mercenary, `BK1-041` the green.
+ */
+function started(deck = 'BK1-001'): GameState {
   const match = engine.createMatch({
     matchId: asMatchId('abilities'),
     seed: 7,
-    // BK1-001 Mercenary: Level 0, no ability, so nothing here is incidental.
+    // A Mercenary is Level 0 and has no ability, so nothing here is incidental.
     decks: [
-      { playerId: ALICE, name: 'Alice', cards: deckOf('BK1-001').map(asCardDefId) },
-      { playerId: BOB, name: 'Bob', cards: deckOf('BK1-001').map(asCardDefId) },
+      { playerId: ALICE, name: 'Alice', cards: deckOf(deck).map(asCardDefId) },
+      { playerId: BOB, name: 'Bob', cards: deckOf(deck).map(asCardDefId) },
     ],
   });
   const result = engine.reduceAll(match, [
@@ -74,8 +95,19 @@ function place(
     locked: false,
     damage: 0,
   };
+  // A card in a city is in no ordered zone — `zones.ts:moveToCity` detaches it
+  // on the way in. Leaving it listed in the hand would make it count towards
+  // the hand size, and would silently un-count a draw the moment anything
+  // moved it again, because `detach` would find the stale entry.
+  const zoneOrder = Object.fromEntries(
+    Object.entries(state.zoneOrder).map(([key, order]) => [
+      key,
+      order.filter((id) => id !== spare.instanceId),
+    ]),
+  );
+
   return {
-    state: { ...state, cards: { ...state.cards, [spare.instanceId]: placed } },
+    state: { ...state, cards: { ...state.cards, [spare.instanceId]: placed }, zoneOrder },
     card: spare.instanceId,
   };
 }
@@ -183,6 +215,59 @@ describe('printed abilities (Rules.md §13)', () => {
       state = casca.state;
       state = place(state, BOB, 'BK1-009', 2).state;
       expect(power(state, casca.card)).toBe(registry.get(asCardDefId('BK1-014')).stats?.power ?? 0);
+    });
+
+    it('names who is doing the lifting, so the table can show the connection', () => {
+      // A continuous ability is stored nowhere: it is read off the board every
+      // time it is asked for. That leaves a character standing at +1/+1 with
+      // no visible reason for it, so the view carries the source — and the
+      // client cannot work it out, because which cards an ability reaches is
+      // engine data and the catalogue holds only the printed line.
+      let state = started();
+      const griffith = place(state, ALICE, 'BK1-010', 2);
+      state = griffith.state;
+      const guts = place(state, ALICE, 'BK1-011', 2);
+      state = guts.state;
+      const merc = place(state, ALICE, 'BK1-001', 2);
+      state = merc.state;
+
+      expect(boostSources({ registry }, state, cardOf(state, guts.card))).toEqual([griffith.card]);
+      // Never itself — "other Hawks" — and never a card it does not reach.
+      expect(boostSources({ registry }, state, cardOf(state, griffith.card))).toEqual([]);
+      expect(boostSources({ registry }, state, cardOf(state, merc.card))).toEqual([]);
+    });
+
+    it('drops the source the moment it stops applying', () => {
+      let state = started();
+      const griffith = place(state, ALICE, 'BK1-010', 2);
+      state = griffith.state;
+      const guts = place(state, ALICE, 'BK1-011', 2);
+      state = guts.state;
+      expect(boostSources({ registry }, state, cardOf(state, guts.card))).toEqual([griffith.card]);
+
+      state = {
+        ...state,
+        cards: {
+          ...state.cards,
+          [griffith.card]: { ...cardOf(state, griffith.card), cityIndex: 4 },
+        },
+      };
+      expect(boostSources({ registry }, state, cardOf(state, guts.card))).toEqual([]);
+    });
+
+    it('sends the source in the view, and only where there is one', () => {
+      let state = started();
+      const griffith = place(state, ALICE, 'BK1-010', 2);
+      state = griffith.state;
+      const guts = place(state, ALICE, 'BK1-011', 2);
+      state = guts.state;
+
+      const view = viewFor({ registry }, state, ALICE);
+      const lifted = view.cards[guts.card];
+      expect(lifted && !isHidden(lifted) ? lifted.boostedBy : undefined).toEqual([griffith.card]);
+      // Omitted rather than sent empty: most characters are nobody's business.
+      const source = view.cards[griffith.card];
+      expect(source && !isHidden(source) ? source.boostedBy : undefined).toBeUndefined();
     });
 
     it('never takes a number below zero', () => {
@@ -371,14 +456,6 @@ describe('abilities that ask who they are pointed at (Rules.md §13)', () => {
     return { state, player, rider: rider.card, friend: friend.card, foe: foe.card };
   }
 
-  const openOf = (state: GameState, player: PlayerId, card: CardInstanceId) =>
-    engine
-      .legalActions(state, player)
-      .find(
-        (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
-          action.type === 'OPEN_CARD' && action.card === card,
-      );
-
   it('offers a target with the open, so the client has something legal to send', () => {
     const { state, player, rider } = withRider();
     const open = openOf(state, player, rider);
@@ -457,6 +534,827 @@ describe('abilities that ask who they are pointed at (Rules.md §13)', () => {
     const next = apply(state, player, open as GameAction);
     // A Normal Effect resolves and goes to the Trash. Rules.md §3.
     expect(next.cards[spell.card]?.zone).toBe('trash');
+  });
+});
+
+describe('effects that reach across the board (Rules.md §13)', () => {
+  it('BK1-053 Schierke burns every enemy in her area, and nobody else', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // BK1-041 Mercenary is a 1/1 green: 4 damage kills it outright.
+    const enemyHere = place(state, other, 'BK1-041', 2);
+    state = enemyHere.state;
+    const enemyAway = place(state, other, 'BK1-041', 4);
+    state = enemyAway.state;
+    const friend = place(state, player, 'BK1-041', 2);
+    state = friend.state;
+
+    const schierke = place(state, player, 'BK1-053', 2, { faceUp: false });
+    state = openable(schierke.state, player, schierke.card);
+    const open = openOf(state, player, schierke.card);
+    expect(open, 'Schierke should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    expect(state.cards[enemyHere.card]?.zone).toBe('trash');
+    // Not the other area, and not her own side.
+    expect(state.cards[enemyAway.card]?.zone).toBe('city');
+    expect(state.cards[friend.card]?.zone).toBe('city');
+  });
+
+  it('BK1-072 spares an enemy above its Level cap', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // BK1-041 is Level 0, BK1-052 Serpico is Level 3 — over the cap.
+    const small = place(state, other, 'BK1-041', 2);
+    state = small.state;
+    const big = place(state, other, 'BK1-052', 2);
+    state = big.state;
+
+    const fire = place(state, player, 'BK1-072', 2, { faceUp: false });
+    state = openable(fire.state, player, fire.card);
+    state = apply(state, player, openOf(state, player, fire.card) as GameAction);
+
+    expect(state.cards[small.card]?.zone).toBe('trash');
+    expect(state.cards[big.card]?.zone).toBe('city');
+    // It still took the damage, it just did not die of it.
+    expect(state.cards[big.card]?.damage).toBe(0);
+  });
+
+  it('BK1-080 only offers a black character to destroy', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const green = place(state, other, 'BK1-041', 2);
+    state = green.state;
+    const black = place(state, other, 'BK1-081', 2);
+    state = black.state;
+
+    const bond = place(state, player, 'BK1-080', 2, { faceUp: false });
+    state = openable(bond.state, player, bond.card);
+    const open = openOf(state, player, bond.card);
+    expect(open?.targets).toEqual([black.card]);
+
+    // Aiming it at the green one is refused outright.
+    const wrong = engine.reduce(state, player, {
+      ...(open as Extract<GameAction, { type: 'OPEN_CARD' }>),
+      targets: [green.card],
+    });
+    expect(wrong.ok).toBe(false);
+    if (!wrong.ok) expect(wrong.error.code).toBe('ILLEGAL_TARGET');
+
+    state = apply(state, player, open as GameAction);
+    expect(state.cards[black.card]?.zone).toBe('trash');
+    expect(state.cards[green.card]?.zone).toBe('city');
+  });
+
+  it('BK1-043 Golem draws its controller a card as it dies', () => {
+    // The trigger fires on the way *out*: an ability read off a card already
+    // in the Trash is an ability read off a card that is not there.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const golem = place(state, player, 'BK1-043', 2);
+    state = golem.state;
+    // Schierke's 4 damage is more than a Golem's 2 HP.
+    const schierke = place(state, other, 'BK1-053', 2, { faceUp: false });
+    state = openable(schierke.state, other, schierke.card);
+    state = { ...state, turn: { ...state.turn, activePlayer: other, priorityPlayer: other } };
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, other, openOf(state, other, schierke.card) as GameAction);
+
+    expect(state.cards[golem.card]?.zone).toBe('trash');
+    expect(zoneSize(state, player, 'hand')).toBe(before + 1);
+  });
+
+  it('BK1-058 Flora lifts her side and drags the other down, while she stands there', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const flora = place(state, player, 'BK1-058', 2);
+    state = flora.state;
+    const friend = place(state, player, 'BK1-041', 2);
+    state = friend.state;
+    const enemy = place(state, other, 'BK1-041', 2);
+    state = enemy.state;
+
+    const printed = registry.get(asCardDefId('BK1-041')).stats;
+    expect(hp(state, friend.card)).toBe((printed?.hp ?? 0) + 2);
+    expect(power(state, friend.card)).toBe(printed?.power ?? 0);
+    // -2 Power on a 1-Power Mercenary floors at zero, not below.
+    expect(power(state, enemy.card)).toBe(0);
+
+    // She is a continuous ability, so moving her away ends it at once.
+    state = {
+      ...state,
+      cards: { ...state.cards, [flora.card]: { ...cardOf(state, flora.card), cityIndex: 0 } },
+    };
+    expect(hp(state, friend.card)).toBe(printed?.hp ?? 0);
+    expect(power(state, enemy.card)).toBe(printed?.power ?? 0);
+  });
+});
+
+describe('effects that scale with the board — "for each" (Rules.md §13)', () => {
+  it('BK1-060 Forced Breakthrough grows with the enemies stood opposite', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const mine = place(state, player, 'BK1-041', 2);
+    state = mine.state;
+    state = place(state, other, 'BK1-041', 2).state;
+    state = place(state, other, 'BK1-041', 2).state;
+    // A third enemy stood elsewhere is not "in this area" and must not count.
+    state = place(state, other, 'BK1-041', 4).state;
+
+    const printed = registry.get(asCardDefId('BK1-041')).stats;
+    const push = place(state, player, 'BK1-060', 2, { faceUp: false });
+    state = openable(push.state, player, push.card);
+    const open = openOf(state, player, push.card);
+    state = apply(state, player, {
+      ...(open as Extract<GameAction, { type: 'OPEN_CARD' }>),
+      targets: [mine.card],
+    });
+
+    // Two enemies here, so +2/+2 twice over.
+    expect(power(state, mine.card)).toBe((printed?.power ?? 0) + 4);
+    expect(hp(state, mine.card)).toBe((printed?.hp ?? 0) + 4);
+  });
+
+  it('BK1-060 is worth nothing across an empty area, rather than a flat bonus', () => {
+    // A "for each" that found nothing must multiply by zero. Reading the
+    // absent count as one is the bug this guards.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const mine = place(state, player, 'BK1-041', 2);
+    state = mine.state;
+    const printed = registry.get(asCardDefId('BK1-041')).stats;
+
+    const push = place(state, player, 'BK1-060', 2, { faceUp: false });
+    state = openable(push.state, player, push.card);
+    const open = openOf(state, player, push.card);
+    state = apply(state, player, {
+      ...(open as Extract<GameAction, { type: 'OPEN_CARD' }>),
+      targets: [mine.card],
+    });
+
+    expect(power(state, mine.card)).toBe(printed?.power ?? 0);
+    expect(hp(state, mine.card)).toBe(printed?.hp ?? 0);
+  });
+
+  it('BK1-073 Fated Encounter draws one for each character you have open', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // Three of mine, spread across the board — "open" is not "in this area".
+    state = place(state, player, 'BK1-041', 1).state;
+    state = place(state, player, 'BK1-041', 2).state;
+    state = place(state, player, 'BK1-041', 4).state;
+    // Neither the opponent's characters nor my own Set Cards are counted.
+    state = place(state, other, 'BK1-041', 2).state;
+    state = place(state, player, 'BK1-041', 3, { faceUp: false }).state;
+
+    const encounter = place(state, player, 'BK1-073', 2, { faceUp: false });
+    state = openable(encounter.state, player, encounter.card);
+    const before = zoneSize(state, player, 'hand');
+    const open = openOf(state, player, encounter.card);
+    expect(open, 'Fated Encounter should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // Three drawn, less the one card that paid for it.
+    const paid = (open as Extract<GameAction, { type: 'OPEN_CARD' }>).pay.length;
+    expect(zoneSize(state, player, 'hand')).toBe(before + 3 - paid);
+  });
+
+  it('BK1-078 Fetish For Telepathy lifts this area by the whole board’s count', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const here = place(state, player, 'BK1-041', 2);
+    state = here.state;
+    const away = place(state, player, 'BK1-041', 4);
+    state = away.state;
+
+    const printed = registry.get(asCardDefId('BK1-041')).stats;
+    const fetish = place(state, player, 'BK1-078', 2, { faceUp: false });
+    state = openable(fetish.state, player, fetish.card);
+    state = apply(state, player, openOf(state, player, fetish.card) as GameAction);
+
+    // Two characters open, so +2/+2 — but only to the one standing here.
+    expect(power(state, here.card)).toBe((printed?.power ?? 0) + 2);
+    expect(hp(state, here.card)).toBe((printed?.hp ?? 0) + 2);
+    expect(power(state, away.card)).toBe(printed?.power ?? 0);
+  });
+
+  it('BK1-067 Sustenance Of Hate trades every Set Card for a card drawn', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const setHere = place(state, player, 'BK1-041', 2, { faceUp: false });
+    state = setHere.state;
+    const setAway = place(state, player, 'BK1-041', 4, { faceUp: false });
+    state = setAway.state;
+    // Not the opponent's, and not a character standing face up.
+    const enemySet = place(state, other, 'BK1-041', 2, { faceUp: false });
+    state = enemySet.state;
+    const standing = place(state, player, 'BK1-041', 2);
+    state = standing.state;
+
+    const hate = place(state, player, 'BK1-067', 2, { faceUp: false });
+    state = openable(hate.state, player, hate.card);
+    const before = zoneSize(state, player, 'hand');
+    const open = openOf(state, player, hate.card);
+    expect(open, 'Sustenance Of Hate should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    expect(state.cards[setHere.card]?.zone).toBe('trash');
+    expect(state.cards[setAway.card]?.zone).toBe('trash');
+    expect(state.cards[enemySet.card]?.zone).toBe('city');
+    expect(state.cards[standing.card]?.zone).toBe('city');
+
+    // Two set cards destroyed, so two drawn, less what paid for it. The card
+    // itself was face up as it resolved, so it never swept itself up.
+    const paid = (open as Extract<GameAction, { type: 'OPEN_CARD' }>).pay.length;
+    expect(zoneSize(state, player, 'hand')).toBe(before + 2 - paid);
+  });
+});
+
+describe('damage reduction (Rules.md §13)', () => {
+  it('BK1-052 Serpico shrugs off the first 3 of any blow struck in combat', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const serpico = place(state, player, 'BK1-052', 2);
+    state = serpico.state;
+
+    const card = cardOf(state, serpico.card);
+    expect(damageAfterReduction({ registry }, state, card, 5, { combat: true })).toBe(2);
+    // Never past nothing: a small hit is absorbed, not turned into healing.
+    expect(damageAfterReduction({ registry }, state, card, 2, { combat: true })).toBe(0);
+    // His line says "during combat", so it is silent about an effect.
+    expect(damageAfterReduction({ registry }, state, card, 5, { combat: false })).toBe(5);
+  });
+
+  it('BK1-051 Serpico takes nothing at all from a blow he outclasses', () => {
+    // Through a real battle, because reduction has to bite where the damage
+    // lands: §11 ④ makes the striker spend its Power exactly, so this cannot
+    // be done by letting the attacker assign less.
+    let state = started(GREEN);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // A 1-Power Mercenary against Serpico's 3 points of armour.
+    const merc = place(state, attacker, 'BK1-041', 2);
+    state = merc.state;
+    const serpico = place(state, defender, 'BK1-051', 2);
+    state = serpico.state;
+    state = atMain({ ...state, turn: { ...state.turn, priorityPlayer: attacker } });
+
+    state = apply(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: merc.card });
+    state = runBattle(state, defender);
+
+    // Serpico has 1 HP: without the reduction that Mercenary would kill him.
+    expect(state.cards[serpico.card]?.zone).toBe('city');
+    expect(state.cards[serpico.card]?.damage).toBe(0);
+  });
+
+  it('BK1-064 shields a character for the turn, and reaches an adjacent area', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const near = place(state, player, 'BK1-041', 3);
+    state = near.state;
+
+    const vow = place(state, player, 'BK1-064', 2, { faceUp: false });
+    state = openable(vow.state, player, vow.card);
+
+    // Distance 1 from city 2 reaches city 3, which "this area" would not.
+    const open = openOf(state, player, vow.card);
+    expect(open?.targets).toEqual([near.card]);
+    state = apply(state, player, open as GameAction);
+
+    const shielded = cardOf(state, near.card);
+    expect(damageAfterReduction({ registry }, state, shielded, 5, { combat: false })).toBe(2);
+    // Written onto the card, so it is swept with the boosts at end of turn.
+    expect(shielded.counters[SHIELD]).toBe(3);
+  });
+
+  it('BK1-071 Magical Barrier stacks its shield with Serpico’s own armour', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const serpico = place(state, player, 'BK1-052', 2);
+    state = serpico.state;
+
+    const barrier = place(state, player, 'BK1-071', 2, { faceUp: false });
+    state = openable(barrier.state, player, barrier.card);
+    const open = openOf(state, player, barrier.card);
+    state = apply(state, player, {
+      ...(open as Extract<GameAction, { type: 'OPEN_CARD' }>),
+      targets: [serpico.card],
+    });
+
+    const card = cardOf(state, serpico.card);
+    // The barrier is 2 from any source; Serpico's own 3 is combat only.
+    expect(damageAfterReduction({ registry }, state, card, 9, { combat: false })).toBe(7);
+    expect(damageAfterReduction({ registry }, state, card, 9, { combat: true })).toBe(4);
+  });
+
+  it('a shield lasts the turn and no longer', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const friend = place(state, player, 'BK1-041', 2);
+    state = friend.state;
+    const vow = place(state, player, 'BK1-064', 2, { faceUp: false });
+    state = openable(vow.state, player, vow.card);
+    state = apply(state, player, {
+      ...(openOf(state, player, vow.card) as Extract<GameAction, { type: 'OPEN_CARD' }>),
+      targets: [friend.card],
+    });
+    expect(cardOf(state, friend.card).counters[SHIELD]).toBe(3);
+
+    state = endTurn(state, player);
+    expect(cardOf(state, friend.card).counters[SHIELD] ?? 0).toBe(0);
+  });
+});
+
+describe('cost-bearing abilities are used by choice and paid for (Rules.md §13)', () => {
+  /** The USE_ABILITY the engine offers for this card, if it is offering one. */
+  const useOf = (
+    state: GameState,
+    player: PlayerId,
+    card: CardInstanceId,
+  ): Extract<GameAction, { type: 'USE_ABILITY' }> | undefined =>
+    engine
+      .legalActions(state, player)
+      .find(
+        (action): action is Extract<GameAction, { type: 'USE_ABILITY' }> =>
+          action.type === 'USE_ABILITY' && action.card === card,
+      );
+
+  it('BK1-056 Isidro locks himself to draw, and cannot do it twice', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const isidro = place(state, player, 'BK1-056', 2);
+    state = atMain(isidro.state);
+
+    const use = useOf(state, player, isidro.card);
+    expect(use, 'the tap ability should be offered in Main').toBeDefined();
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, player, use as GameAction);
+
+    expect(zoneSize(state, player, 'hand')).toBe(before + 1);
+    // "Tap:" is a cost (Rules.md §6), so he is locked and cannot pay it again.
+    expect(cardOf(state, isidro.card).locked).toBe(true);
+    expect(useOf(state, player, isidro.card)).toBeUndefined();
+  });
+
+  it('BK1-055 Isidro burns a character he is pointed at, and only in his area', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const isidro = place(state, player, 'BK1-055', 2);
+    state = isidro.state;
+    const here = place(state, other, 'BK1-041', 2);
+    state = here.state;
+    const away = place(state, other, 'BK1-041', 4);
+    state = away.state;
+    state = atMain(state);
+
+    const use = useOf(state, player, isidro.card);
+    expect(use, 'the tap ability should be offered').toBeDefined();
+
+    // The one in the next area is not in this area, whatever the client asks.
+    const wrong = engine.reduce(state, player, {
+      ...(use as Extract<GameAction, { type: 'USE_ABILITY' }>),
+      targets: [away.card],
+    });
+    expect(wrong.ok).toBe(false);
+    if (!wrong.ok) expect(wrong.error.code).toBe('ILLEGAL_TARGET');
+
+    state = apply(state, player, {
+      ...(use as Extract<GameAction, { type: 'USE_ABILITY' }>),
+      targets: [here.card],
+    });
+    // A 1/1 Mercenary does not survive 1 damage.
+    expect(state.cards[here.card]?.zone).toBe('trash');
+    expect(state.cards[away.card]?.zone).toBe('city');
+  });
+
+  it('BK1-009 Griffith calls a Hawk to his area from up to three away', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    const griffith = place(state, player, 'BK1-009', 1);
+    state = griffith.state;
+    // BK1-011 Guts is a Hawk. Three areas away is within reach (Rules.md §15).
+    const guts = place(state, player, 'BK1-011', 4);
+    state = atMain(guts.state);
+
+    const use = useOf(state, player, griffith.card);
+    expect(use, 'the paid ability should be offered in Main').toBeDefined();
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, player, {
+      ...(use as Extract<GameAction, { type: 'USE_ABILITY' }>),
+      targets: [guts.card],
+    });
+
+    expect(cardOf(state, guts.card).cityIndex).toBe(1);
+    // The effect moved him, so §10 ④(1)'s price is not charged: he is not
+    // locked, and his own Move of 1 never had to cover three areas.
+    expect(cardOf(state, guts.card).locked).toBe(false);
+    expect(zoneSize(state, player, 'hand')).toBe(before - 1);
+  });
+
+  it('BK1-009 will not call himself, a stranger, or anyone four areas off', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const griffith = place(state, player, 'BK1-009', 0);
+    state = griffith.state;
+    // Four areas away — outside "within 3 spaces".
+    const far = place(state, player, 'BK1-011', 4);
+    state = far.state;
+    // A Hawk, in reach, but not his.
+    const theirs = place(state, other, 'BK1-011', 1);
+    state = theirs.state;
+    // In reach and his, but no Hawk on its type line.
+    const merc = place(state, player, 'BK1-001', 1);
+    state = atMain(merc.state);
+
+    const offered = engine
+      .legalActions(state, player)
+      .filter(
+        (action): action is Extract<GameAction, { type: 'USE_ABILITY' }> =>
+          action.type === 'USE_ABILITY' && action.card === griffith.card,
+      );
+    expect(offered).toHaveLength(0);
+
+    // And the reducer refuses each of them however the action is assembled —
+    // "another character with the Hawk subtype that you control".
+    for (const wrong of [griffith.card, far.card, theirs.card, merc.card]) {
+      const result = engine.reduce(state, player, {
+        type: 'USE_ABILITY',
+        card: griffith.card,
+        ability: '0',
+        targets: [wrong],
+      });
+      expect(result.ok, `${wrong} should not be a legal target`).toBe(false);
+    }
+  });
+
+  it('BK1-009 leaves the area he emptied to whoever is left in it', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    const griffith = place(state, player, 'BK1-009', 1);
+    state = griffith.state;
+    const guts = place(state, player, 'BK1-011', 3);
+    state = guts.state;
+    // Rules.md §12 — an occupier with nobody left there loses the city.
+    state = {
+      ...state,
+      cities: state.cities.map((city) =>
+        city.index === 3 ? { ...city, faceUp: true, occupiedBy: player } : city,
+      ),
+    };
+    state = atMain(state);
+
+    const use = useOf(state, player, griffith.card);
+    state = apply(state, player, {
+      ...(use as Extract<GameAction, { type: 'USE_ABILITY' }>),
+      targets: [guts.card],
+    });
+
+    expect(state.cities[3]?.occupiedBy).toBeNull();
+  });
+
+  it('BK1-045 Guts pays a green card from hand, once per turn', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const guts = place(state, player, 'BK1-045', 2);
+    state = atMain(guts.state);
+
+    const printed = registry.get(asCardDefId('BK1-045')).stats;
+    const use = useOf(state, player, guts.card);
+    expect(use, 'the paid ability should be offered').toBeDefined();
+    expect(use?.pay).toHaveLength(1);
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, player, use as GameAction);
+
+    expect(power(state, guts.card)).toBe((printed?.power ?? 0) + 2);
+    expect(hp(state, guts.card)).toBe((printed?.hp ?? 0) + 2);
+    // The cost came out of hand into the Trash (§13), and he is not locked —
+    // his printed cost is a card, not a tap.
+    expect(zoneSize(state, player, 'hand')).toBe(before - 1);
+    expect(cardOf(state, guts.card).locked).toBe(false);
+
+    // "Can only be used once per turn."
+    expect(useOf(state, player, guts.card)).toBeUndefined();
+  });
+
+  it('BK1-045 comes back the following turn', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const guts = place(state, player, 'BK1-045', 2);
+    state = atMain(guts.state);
+    state = apply(state, player, useOf(state, player, guts.card) as GameAction);
+    expect(useOf(state, player, guts.card)).toBeUndefined();
+
+    state = endTurn(state, player);
+    state = endTurn(state, other);
+    state = atMain(state);
+    expect(state.turn.activePlayer).toBe(player);
+    expect(useOf(state, player, guts.card)).toBeDefined();
+  });
+
+  it('BK1-054 Schierke is not offered her ability outside her own Main phase', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const schierke = place(state, player, 'BK1-054', 2);
+    state = schierke.state;
+
+    // §13 — a cost-bearing ability without Quick waits for its own Main phase.
+    state = openable(state, player, schierke.card);
+    expect(useOf(state, player, schierke.card)).toBeUndefined();
+
+    state = atMain(state);
+    expect(useOf(state, player, schierke.card)).toBeDefined();
+
+    // And it is the *controller's* Main phase, not merely any Main phase.
+    const theirTurn = {
+      ...state,
+      turn: { ...state.turn, activePlayer: other, priorityPlayer: other },
+    };
+    expect(useOf(theirTurn, player, schierke.card)).toBeUndefined();
+    expect(
+      engine.reduce(theirTurn, player, {
+        type: 'USE_ABILITY',
+        card: schierke.card,
+        ability: '0',
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('BK1-079 Camp Survey locks one of your characters instead of itself', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const ally = place(state, player, 'BK1-041', 2);
+    state = ally.state;
+    const other = place(state, player, 'BK1-041', 2);
+    state = other.state;
+    // The Eternal itself is not a character and cannot pay a tap.
+    const survey = place(state, player, 'BK1-079', 2);
+    state = atMain(survey.state);
+
+    const printed = registry.get(asCardDefId('BK1-041')).stats;
+    const use = useOf(state, player, survey.card);
+    expect(use, 'the quick ability should be offered in Main').toBeDefined();
+    expect(use?.targets).toHaveLength(1);
+
+    state = apply(state, player, {
+      ...(use as Extract<GameAction, { type: 'USE_ABILITY' }>),
+      targets: [ally.card],
+    });
+
+    // The named ally paid the cost; both of them still got the buff.
+    expect(cardOf(state, ally.card).locked).toBe(true);
+    expect(cardOf(state, other.card).locked).toBe(false);
+    expect(power(state, ally.card)).toBe((printed?.power ?? 0) + 2);
+    expect(power(state, other.card)).toBe((printed?.power ?? 0) + 2);
+    expect(hp(state, other.card)).toBe((printed?.hp ?? 0) + 1);
+    // The Eternal stays on the board — only its cost was spent.
+    expect(state.cards[survey.card]?.zone).toBe('city');
+  });
+
+  it('BK1-048 Casca goes home and draws, for one price', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const casca = place(state, player, 'BK1-048', 2);
+    state = atMain(casca.state);
+
+    const use = useOf(state, player, casca.card);
+    expect(use, 'the paid ability should be offered').toBeDefined();
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, player, use as GameAction);
+
+    // One card paid, Casca back in hand, two drawn.
+    expect(state.cards[casca.card]?.zone).toBe('hand');
+    expect(zoneSize(state, player, 'hand')).toBe(before - 1 + 1 + 2);
+  });
+
+  it('BK1-046 Guts is offered only while there is a combat to strike into', () => {
+    let state = started(GREEN);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const guts = place(state, defender, 'BK1-046', 2);
+    state = guts.state;
+    const foe = place(state, attacker, 'BK1-041', 2);
+    state = foe.state;
+    state = atMain(state);
+
+    // Nobody is in combat yet, so there is nobody to point it at.
+    expect(useOf(state, defender, guts.card)).toBeUndefined();
+
+    state = apply(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: foe.card });
+
+    // A Quick ability rides the same window a Quick card does, so it is
+    // offered to the player the engine is actually asking.
+    // Declaring the attack opens a window for the defender, because they now
+    // have something they could answer with.
+    expect(state.quick?.waitingOn).toBe(defender);
+
+    const use = useOf(state, defender, guts.card);
+    expect(use, 'the quick ability should be offered in the window').toBeDefined();
+    expect(use?.targets).toEqual([foe.card]);
+    state = apply(state, defender, use as GameAction);
+
+    // The vanguard is a 1/1 Mercenary and 3 damage is more than enough.
+    expect(state.cards[foe.card]?.zone).toBe('trash');
+    // Locked as a cost, and the ability is spent for this turn.
+    expect(cardOf(state, guts.card).locked).toBe(true);
+  });
+});
+
+describe('every legal target is offered as its own action', () => {
+  // The client cannot work out who a card may point at — colour, Level,
+  // Distance and whether a battle is running are rules that live in the
+  // engine. It lights up what it is offered, so it has to be offered all of
+  // them, not one suggestion.
+  const opensFor = (
+    state: GameState,
+    player: PlayerId,
+    card: CardInstanceId,
+  ): Extract<GameAction, { type: 'OPEN_CARD' }>[] =>
+    engine
+      .legalActions(state, player)
+      .filter(
+        (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          action.type === 'OPEN_CARD' && action.card === card,
+      );
+
+  it('offers one open per candidate, and only the legal ones', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const mine = place(state, player, 'BK1-041', 2);
+    state = mine.state;
+    const theirs = place(state, other, 'BK1-041', 2);
+    state = theirs.state;
+    // Another area entirely: BK1-063 says "in this area".
+    const away = place(state, other, 'BK1-041', 4);
+    state = away.state;
+
+    const buff = place(state, player, 'BK1-063', 2, { faceUp: false });
+    state = openable(buff.state, player, buff.card);
+
+    const offered = opensFor(state, player, buff.card);
+    const aimed = offered.map((action) => action.targets?.[0]);
+    expect(new Set(aimed)).toEqual(new Set([mine.card, theirs.card]));
+    expect(aimed).not.toContain(away.card);
+  });
+
+  it('narrows to what the card may actually be pointed at', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    state = place(state, other, 'BK1-041', 2).state;
+    const black = place(state, other, 'BK1-081', 2);
+    state = black.state;
+
+    // BK1-080 destroys a *black* character, so the green one is not offered.
+    const bond = place(state, player, 'BK1-080', 2, { faceUp: false });
+    state = openable(bond.state, player, bond.card);
+
+    const aimed = opensFor(state, player, bond.card).map((action) => action.targets?.[0]);
+    expect(aimed).toEqual([black.card]);
+  });
+
+  it('reaches into an adjacent area when the card says Distance', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const here = place(state, player, 'BK1-041', 2);
+    state = here.state;
+    const next = place(state, player, 'BK1-041', 3);
+    state = next.state;
+    const far = place(state, player, 'BK1-041', 0);
+    state = far.state;
+
+    const vow = place(state, player, 'BK1-064', 2, { faceUp: false });
+    state = openable(vow.state, player, vow.card);
+
+    const aimed = opensFor(state, player, vow.card).map((action) => action.targets?.[0]);
+    expect(new Set(aimed)).toEqual(new Set([here.card, next.card]));
+    // City 0 is two away from city 2.
+    expect(aimed).not.toContain(far.card);
+  });
+
+  it('still offers the open when there is nobody to point at', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    // Nothing else on the board, and an Effect card is not a character.
+    const buff = place(state, player, 'BK1-063', 2, { faceUp: false });
+    state = openable(buff.state, player, buff.card);
+
+    const offered = opensFor(state, player, buff.card);
+    expect(offered).toHaveLength(1);
+    expect(offered[0]?.targets).toBeUndefined();
+    expect(engine.reduce(state, player, offered[0] as GameAction).ok).toBe(true);
+  });
+});
+
+describe('legalActions and reduce agree about abilities', () => {
+  it('accepts every ability it offers, across a board full of them', () => {
+    // The general agreement test in engine.test.ts runs on placeholder cards,
+    // which have no abilities at all — so the invariant is checked again here
+    // against the real ones.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    for (const defId of ['BK1-044', 'BK1-045', 'BK1-054', 'BK1-055', 'BK1-056', 'BK1-079']) {
+      state = place(state, player, defId, 2).state;
+    }
+    state = place(state, other, 'BK1-041', 2).state;
+    state = atMain(state);
+
+    const offered = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'USE_ABILITY');
+    expect(offered.length).toBeGreaterThan(0);
+
+    for (const action of offered) {
+      const result = engine.reduce(state, player, action);
+      expect(result.ok, `${JSON.stringify(action)} should be accepted`).toBe(true);
+    }
+  });
+
+  it('refuses an ability the card does not have', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const isidro = place(state, player, 'BK1-056', 2);
+    state = atMain(isidro.state);
+
+    const result = engine.reduce(state, player, {
+      type: 'USE_ABILITY',
+      card: isidro.card,
+      ability: '7',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('ILLEGAL_TARGET');
+  });
+
+  it('refuses to use a locked character’s tap ability', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const isidro = place(state, player, 'BK1-056', 2);
+    state = atMain(isidro.state);
+    state = {
+      ...state,
+      cards: { ...state.cards, [isidro.card]: { ...cardOf(state, isidro.card), locked: true } },
+    };
+
+    expect(engine.legalActions(state, player).some((action) => action.type === 'USE_ABILITY')).toBe(
+      false,
+    );
+    const result = engine.reduce(state, player, {
+      type: 'USE_ABILITY',
+      card: isidro.card,
+      ability: '0',
+    });
+    expect(result.ok).toBe(false);
   });
 });
 
@@ -548,6 +1446,19 @@ describe('the client is told the numbers the engine will use', () => {
   });
 });
 
+/** The open the engine is offering for this card, if any. */
+const openOf = (
+  state: GameState,
+  player: PlayerId,
+  card: CardInstanceId,
+): Extract<GameAction, { type: 'OPEN_CARD' }> | undefined =>
+  engine
+    .legalActions(state, player)
+    .find(
+      (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+        action.type === 'OPEN_CARD' && action.card === card,
+    );
+
 /** Puts the turn on the Main phase, where a battle is declared. §10 ④(4). */
 function atMain(state: GameState): GameState {
   const phaseIndex = state.phases.findIndex((phase) => phase.id === 'main');
@@ -567,6 +1478,26 @@ function openable(state: GameState, player: PlayerId, card: CardInstanceId): Gam
   };
 }
 
+/**
+ * Runs a declared battle out to its end, with the defender joining in.
+ *
+ * A battle nobody joins is a stalemate that deals no damage at all (§11 ③),
+ * so a test about damage has to actually fight it.
+ */
+function runBattle(state: GameState, defender: PlayerId): GameState {
+  let next = state;
+  for (let guard = 0; guard < 24 && next.battle; guard++) {
+    const waiting = next.battle.waitingOn;
+    const actions = engine.legalActions(next, waiting);
+    const join = actions.find(
+      (action) => action.type === 'COMMIT_CHARACTER' && waiting === defender,
+    );
+    const assign = actions.find((action) => action.type === 'ASSIGN_DAMAGE');
+    next = apply(next, waiting, join ?? assign ?? { type: 'BATTLE_PASS' });
+  }
+  return next;
+}
+
 /** Runs the turn out, discarding down to the limit if the End phase asks. */
 function endTurn(state: GameState, player: PlayerId, collect?: GameEvent[]): GameState {
   let next = state;
@@ -579,6 +1510,17 @@ function endTurn(state: GameState, player: PlayerId, collect?: GameEvent[]): Gam
 
   for (let guard = 0; guard < 24; guard++) {
     if (next.turn.activePlayer !== player) return next;
+    // A player holding a Quick card or a Quick ability is offered a window at
+    // the turn's edges (§13). Nobody in these tests wants to use one, and the
+    // turn cannot move on until it is declined.
+    if (next.quick) {
+      const waiting = next.quick.waitingOn;
+      const result = engine.reduce(next, waiting, { type: 'PASS_PRIORITY' });
+      if (!result.ok) throw new Error(`PASS_PRIORITY rejected: ${result.error.message}`);
+      collect?.push(...result.value.events);
+      next = result.value.state;
+      continue;
+    }
     const actions = engine.legalActions(next, next.turn.priorityPlayer);
     const discard = actions.find((action) => action.type === 'DISCARD_CARD');
     const end = actions.find((action) => action.type === 'END_PHASE');

@@ -1,4 +1,5 @@
 import type { CardInstance, GameState } from './types.js';
+import type { CardColor } from './cards.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 
 /**
@@ -38,6 +39,20 @@ export interface Selector {
   readonly where?: 'thisArea' | 'anywhere';
   /** One printed subtype token, e.g. `hawk`. See `build-catalogue.py`. */
   readonly subtype?: string;
+  /** Only characters at or below this printed Level. Rules.md §7. */
+  readonly maxLevel?: number;
+  /** Only characters of this printed colour. Rules.md §3. */
+  readonly colour?: CardColor;
+  /**
+   * Face-down Set Cards instead of open characters. Rules.md §7.
+   *
+   * The default reaches face-up characters, because all but one effect in the
+   * set is about people standing in an area. A selector that says this reaches
+   * the other population entirely — cards lying face down, whatever they are —
+   * and never both, so "all set cards you control" cannot quietly sweep up a
+   * character too.
+   */
+  readonly faceDown?: boolean;
 }
 
 /**
@@ -56,6 +71,31 @@ export interface TargetSpec {
   readonly subtype?: string;
   /** Rules.md §7 — some effects only reach small characters. */
   readonly maxLevel?: number;
+  /** Rules.md §3 — some effects only reach one colour. */
+  readonly colour?: CardColor;
+  /**
+   * Only characters committed to the battle running right now. Rules.md §11 ③
+   * — "currently in combat". With no battle on, nothing qualifies, so the
+   * ability has nobody to point at and is never offered.
+   */
+  readonly inCombat?: boolean;
+  /** Only characters that are unlocked. Rules.md §6. */
+  readonly unlocked?: boolean;
+  /**
+   * "Target **another** character" — the source may not point at itself.
+   *
+   * The default is to allow it, because "target 1 character in this area"
+   * means the source when it is the only one standing there. A card that says
+   * "another" has to say so, or Griffith walks himself to where he already is.
+   */
+  readonly excludeSelf?: boolean;
+  /**
+   * How many cities away the choice may stand. Rules.md §15 "Distance" — 1 is
+   * an adjacent city. Counted from the source's own area, which is therefore
+   * always included, so this widens `where: 'thisArea'` rather than replacing
+   * it: "this area, or an area up to 1 distance away" is `maxDistance: 1`.
+   */
+  readonly maxDistance?: number;
 }
 
 /** What has to be true for the ability to apply. */
@@ -73,18 +113,80 @@ export type Condition =
   /** It was opened this turn. Rules.md §7. */
   | { readonly when: 'openedThisTurn' };
 
-/** What the ability does when it applies. */
+/**
+ * What the ability does when it applies.
+ *
+ * `per` is Rules.md §13's "for each": the effect's size is multiplied by how
+ * many cards that selector reaches when the ability resolves. It counts, it
+ * does not reach — an effect still only lands on `who`. A `per` that matches
+ * nothing therefore does nothing at all, which is the printed behaviour: "+2/+2
+ * for each character your opponent controls in this area" is worth nothing
+ * across an empty area.
+ */
 export type Effect =
   /**
    * Change numbers. Under an `always` trigger this is continuous and read
    * off the board; under any other trigger it lasts to the end of the turn
    * and is written onto the card.
    */
-  | { readonly do: 'buff'; readonly who: Selector; readonly stats: StatLine }
-  | { readonly do: 'draw'; readonly player: 'you' | 'opponent'; readonly count: number }
+  | {
+      readonly do: 'buff';
+      readonly who: Selector;
+      readonly stats: StatLine;
+      readonly per?: Selector;
+    }
+  | {
+      readonly do: 'draw';
+      readonly player: 'you' | 'opponent';
+      readonly count: number;
+      readonly per?: Selector;
+    }
   | { readonly do: 'discard'; readonly player: 'you' | 'opponent'; readonly count: number }
   | { readonly do: 'unlock'; readonly who: Selector }
   | { readonly do: 'returnToHand'; readonly who: Selector }
+  /**
+   * Marks damage, exactly as a battle does — so it accumulates with combat
+   * damage, kills at HP, and clears at end of turn (Rules.md §3). An effect
+   * that dealt its own separate kind of damage would need all three rules
+   * again, and would get one of them wrong.
+   */
+  | { readonly do: 'damage'; readonly who: Selector; readonly amount: number }
+  /**
+   * Softens damage on its way in, to a floor of nothing.
+   *
+   * Applied where damage *lands* rather than where it is assigned, because
+   * Rules.md §11 ④ has a striker spend its Power exactly — Serpico's armour
+   * makes the blow smaller, it does not let the attacker hold Power back.
+   *
+   * Under `always` this is continuous and read off the board; under any other
+   * trigger it is written onto the card and lasts the turn, like a buff.
+   * `combatOnly` is the printed distinction: Serpico reduces damage "during
+   * combat", while Magical Barrier reduces damage from any source.
+   */
+  | {
+      readonly do: 'reduceDamage';
+      readonly who: Selector;
+      readonly amount: number;
+      readonly combatOnly?: boolean;
+    }
+  /** Straight to the Trash, whatever its HP. Rules.md §12. */
+  | { readonly do: 'destroy'; readonly who: Selector }
+  /**
+   * Puts a character somewhere else on the board.
+   *
+   * Not the Main-phase move of Rules.md §10 ④(1): that one is bounded by the
+   * character's own Move and locks it on arrival (§6). This is a card saying
+   * where somebody ends up, and §14 has a card effect take precedence over the
+   * rule it contradicts — so nothing is locked and no Move is spent. How far
+   * the effect may reach is the ability's own business, expressed as
+   * `TargetSpec.maxDistance`.
+   *
+   * `sourceArea` is the only destination in the set so far — every printed
+   * line of this kind says "to this area". It is named rather than assumed so
+   * that a card which picks an area can be added beside it without the two
+   * being confused.
+   */
+  | { readonly do: 'moveTo'; readonly who: Selector; readonly where: 'sourceArea' }
   /** Rules.md §11 — may not lead or join an attack. */
   | { readonly do: 'cannotAttack'; readonly who: Selector };
 
@@ -95,11 +197,54 @@ export type Effect =
  * at all, it is read off the board wherever the numbers are needed. The rest
  * fire once and write their result onto the game state.
  */
-export type Trigger = 'always' | 'open' | 'attack' | 'turnStart' | 'turnEnd';
+export type Trigger =
+  | 'always'
+  | 'open'
+  | 'attack'
+  | 'turnStart'
+  | 'turnEnd'
+  /** This character has been destroyed. Rules.md §3 — it fires on the way out. */
+  | 'death'
+  /**
+   * The player chose to use it and paid for it. Rules.md §13's cost-bearing
+   * ability: usable only in your own Main phase unless it is Quick.
+   */
+  | 'activated';
+
+/**
+ * What using an ability costs. Rules.md §13 and §6.
+ *
+ * §13 describes the cost printed to the left of the separator, paid from hand
+ * into the Trash. §6 adds the other kind the cards use: an action may "lock it
+ * as a cost", which is what the printed "Tap:" asks for. Both may appear, and
+ * every part must be payable or the ability is never offered.
+ */
+export interface ActivationCost {
+  /** "Tap:" — lock the card whose ability this is. It must be unlocked. */
+  readonly lockSelf?: boolean;
+  /**
+   * Lock a character the player picks, for a card that cannot lock itself —
+   * an Eternal Effect is not a character and never stands unlocked.
+   */
+  readonly lockAlly?: TargetSpec;
+  /** Cards out of hand into the Trash, in the DesignNotes 8 notation. */
+  readonly pay?: string;
+  /** "Can only be used once per turn." */
+  readonly oncePerTurn?: boolean;
+}
 
 export interface Ability {
   readonly trigger: Trigger;
   readonly effect: Effect;
+  /**
+   * Further effects of the *same* ability, resolved in printed order after
+   * `effect` and sharing its cost, condition and chosen target.
+   *
+   * A printed line that does two things for one price is one ability, not
+   * two: splitting "Return this card to your hand. Draw 2 cards." into
+   * separate entries would leave the draw sitting there to be used for free.
+   */
+  readonly then?: readonly Effect[];
   readonly condition?: Condition;
   /**
    * Whose turns a turn-edge trigger answers to, and the difference is printed
@@ -116,6 +261,14 @@ export interface Ability {
    * else — an ability with a target and no legal one simply does nothing.
    */
   readonly target?: TargetSpec;
+  /** What using it costs. Only meaningful under the `activated` trigger. */
+  readonly cost?: ActivationCost;
+  /**
+   * Rules.md §13's Quick: the ability may be used at any time rather than
+   * only in its controller's Main phase. Printed on the ability, not the
+   * card — BK1-045 Guts is not a Quick *card*, but his ability is Quick.
+   */
+  readonly quick?: boolean;
   /** The printed line this stands for. Display and review only. */
   readonly text: string;
 }
@@ -131,7 +284,17 @@ export const BOOST_POWER = 'boostPower';
 export const BOOST_HP = 'boostHp';
 export const BOOST_MOVE = 'boostMove';
 
-export const BOOST_COUNTERS: readonly string[] = [BOOST_POWER, BOOST_HP, BOOST_MOVE];
+/**
+ * Damage reduction granted for the turn — "reduce damage that character
+ * receives by 3 this turn". Swept with the boosts, so it needs no timer.
+ *
+ * Separate from the combat-only kind, which is continuous and never written
+ * down: a card that says "during combat" has to be asked about each blow, and
+ * a counter could not tell the two apart once it was on the card.
+ */
+export const SHIELD = 'shield';
+
+export const BOOST_COUNTERS: readonly string[] = [BOOST_POWER, BOOST_HP, BOOST_MOVE, SHIELD];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
   power: BOOST_POWER,
@@ -140,6 +303,25 @@ const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
 };
 
 export const counterFor = (stat: keyof StatLine): string => COUNTER_FOR[stat];
+
+/**
+ * Which turn an ability was last used on, for "once per turn".
+ *
+ * Keyed by the ability's position on its card, so a card with two of them
+ * tracks each separately. Not a boost, so it is not swept at end of turn —
+ * it is compared against the turn number instead, which needs no clearing and
+ * cannot be left stale by a card that leaves the field and comes back.
+ */
+export const usedOnTurnCounter = (index: number): string => `usedOnTurn:${index}`;
+
+/**
+ * How the wire names one ability of a card: its position in the printed list.
+ *
+ * The list is static card data, so the index is stable — and it stays correct
+ * for a card carrying several abilities of different triggers, which a name
+ * or a trigger alone would not distinguish.
+ */
+export const abilityKey = (index: number): string => String(index);
 
 /* --------------------------------------------------------- the card entries */
 
@@ -179,6 +361,26 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       target: { where: 'thisArea' },
       effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 1, hp: 1 } },
       text: 'When this card is opened, target 1 character in this area and it gains +1/+1 until end of turn.',
+    },
+  ],
+  'BK1-009': [
+    {
+      trigger: 'activated',
+      // "1:" — one card out of hand, any colour. DesignNotes 8 notation.
+      cost: { pay: '1' },
+      // "another", so he cannot call himself; "within 3 spaces" is Distance
+      // counted from his own area, which is therefore included (Rules.md §15)
+      // — a Hawk standing beside him is a legal choice that simply does not
+      // move, so `moveTo` leaves it where it is.
+      target: {
+        side: 'yours',
+        subtype: HAWK,
+        where: 'anywhere',
+        maxDistance: 3,
+        excludeSelf: true,
+      },
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'sourceArea' },
+      text: '1: Target another character with the "Hawk" subtype that you control, within 3 spaces. Move that character to this area.',
     },
   ],
   'BK1-010': [
@@ -259,6 +461,315 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       text: 'When this card is opened, target character in this area gains +2/+2 until end of turn.',
     },
   ],
+  /* --------------------------------------------------------------- green */
+
+  'BK1-043': [
+    {
+      trigger: 'death',
+      effect: { do: 'draw', player: 'you', count: 1 },
+      text: 'When this character dies, draw 1 card.',
+    },
+  ],
+  'BK1-044': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 4 },
+      text: 'Tap: Deal 4 damage to target character in this area.',
+    },
+  ],
+  'BK1-045': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: 'G', oncePerTurn: true },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
+      text: '(Quick) G: This character receives +2/+2 until the end of the turn. Can only be used once per turn.',
+    },
+  ],
+  'BK1-046': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      // "Currently in combat" is the whole restriction: it reaches either
+      // side, and only while a battle is actually running in this area.
+      target: { where: 'thisArea', inCombat: true },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      text: '(Quick) Tap: Target character currently in combat in this area takes 3 damage.',
+    },
+  ],
+  'BK1-048': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1' },
+      effect: { do: 'returnToHand', who: { scope: 'self' } },
+      // One cost, two things done, in the printed order. A second entry would
+      // be a second ability the player could use for nothing.
+      then: [{ do: 'draw', player: 'you', count: 2 }],
+      text: '(Quick) 1: Return this card to your hand. Draw 2 cards.',
+    },
+  ],
+  'BK1-049': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+  ],
+  'BK1-053': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'damage',
+        who: { scope: 'any', side: 'theirs', where: 'thisArea' },
+        amount: 4,
+      },
+      text: 'When this card is opened, deal 4 damage to each enemy character in this area.',
+    },
+  ],
+  'BK1-058': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'thisArea' },
+        stats: { hp: 2 },
+      },
+      text: 'All characters you control in this area gain +0/+2 and your opponents characters here gain -2/+0',
+    },
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'theirs', where: 'thisArea' },
+        stats: { power: -2 },
+      },
+      text: 'All characters you control in this area gain +0/+2 and your opponents characters here gain -2/+0',
+    },
+  ],
+  'BK1-054': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'Tap: Draw 2 cards',
+    },
+  ],
+  'BK1-055': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 1 },
+      text: 'Tap: Deal 1 damage to target character in this area',
+    },
+  ],
+  'BK1-056': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      effect: { do: 'draw', player: 'you', count: 1 },
+      text: 'Tap: Draw 1 card',
+    },
+  ],
+  // Both Serpicos carry the same printed line, and both are continuous: he is
+  // armoured for as long as he is standing there, so it is read off the board
+  // rather than written down.
+  'BK1-051': [
+    {
+      trigger: 'always',
+      effect: { do: 'reduceDamage', who: { scope: 'self' }, amount: 3, combatOnly: true },
+      text: 'During combat reduce damage dealt to this card by 3.',
+    },
+  ],
+  'BK1-052': [
+    {
+      trigger: 'always',
+      effect: { do: 'reduceDamage', who: { scope: 'self' }, amount: 3, combatOnly: true },
+      text: 'During combat reduce damage dealt to this card by 3.',
+    },
+  ],
+  'BK1-059': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'thisArea' },
+        stats: { power: 2, hp: 2 },
+      },
+      text: 'All characters you control in this area gain +2/+2 until end of turn.',
+    },
+  ],
+  'BK1-060': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea' },
+      effect: {
+        do: 'buff',
+        who: { scope: 'target' },
+        stats: { power: 2, hp: 2 },
+        // The chosen character is not counted, whichever side it is on: the
+        // line counts your opponent's characters here, and that is all.
+        per: { scope: 'any', side: 'theirs', where: 'thisArea' },
+      },
+      text: 'Target 1 character in this area. It gains +2/+2 for each character your opponent controls in this area.',
+    },
+  ],
+  'BK1-063': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea' },
+      effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 4, hp: 4 } },
+      text: 'Target character in this area gains +4/+4 until end of turn',
+    },
+  ],
+  'BK1-064': [
+    {
+      trigger: 'open',
+      // "In this area, or an area up to 1 distance away" — the source's own
+      // city is distance 0, so `maxDistance` already covers "this area".
+      target: { maxDistance: 1 },
+      effect: { do: 'reduceDamage', who: { scope: 'target' }, amount: 3 },
+      text: 'When this card is opened, target a character in this area, or an area up to 1 distance away. Reduce damage that character receives by 3 this turn.',
+    },
+  ],
+  // "Destroy all set cards you control in all areas. Draw that many."
+  //
+  // Counted before they are destroyed, which is what "that many" means, so the
+  // draw is written first — a `per` selector reads the board as it finds it,
+  // and after the destruction there would be nothing left to count. This card
+  // is face up while it resolves, so it never sweeps itself up.
+  'BK1-067': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'draw',
+        player: 'you',
+        count: 1,
+        per: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+      },
+      text: 'When this card is opened, destroy all set cards you control in all areas. Draw that many cards.',
+    },
+    {
+      trigger: 'open',
+      effect: {
+        do: 'destroy',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+      },
+      text: 'When this card is opened, destroy all set cards you control in all areas. Draw that many cards.',
+    },
+  ],
+  'BK1-070': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 3 },
+      text: 'When this card is opened, draw 3 cards',
+    },
+  ],
+  'BK1-072': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'damage',
+        who: { scope: 'any', side: 'theirs', where: 'thisArea', maxLevel: 2 },
+        amount: 3,
+      },
+      text: 'When this card is opened, all enemy characters level 2 or lower in this area take 3 damage.',
+    },
+  ],
+  'BK1-071': [
+    {
+      trigger: 'open',
+      target: { maxDistance: 1 },
+      effect: { do: 'reduceDamage', who: { scope: 'target' }, amount: 2 },
+      text: 'When this card is opened, target a character in an area up to 1 distance away and reduce damage that would be dealt to that character by 2.',
+    },
+  ],
+  'BK1-073': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'draw',
+        player: 'you',
+        count: 1,
+        // "Characters you have open" — anywhere on the board, not just here.
+        per: { scope: 'any', side: 'yours', where: 'anywhere' },
+      },
+      text: 'When this card is opened, draw cards equal to the number of characters you have open.',
+    },
+  ],
+  'BK1-074': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 3 },
+      text: 'When this card is opened, draw 3 cards.',
+    },
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'thisArea' },
+        stats: { hp: 1 },
+      },
+      text: 'As long as this card is on the board, your characters in this area gain +0/+1 and enemy characters gain -1/+0',
+    },
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'theirs', where: 'thisArea' },
+        stats: { power: -1 },
+      },
+      text: 'As long as this card is on the board, your characters in this area gain +0/+1 and enemy characters gain -1/+0',
+    },
+  ],
+  'BK1-079': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 3 },
+      text: 'When this card is opened, draw 3 cards.',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      // An Eternal Effect is not a character and never stands unlocked, so it
+      // cannot pay a "Tap:" — the printed cost is a character it controls.
+      cost: { lockAlly: { side: 'yours', where: 'thisArea', unlocked: true } },
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'thisArea' },
+        stats: { power: 2, hp: 1 },
+      },
+      text: '(Quick) Lock a character you control in this area: All characters you control in this area gain +2/+1 until end of turn',
+    },
+  ],
+  'BK1-078': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'thisArea' },
+        stats: { power: 1, hp: 1 },
+        // Reaches this area; counts the whole board. The two selectors differ
+        // because the printed line does: "all characters you control in this
+        // area" gain "+1/+1 for each character you have open".
+        per: { scope: 'any', side: 'yours', where: 'anywhere' },
+      },
+      text: 'When this card is opened, all characters you control in this area gain +1/+1 for each character you have open, until end of turn.',
+    },
+  ],
+  'BK1-080': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea', colour: 'black' },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: 'When this card is opened, destroy 1 black character in this area.',
+    },
+  ],
+
   'BK1-156': [
     {
       trigger: 'always',
@@ -281,11 +792,18 @@ export const cardsWithAbilities = (): readonly string[] => Object.keys(ABILITIES
 /* ------------------------------------------------------------- selection */
 
 /** Does this card fall inside the selector, seen from `source`? */
+/** What a selector needs to know about a card, looked up by the caller. */
+export interface CardFacts {
+  readonly subtypes: readonly string[];
+  readonly level: number | null;
+  readonly colour: CardColor;
+}
+
 export function selects(
   selector: Selector,
   source: CardInstance,
   card: CardInstance,
-  subtypesOf: (card: CardInstance) => readonly string[],
+  factsOf: (card: CardInstance) => CardFacts,
   chosen?: CardInstanceId | undefined,
 ): boolean {
   const scope = selector.scope ?? 'self';
@@ -294,6 +812,11 @@ export function selects(
   if (scope === 'self') return card.instanceId === source.instanceId;
   if (scope === 'others' && card.instanceId === source.instanceId) return false;
 
+  // Two populations, never both at once: cards lying face down, or characters
+  // standing face up. Checked after the scope cases, which have already named
+  // one card and do not need narrowing.
+  if ((selector.faceDown ?? false) === card.faceUp) return false;
+
   const side = selector.side ?? 'yours';
   if (side === 'yours' && card.controller !== source.controller) return false;
   if (side === 'theirs' && card.controller === source.controller) return false;
@@ -301,7 +824,15 @@ export function selects(
   if ((selector.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
     return false;
   }
-  if (selector.subtype !== undefined && !subtypesOf(card).includes(selector.subtype)) return false;
+  const facts = factsOf(card);
+  if (selector.subtype !== undefined && !facts.subtypes.includes(selector.subtype)) return false;
+  if (selector.colour !== undefined && facts.colour !== selector.colour) return false;
+  if (
+    selector.maxLevel !== undefined &&
+    (facts.level === null || facts.level > selector.maxLevel)
+  ) {
+    return false;
+  }
   return true;
 }
 

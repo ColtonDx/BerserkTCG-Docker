@@ -1,16 +1,25 @@
-import type { CardInstanceId, GameAction, GameEvent, PlayerView } from '@berserk/engine';
+import {
+  isCityHidden,
+  type CardInstanceId,
+  type GameAction,
+  type GameEvent,
+  type PlayerView,
+} from '@berserk/engine';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { GameMenu } from './components/GameMenu.js';
 import { MatchOver } from './components/MatchOver.js';
 import { TurnButton } from './components/TurnButton.js';
+import { Aim } from './components/Aim.js';
 import { AssignDamage } from './components/AssignDamage.js';
 import { Banner } from './components/Banner.js';
 import { Board } from './components/Board.js';
+import { BoardFx } from './components/BoardFx.js';
+import { CityTaken, type Taken } from './components/CityTaken.js';
 import { HandFocus, handStep } from './components/HandFocus.js';
 import { Inspect } from './components/Inspect.js';
 import { CARD_BACK } from './components/CardImage.js';
-import { staysOnTable, statsOf } from './state/useCardNames.js';
-import { PayFor } from './components/PayFor.js';
+import { abilityOf, staysOnTable, statsOf } from './state/useCardNames.js';
+import { PayFor, type PayableAction } from './components/PayFor.js';
 import { Peek } from './components/Peek.js';
 import { Revealed, type Reveal } from './components/Revealed.js';
 import { PileViewer } from './components/PileViewer.js';
@@ -42,6 +51,16 @@ export function App(): JSX.Element {
     document.documentElement.style.setProperty('--card-back', `url(${CARD_BACK})`);
   }, []);
   const match = useMatch(auth.user !== null);
+  // The table is a fixed viewport-sized surface, so nothing on it should ever
+  // put the *document* on a scrollbar — a board you can scroll away from is a
+  // board whose halves stop lining up. Flagged on the root rather than fixed
+  // in a stylesheet rule so the menu screens, which do legitimately scroll,
+  // are untouched.
+  const playing = match.view !== null;
+  useEffect(() => {
+    document.documentElement.classList.toggle('is-playing', playing);
+    return () => document.documentElement.classList.remove('is-playing');
+  }, [playing]);
   const [building, setBuilding] = useState(false);
   const [browsing, setBrowsing] = useState(false);
 
@@ -55,17 +74,38 @@ export function App(): JSX.Element {
   const [grave, setGrave] = useState<string | null>(null);
   // The card being opened, held up in the middle of the board for a moment.
   const [reveal, setReveal] = useState<Reveal | null>(null);
+  // A city changing hands, which is the biggest single swing on the board and
+  // pays two cards for it. Rules.md §12.
+  const [taken, setTaken] = useState<Taken | null>(null);
   // Settings sits over whatever is underneath — the main menu or a match —
   // rather than being a screen of its own, so a game is never left to reach it.
   const [settings, setSettings] = useState(false);
   // The latest view, for effects that must not re-run when it changes.
   const viewRef = useRef(match.view);
   viewRef.current = match.view;
-  // An open the player is considering. Opening costs cards out of hand
-  // (Rules.md §7), and which ones is their choice, so it is asked before it
-  // is sent.
-  const [opening, setOpening] = useState<Extract<GameAction, { type: 'OPEN_CARD' }> | null>(null);
+  // A play the player is considering and has not paid for yet. Opening costs
+  // cards out of hand (Rules.md §7) and so does a cost-bearing ability (§13),
+  // and which cards is their choice, so it is asked before anything is sent.
+  const [opening, setOpening] = useState<PayableAction | null>(null);
+  // A paid-for card waiting to be pointed at somebody. Rules.md §13 — the
+  // choice is made on the board, after the cost is settled, so the player can
+  // see where everybody is standing while they make it.
+  const [aiming, setAiming] = useState<Aiming | null>(null);
+  // Which target the pointer is over, so the arrow can snap to it.
+  const [hovered, setHovered] = useState<string | null>(null);
   const dealt = useRef(false);
+
+  // A target picker is abandoned as soon as the server moves: whoever it was
+  // pointing at may not be a legal choice any more, and the arrow would be
+  // lying. The same reasoning as the board's own area targeting.
+  const aimedAt = useRef(match.view?.version);
+  useEffect(() => {
+    const version = viewRef.current?.version;
+    if (aimedAt.current === version) return;
+    aimedAt.current = version;
+    setAiming(null);
+    setHovered(null);
+  }, [match.view?.version]);
 
   useEffect(() => {
     if (match.view && !dealt.current) {
@@ -110,6 +150,31 @@ export function App(): JSX.Element {
 
     const view = viewRef.current;
     if (!view) return;
+
+    // Taking a city outranks everything else in the batch: it is the win
+    // condition moving (Rules.md §1) and it hands somebody two cards. A
+    // `player` of null is a city falling vacant, which pays nobody and is not
+    // announced — only a seizure is.
+    const seized = events.find(
+      (event): event is Extract<GameEvent, { type: 'CITY_OCCUPIED' }> =>
+        event.type === 'CITY_OCCUPIED' && event.player !== null,
+    );
+    if (seized) {
+      // A city is face up by the time it can be held (Rules.md §5), so its
+      // name and whether it is the Royal Capital have arrived — but the view
+      // types do not know that, and a hidden city must never be read for
+      // either or the Capital's position leaks.
+      const found = view.cities[seized.city];
+      const city = found && !isCityHidden(found) ? found : null;
+      setTaken({
+        key: Date.now(),
+        city: seized.city,
+        name: city ? city.name : null,
+        royalCapital: city?.royalCapital === true,
+        mine: seized.player === view.viewer,
+      });
+      return;
+    }
 
     // An ability going off is the other moment a card matters enough to come
     // forward (Rules.md §13). It wins over an open in the same batch, because
@@ -238,6 +303,38 @@ export function App(): JSX.Element {
         onPeek={setPeeking}
         onOpenGrave={setGrave}
         onConsiderOpen={setOpening}
+        onUseAbility={(action) => {
+          // An ability that costs nothing out of hand has nothing to settle,
+          // so it skips the payment dialog and goes straight to the board —
+          // a "Tap:" ability (Rules.md §6) would otherwise open a panel
+          // asking for none of the seven cards in your hand.
+          const wants = (action.pay?.length ?? 0) > 0;
+          if (wants) {
+            setOpening(action);
+            return;
+          }
+          const choices = targetChoices(match.view as PlayerView, action);
+          if (choices.length === 0 || !asksForATarget(match.view as PlayerView, action)) {
+            match.submit(action);
+            return;
+          }
+          setHovered(null);
+          setAiming({ source: action.card, action, choices });
+        }}
+        aiming={
+          aiming ? { source: aiming.source, options: aiming.choices.map((c) => c.target) } : null
+        }
+        onAimHover={setHovered}
+        onAimAt={(target) => {
+          if (!aiming) return;
+          const choice = aiming.choices.find((c) => c.target === target);
+          if (!choice) return;
+          setAiming(null);
+          setHovered(null);
+          // The payment the player settled on, aimed at who they picked — and
+          // the rest of the engine's choices (a cost's ally) carried through.
+          match.submit({ ...aiming.action, targets: choice.targets as never });
+        }}
         dimmed={
           step !== null || opening !== null || assigning !== null || match.view.quick !== null
         }
@@ -258,6 +355,9 @@ export function App(): JSX.Element {
         />
       )}
       <Banner view={match.view} />
+      {/* Blows and deaths, drawn over the table from the events that caused
+       * them. Purely presentational — it reads events, never sends any. */}
+      <BoardFx view={match.view} events={match.recentEvents} />
       <MatchOver
         view={match.view}
         onLeave={match.leaveMatch}
@@ -285,6 +385,7 @@ export function App(): JSX.Element {
           power={strikerPower(match.view, assigning.card)}
           targets={battleTargets(match.view, assigning.card)}
           onConfirm={match.submit}
+          onInspect={setInspecting}
         />
       )}
       {opening && (
@@ -294,42 +395,140 @@ export function App(): JSX.Element {
           onCancel={() => setOpening(null)}
           onConfirm={(action) => {
             setOpening(null);
-            match.submit(action);
+            // Paid for. If it has to be pointed at somebody, that happens on
+            // the board now rather than in this dialog (Rules.md §13); the
+            // engine offers one action per legal target, so the choices are
+            // read off what it sent rather than worked out here.
+            const paid = action as PayableAction;
+            const choices = targetChoices(match.view as PlayerView, paid);
+            if (choices.length === 0 || !asksForATarget(match.view as PlayerView, paid)) {
+              match.submit(paid);
+              return;
+            }
+            setHovered(null);
+            setAiming({ source: paid.card, action: paid, choices });
           }}
           onPeek={setPeeking}
+          onInspect={setInspecting}
         />
       )}
-      {/* A Quick window freezes the game behind it, so it sits above the
-       * board and below only Settings. Rules.md §13. */}
-      {match.view.quick?.waitingOn === match.view.viewer && opening === null && (
-        <QuickWindow
-          view={match.view}
-          trigger={match.view.quick.trigger}
-          onConsiderOpen={setOpening}
-          onPass={() => match.submit({ type: 'PASS_PRIORITY' })}
-          onPeek={setPeeking}
+      {aiming && (
+        <Aim
+          source={aiming.source}
+          defId={defIdOf(match.view, aiming.source)}
+          options={aiming.choices.map((choice) => choice.target)}
+          hovered={hovered}
+          onCancel={() => {
+            setAiming(null);
+            setHovered(null);
+          }}
         />
       )}
       {/* A Quick window freezes the game behind it (Rules.md §13), so it sits
-       * over the board — but under the payment overlay it opens, which is why
-       * it stands down while one is up. */}
-      {match.view.quick?.waitingOn === match.view.viewer && opening === null && (
+       * over the board — but under the payment overlay it opens, and out of
+       * the way while a card it opened is being pointed at somebody, which is
+       * why it stands down for both. */}
+      {match.view.quick?.waitingOn === match.view.viewer && opening === null && aiming === null && (
         <QuickWindow
           view={match.view}
           trigger={match.view.quick.trigger}
           onConsiderOpen={setOpening}
           onPass={() => match.submit({ type: 'PASS_PRIORITY' })}
           onPeek={setPeeking}
+          onInspect={setInspecting}
         />
       )}
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} onDone={() => setReveal(null)} />}
+      {taken && <CityTaken taken={taken} onDone={() => setTaken(null)} />}
       {peeking && <Peek defId={peeking} />}
       {inspecting && <Inspect defId={inspecting} onClose={() => setInspecting(null)} />}
       {burning && <BurnAway onDone={() => setBurning(false)} />}
     </div>
   );
 }
+
+/** A paid-for play still waiting to be pointed at somebody. Rules.md §13. */
+interface Aiming {
+  /** The card doing the pointing — where the arrow starts. */
+  readonly source: string;
+  /** What to send, carrying the payment the player settled on. */
+  readonly action: PayableAction;
+  /** Each legal choice, and the full `targets` list that lands on it. */
+  readonly choices: readonly Choice[];
+}
+
+interface Choice {
+  readonly target: string;
+  /**
+   * Every choice the action carries, not merely the one being pointed at.
+   *
+   * A cost may name a character of its own — Rules.md §6 lets an ability lock
+   * an ally to pay for itself — and the engine reads the cost's choice first
+   * and the effect's second. Replacing the list with just the target would
+   * drop the ally and the action would be rejected, so the list the engine
+   * offered is kept whole.
+   */
+  readonly targets: readonly string[];
+}
+
+/**
+ * Everybody this play may legally be pointed at, with the action that does it.
+ *
+ * Read off `legalActions`, which offers one action per legal target — the
+ * client cannot work the list out for itself, because who a card may point at
+ * depends on colour, Level, Distance and whether a battle is running, and
+ * those are rules that live in the engine.
+ */
+function targetChoices(view: PlayerView, action: PayableAction): Choice[] {
+  const choices: Choice[] = [];
+  const seen = new Set<string>();
+
+  for (const offered of view.legalActions) {
+    if (offered.type !== action.type || offered.card !== action.card) continue;
+    // A card may carry two abilities; only this one's targets are on offer.
+    if (
+      action.type === 'USE_ABILITY' &&
+      (offered as Extract<GameAction, { type: 'USE_ABILITY' }>).ability !== action.ability
+    ) {
+      continue;
+    }
+    const targets = (offered as { targets?: readonly string[] }).targets ?? [];
+    // The effect's own choice is the last one: a cost's ally comes first.
+    const target = targets[targets.length - 1];
+    if (target === undefined || seen.has(target)) continue;
+    seen.add(target);
+    choices.push({ target, targets });
+  }
+
+  return choices;
+}
+
+/**
+ * Is the player actually being asked who this lands on? Rules.md §13.
+ *
+ * An open that carries a target always is. An ability may carry one for its
+ * *cost* instead — §6's "lock a character as a cost" — which the engine
+ * settles itself and the player is not choosing between, so raising the
+ * targeting arrow over it would be asking a question nobody posed.
+ */
+function asksForATarget(view: PlayerView, action: PayableAction): boolean {
+  if (action.type === 'OPEN_CARD') return true;
+  const card = view.cards[action.card];
+  const defId = card && 'defId' in card ? card.defId : null;
+  const printed = defId ? abilityOf(defId, action.ability) : null;
+  if (printed) return printed.targets;
+  // The catalogue has not arrived yet. Fall back to what the engine sent: an
+  // action carrying nobody asks for nobody, and one that does is worth asking
+  // about — being shown a choice you did not need is recoverable, submitting
+  // a target the player never picked is not.
+  return (action.targets?.length ?? 0) > 0;
+}
+
+const defIdOf = (view: PlayerView, card: string): string | null => {
+  const found = view.cards[card];
+  return found && 'defId' in found ? found.defId : null;
+};
 
 /**
  * The striker's printed Power, which is exactly what it has to assign.

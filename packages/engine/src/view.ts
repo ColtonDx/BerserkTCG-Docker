@@ -1,7 +1,7 @@
 import type { CardInstanceId, MatchId, PlayerId } from './ids.js';
 import { legalActions } from './legal.js';
 import type { EngineContext } from './rules.js';
-import { cityLevel, hpOf, isCharacter, moveOf, powerOf } from './rules.js';
+import { boostSources, cityLevel, hpOf, isCharacter, moveOf, powerOf } from './rules.js';
 import type {
   BattleState,
   CardInstance,
@@ -47,6 +47,16 @@ import type {
  */
 export type VisibleCard = CardInstance & {
   readonly current?: { readonly power: number; readonly hp: number; readonly move: number };
+  /**
+   * Face-up cards whose continuous abilities are moving this one's numbers
+   * right now. Rules.md §13.
+   *
+   * Sent because it cannot be derived: a cost-free ability is read off the
+   * board rather than stored, and which cards it reaches is engine data. The
+   * table draws the connection from this — otherwise a character standing
+   * there at +1/+1 has no visible reason for it.
+   */
+  readonly boostedBy?: readonly CardInstanceId[];
 };
 
 /** A card the viewer knows exists but not the identity of. */
@@ -166,6 +176,7 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
  */
 function withCurrentStats(ctx: EngineContext, state: GameState, card: CardInstance): VisibleCard {
   if (card.zone !== 'city' || !card.faceUp || !isCharacter(ctx, card)) return card;
+  const sources = boostSources(ctx, state, card);
   return {
     ...card,
     current: {
@@ -173,6 +184,8 @@ function withCurrentStats(ctx: EngineContext, state: GameState, card: CardInstan
       hp: hpOf(ctx, state, card),
       move: moveOf(ctx, state, card),
     },
+    // Omitted rather than sent empty: most characters are nobody's business.
+    ...(sources.length > 0 ? { boostedBy: sources } : {}),
   };
 }
 

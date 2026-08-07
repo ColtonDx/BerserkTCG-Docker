@@ -1,6 +1,7 @@
 import type { PhaseId, PlayerView } from '@berserk/engine';
 import { BANNER_HOLD_MS } from '@berserk/protocol';
 import { useEffect, useRef, useState, type JSX } from 'react';
+import { playPhase } from '../net/sound.js';
 
 /**
  * The banner that calls the turn and the phase.
@@ -52,8 +53,14 @@ const PHASE_LABEL: Record<string, string> = {
  * How long each phase name shows while the subheading walks the ones just
  * passed. The last one holds for whatever is left of {@link HOLD_MS}, so the
  * banner never outlives the pacing the server plays to.
+ *
+ * Deliberately unhurried. Refresh and Draw resolve with no input at all and a
+ * phase with nothing in it is skipped (Rules.md §10), so a single click can
+ * cross three of them — at a glance the turn simply jumped, and the player is
+ * left to work out what happened from the board. Each one now gets long
+ * enough to read, and a sweep of air to go with it.
  */
-const STEP_MS = 480;
+const STEP_MS = 760;
 
 interface Announcement {
   /** Changes whenever something new is announced, restarting the animation. */
@@ -122,11 +129,21 @@ export function Banner({ view }: { readonly view: PlayerView }): JSX.Element | n
   const [step, setStep] = useState(0);
   useEffect(() => {
     setStep(0);
-    if (!shown || shown.phases.length < 2) return;
-    const gap = Math.min(STEP_MS, (HOLD_MS * 0.6) / (shown.phases.length - 1));
-    const timers = shown.phases
-      .slice(1)
-      .map((_, index) => window.setTimeout(() => setStep(index + 1), gap * (index + 1)));
+    if (!shown) return;
+    // The first phase is announced with the banner itself; the rest each get
+    // their own sweep as the subheading reaches them.
+    playPhase();
+    if (shown.phases.length < 2) return;
+    const gap = Math.min(STEP_MS, (HOLD_MS * 0.7) / (shown.phases.length - 1));
+    const timers = shown.phases.slice(1).map((_, index) =>
+      window.setTimeout(
+        () => {
+          setStep(index + 1);
+          playPhase();
+        },
+        gap * (index + 1),
+      ),
+    );
     return () => timers.forEach(clearTimeout);
   }, [shown]);
 

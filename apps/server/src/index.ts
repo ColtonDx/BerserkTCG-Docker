@@ -1,4 +1,4 @@
-import { abilitiesFor, CATALOGUE, catalogueRegistry } from '@berserk/engine';
+import { abilitiesFor, abilityKey, CATALOGUE, catalogueRegistry } from '@berserk/engine';
 import { PROTOCOL_VERSION } from '@berserk/protocol';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -59,11 +59,41 @@ app.get('/api/catalogue', (_req, reply) => {
   // (Rules.md §13). The client shows it so a player can tell a card that does
   // nothing from one whose ability simply is not built — with most of the set
   // still to go, that difference is worth being honest about.
+  //
+  // `abilities` is the same static card data one level down, and the client
+  // needs it to *offer* a cost-bearing ability: `legalActions` names one by
+  // its index on the card, which is a number with no label and no price on it.
+  // Nothing secret goes out here — this is what is printed on the cardboard,
+  // and every card in the set is listed to everybody either way.
   return {
-    cards: CATALOGUE.map((card) => ({
-      ...card,
-      implemented: abilitiesFor(card.id).length > 0,
-    })),
+    cards: CATALOGUE.map((card) => {
+      const abilities = abilitiesFor(card.id);
+      return {
+        ...card,
+        implemented: abilities.length > 0,
+        abilities: abilities.map((ability, index) => ({
+          key: abilityKey(index),
+          text: ability.text,
+          /** Rules.md §13 — only these are used by choice, and can be offered. */
+          activated: ability.trigger === 'activated',
+          quick: ability.quick === true,
+          /** The cost paid from hand, in DesignNotes 8 notation. */
+          cost: ability.cost?.pay ?? null,
+          /** The printed "Tap:" — Rules.md §6 allows locking as a cost. */
+          lockSelf: ability.cost?.lockSelf === true,
+          oncePerTurn: ability.cost?.oncePerTurn === true,
+          /**
+           * Whether the *effect* asks the player to point it at somebody.
+           *
+           * Not the same as the action carrying a target: a cost that locks an
+           * ally (§6) puts one in the list too, and a client that could not
+           * tell them apart would raise the targeting arrow over a choice the
+           * player is not being asked to make.
+           */
+          targets: ability.target !== undefined,
+        })),
+      };
+    }),
   };
 });
 

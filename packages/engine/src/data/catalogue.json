@@ -942,7 +942,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": ["magical", "creature"],
-    "effect": null,
+    "effect": "When this character dies, draw 1 card.",
     "mercenary": false
   },
   {
@@ -964,7 +964,7 @@
     "cost": "1G",
     "unique": true,
     "subtypes": ["branded"],
-    "effect": null,
+    "effect": "Tap: Deal 4 damage to target character in this area.",
     "mercenary": false
   },
   {
@@ -986,7 +986,7 @@
     "cost": "GG",
     "unique": true,
     "subtypes": ["branded"],
-    "effect": null,
+    "effect": "(Quick) G: This character receives +2/+2 until the end of the turn. Can only be used once per turn.",
     "mercenary": false
   },
   {
@@ -1008,7 +1008,7 @@
     "cost": "1G",
     "unique": true,
     "subtypes": ["branded"],
-    "effect": null,
+    "effect": "(Quick) Tap: Target character currently in combat in this area takes 3 damage.",
     "mercenary": false
   },
   {
@@ -1030,7 +1030,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["branded"],
-    "effect": null,
+    "effect": "When this card is opened, draw 3 cards, then discard 2 cards.",
     "mercenary": false
   },
   {
@@ -1052,7 +1052,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["branded"],
-    "effect": null,
+    "effect": "(Quick) 1: Return this card to your hand. Draw 2 cards.",
     "mercenary": false
   },
   {
@@ -1074,7 +1074,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["noble"],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards.",
     "mercenary": false
   },
   {
@@ -1096,7 +1096,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["noble"],
-    "effect": null,
+    "effect": "When this card is opened, add 1 Serpico from your deck to your hand.",
     "mercenary": false
   },
   {
@@ -1118,7 +1118,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["noble"],
-    "effect": null,
+    "effect": "During combat reduce damage dealt to this card by 3.",
     "mercenary": false
   },
   {
@@ -1140,7 +1140,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["noble"],
-    "effect": null,
+    "effect": "During combat reduce damage dealt to this card by 3.",
     "mercenary": false
   },
   {
@@ -1162,7 +1162,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["magician"],
-    "effect": null,
+    "effect": "When this card is opened, deal 4 damage to each enemy character in this area.",
     "mercenary": false
   },
   {
@@ -1184,7 +1184,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["magician"],
-    "effect": null,
+    "effect": "Tap: Draw 2 cards",
     "mercenary": false
   },
   {
@@ -1206,7 +1206,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["bandit"],
-    "effect": null,
+    "effect": "Tap: Deal 1 damage to target character in this area",
     "mercenary": false
   },
   {
@@ -1228,7 +1228,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["bandit"],
-    "effect": null,
+    "effect": "Tap: Draw 1 card",
     "mercenary": false
   },
   {
@@ -1250,7 +1250,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["elf"],
-    "effect": null,
+    "effect": "When this card is opened, add 1 Serpico card from your deck to your hand.",
     "mercenary": false
   },
   {
@@ -1272,7 +1272,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": ["magician"],
-    "effect": null,
+    "effect": "All characters you control in this area gain +0/+2 and your opponents characters here gain -2/+0",
     "mercenary": false
   },
   {
@@ -1294,7 +1294,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "All characters you control in this area gain +2/+2 until end of turn.",
     "mercenary": false
   },
   {
@@ -1316,7 +1316,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Target 1 character in this area. It gains +2/+2 for each character your opponent controls in this area.",
     "mercenary": false
   },
   {
@@ -1338,7 +1338,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, if an opponent did not move a character to this area this turn, you may set 1 level 4 or lower character from your hand in this area, and immediately open it.",
     "mercenary": false
   },
   {
@@ -1360,7 +1360,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Move 1 character you control from this area to any area that an opponent has a character of level 3 or higher in.",
     "mercenary": false
   },
   {
@@ -1382,7 +1382,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Target character in this area gains +4/+4 until end of turn",
     "mercenary": false
   },
   {
@@ -1404,7 +1404,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, target a character in this area, or an area up to 1 distance away. Reduce damage that character receives by 3 this turn.",
     "mercenary": false
   },
   {
@@ -1426,7 +1426,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Open this card only if a battle was declared in this area this turn by either player. Search your deck for a character, reveal it, and add it to your hand. Then draw 1 card.",
     "mercenary": false
   },
   {
@@ -1448,7 +1448,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards. At the start of your turn, you may choose to skip your draw phase and if you do, draw 2 cards at the end of your turn instead.",
     "mercenary": false
   },
   {
@@ -1470,7 +1470,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy all set cards you control in all areas. Draw that many cards.",
     "mercenary": false
   },
   {
@@ -1492,7 +1492,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, move all your set cards from this area to any other area.",
     "mercenary": false
   },
   {
@@ -1514,7 +1514,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, search your deck for any card and add it to your hand.",
     "mercenary": false
   },
   {
@@ -1536,7 +1536,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 3 cards",
     "mercenary": false
   },
   {
@@ -1558,7 +1558,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, target a character in an area up to 1 distance away and reduce damage that would be dealt to that character by 2.",
     "mercenary": false
   },
   {
@@ -1580,7 +1580,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, all enemy characters level 2 or lower in this area take 3 damage.",
     "mercenary": false
   },
   {
@@ -1602,7 +1602,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw cards equal to the number of characters you have open.",
     "mercenary": false
   },
   {
@@ -1624,7 +1624,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 3 cards.\n\nAs long as this card is on the board, your characters in this area gain +0/+1 and enemy characters gain -1/+0",
     "mercenary": false
   },
   {
@@ -1646,7 +1646,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, choose 3 cards from your deck and send them to the graveyard. Then draw 2 cards.",
     "mercenary": false
   },
   {
@@ -1668,7 +1668,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, attach it to a character. That character gains +1 Range and +3 Power as long as this card remains in play",
     "mercenary": false
   },
   {
@@ -1690,7 +1690,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, attach it to a character. That character gains +1 Move and +2/+4 as long as this card remains in play",
     "mercenary": false
   },
   {
@@ -1712,7 +1712,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, all characters you control in this area gain +1/+1 for each character you have open, until end of turn.",
     "mercenary": false
   },
   {
@@ -1734,7 +1734,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 3 cards.  \n\n(Quick) Lock a character you control in this area: All characters you control in this area gain +2/+1 until end of turn",
     "mercenary": false
   },
   {
@@ -1756,7 +1756,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy 1 black character in this area.",
     "mercenary": false
   },
   {

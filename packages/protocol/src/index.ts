@@ -32,7 +32,7 @@ export const PROTOCOL_VERSION = 2;
  * one. Written down once so raising it in the UI cannot silently leave the
  * AI moving too early.
  */
-export const BANNER_HOLD_MS = 2800;
+export const BANNER_HOLD_MS = 4200;
 
 /* ------------------------------------------------------- client -> server */
 

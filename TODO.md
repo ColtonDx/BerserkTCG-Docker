@@ -15,23 +15,35 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
 ## Rules still to build
 
 1. **Abilities** (`Rules.md` §13). The registry exists (`abilities.ts`) and
-   thirteen BK1 cards are built and tested, including targeting: an ability
-   can ask the player to choose a character, `OPEN_CARD` carries the choice,
-   and the payment overlay asks for it. Rules text and creature subtypes are
-   captured for the first 41 cards and shown in the inspector, which marks a
-   card whose behaviour is not built yet. The remaining 28 need, in rough
-   order of how much machinery each adds:
-   - **More target shapes.** The machinery is built and only takes one
-     character in one area; cards that target a Set Card, an area, or a
-     character with a Level cap need `TargetSpec` widening. Nine cards.
-   - **A pending choice.** Searching a deck, or looking at the top N and
-     picking some: the engine has to stop mid-effect and wait for an answer,
-     which is a new step in the reducer and a new overlay in the client.
-     Eight cards.
-   - **Quick timing.** The window exists now, so these four are only waiting
-     on their own effects being written — not on §14.
-   - **New verbs** — unlock-a-whole-area, "cannot battle this turn", moving an
-     enemy, and one replacement effect (BK1-027). Seven cards.
+   40 BK1 cards are built and tested, including targeting: an ability can ask
+   the player to choose a character, `OPEN_CARD` carries the choice, and the
+   payment overlay asks for it. Rules text and creature subtypes are captured
+   for the first 41 cards and shown in the inspector, which marks a card whose
+   behaviour is not built yet.
+
+   **Green is 26 of its 38 printed lines.** What the set gained along the way,
+   and now works for any colour: `per` ("for each") scaling on buffs and
+   draws, damage reduction both continuous and until-end-of-turn (`SHIELD`),
+   selectors that reach face-down Set Cards, targeting by Distance, and
+   cost-bearing abilities — `USE_ABILITY` is built, with "Tap:" costs, costs
+   paid from hand, once-per-turn, locking an ally to pay, and Quick timing
+   that rides the same windows a Quick card does.
+
+   The twelve green cards left, and what each is waiting on:
+   - **A pending choice.** The engine has to stop mid-effect and wait for an
+     answer, which is a new step in the reducer and a new overlay in the
+     client. BK1-047 (discard 2 of your own choosing), 050, 057, 065, 069 and
+     075 — six cards, all deck searches but one.
+   - **Attachments.** BK1-076 Sylph Sword and BK1-077 Sylph Hood attach to a
+     character and change its numbers while they remain in play. Needs a card
+     to belong to another card, and Range to become modifiable — it is
+     printed-only today (`rules.ts:rangeOf`).
+   - **An area as a target.** BK1-062 moves a character to a chosen area, and
+     BK1-068 moves your Set Cards to one. `TargetSpec` names characters only.
+   - **Two one-offs.** BK1-061 needs "did an opponent move a character here
+     this turn", which nothing records yet, and then a set-and-immediately-open.
+     BK1-066 needs an optional skip of your own Draw phase, remembered across
+     the turn.
 
    Three transcribed lines are ambiguous and want a ruling before they are
    built: BK1-038 "unlock all Hawk characters" (both sides, or yours?),
@@ -51,13 +63,13 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
 
 ## Presentation
 
-1. **Sound** for battle and occupation. Draw, shuffle and the page turn are
-   done and synthesised rather than recorded (`net/sound.ts`). The battle
-   events exist, so these only need writing.
-2. **Animation** for dying and battling. `CHARACTER_DESTROYED` and
-   `DAMAGE_DEALT` are emitted and reach the client; nothing draws them.
-   Locking, drawing, and cards crossing zones are animated.
-3. **Character voices.** Sounds from the show for unique characters.
+1. **Sound** for battle and occupation. Draw, shuffle, the page turn and the
+   phase sweep are done and synthesised rather than recorded
+   (`net/sound.ts`). A blow landing, a character dying and a city changing
+   hands all have their moment on screen now but none of them make a noise —
+   the events are already in the client (`BoardFx`, `CityTaken`), so these are
+   only waiting to be written.
+2. **Character voices.** Sounds from the show for unique characters.
 
 ## Notes
 
@@ -94,3 +106,39 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
   locally otherwise lives on remotely until it breaks a build. It must leave
   `db/` alone: the database container bind-mounts `db/init`, and deleting the
   directory leaves the mount pointing at nothing.
+- Anything the game is **asking you for** lives along the bottom edge: the
+  battle step (`.battlebar`), the target picker (`.aim-bar`), and what a city
+  changing hands paid out. The top edge reads as a status line — something
+  being noted rather than something wanted from you — and the phase rail on
+  the left already shows where the turn is at all times.
+- The banner walks every phase an advance passed through, one at a time, with
+  a sweep of air each (`sound.ts:playPhase`). Refresh and Draw resolve with no
+  input and an empty phase is skipped (`Rules.md` §10), so one click can cross
+  three of them; without the walk the turn appears to jump. `BANNER_HOLD_MS`
+  is shared with the server so the computer opponent never plays underneath a
+  banner — raise the two together.
+- A step whose click cannot be taken back offers a way to read the card first.
+  Bottoming and discarding both commit on a single click, so each card carries
+  a magnifier; a right click and a press-and-hold do the same thing, but a
+  touchscreen has neither.
+- The payment dialog shows both piles: the card being opened on the left, the
+  cards leaving your hand on the right, each clickable to put back.
+- **The table never grows a scrollbar.** A transform contributes its _rotated_
+  bounding box to an ancestor's overflow, so the 45° tilt on a locked card
+  (`Rules.md` §6) pushed a city lane into scrolling the moment somebody locked
+  a character to attack. The lanes are `overflow: visible` and the page itself
+  is `overflow: hidden` while a match is up; any full-screen overlay that
+  paints past the viewport — the targeting arrow, the boost lines — clips
+  itself rather than being allowed to extend the page.
+- A number that is not printed on the card is written on the card: damage in
+  one bottom corner, an ability's shift in the other (`card__boost`, `§13`).
+  The glow says something is happening to this character; the marker says
+  what, because the art still shows the printed numbers and nothing else on
+  the table does. Both are read off `VisibleCard.current` against the
+  catalogue — the client cannot compute an ability's effect.
+- Hovering a character draws a line to every card lifting it and to everything
+  it is lifting (`BoostLinks`, `VisibleCard.boostedBy`). A continuous ability
+  is stored nowhere — `powerOf`/`hpOf`/`moveOf` read it off the board — so
+  without this a character stands at +1/+1 with no visible reason. Mouse only:
+  a finger has no hover, and the compatibility events after a tap would leave
+  the lines drawn with nothing under the pointer.

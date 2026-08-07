@@ -1,9 +1,12 @@
 import type { CardDefinition, CardRegistry, Cost } from './cards.js';
-import { costTotal } from './cards.js';
+import { costTotal, parseCost } from './cards.js';
 import {
   counterFor,
   selects,
+  SHIELD,
+  usedOnTurnCounter,
   type Ability,
+  type CardFacts,
   type Condition,
   type StatLine,
   type TargetSpec,
@@ -13,7 +16,7 @@ import type { Draft } from './draft.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { ok, violation, type Result, type RuleViolation } from './result.js';
 import type { BattleResult, BattleState, CardInstance, GameEvent, GameState } from './types.js';
-import { cardsInCity } from './zones.js';
+import { cardsInCity, cityDistance } from './zones.js';
 
 /**
  * Derived rules — the questions the reducer keeps asking about a position.
@@ -277,7 +280,7 @@ function continuousBonus(
       if (ability.trigger !== 'always' || ability.effect.do !== 'buff') continue;
       const change = ability.effect.stats[stat];
       if (change === undefined) continue;
-      if (!selects(ability.effect.who, source, card, (c) => subtypesOf(ctx, c))) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
       total += change;
     }
@@ -285,9 +288,89 @@ function continuousBonus(
   return total;
 }
 
+/**
+ * How much of a blow this card shrugs off. Rules.md §13.
+ *
+ * Two sources add together: armour read continuously off the board (Serpico
+ * standing there is the whole condition) and a shield written onto the card
+ * for the turn by an effect that has already resolved. `combat` says which
+ * kind of damage is landing, because a card that reduces damage "during
+ * combat" is silent about a spell.
+ *
+ * Never negative: a reduction is a floor on the damage, not a way to amplify.
+ */
+export function damageReduction(
+  ctx: EngineContext,
+  state: BoardView,
+  card: CardInstance,
+  options: { combat: boolean },
+): number {
+  let total = card.counters[SHIELD] ?? 0;
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+      if (ability.trigger !== 'always' || ability.effect.do !== 'reduceDamage') continue;
+      if (ability.effect.combatOnly === true && !options.combat) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
+      if (!conditionHolds(ctx, state, source, ability.condition)) continue;
+      total += ability.effect.amount;
+    }
+  }
+  return Math.max(0, total);
+}
+
+/** What actually lands after {@link damageReduction}. Never below nothing. */
+export const damageAfterReduction = (
+  ctx: EngineContext,
+  state: BoardView,
+  card: CardInstance,
+  amount: number,
+  options: { combat: boolean },
+): number => Math.max(0, amount - damageReduction(ctx, state, card, options));
+
+/**
+ * Which cards on the field are continuously changing this one's numbers.
+ *
+ * Rules.md §13's cost-free abilities are not stored anywhere — they *are* the
+ * board — so nothing in the state says "Griffith is lifting this Hawk". The
+ * client cannot work it out either, because which cards an ability reaches is
+ * engine data. Reading it back off the same loop `continuousBonus` walks is
+ * what lets the table show the connection.
+ *
+ * Only sources that actually move a number: an ability whose stats all resolve
+ * to zero for this card is not a relationship worth drawing.
+ */
+export function boostSources(
+  ctx: EngineContext,
+  state: BoardView,
+  card: CardInstance,
+): CardInstanceId[] {
+  const found: CardInstanceId[] = [];
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    if (source.instanceId === card.instanceId) continue;
+    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+      if (ability.trigger !== 'always' || ability.effect.do !== 'buff') continue;
+      const stats = ability.effect.stats;
+      if (!stats.power && !stats.hp && !stats.move) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
+      if (!conditionHolds(ctx, state, source, ability.condition)) continue;
+      if (!found.includes(source.instanceId)) found.push(source.instanceId);
+      break;
+    }
+  }
+  return found;
+}
+
 /** The printed subtype tokens of a card, e.g. `['hawk', 'leader']`. */
 export const subtypesOf = (ctx: EngineContext, card: CardInstance): readonly string[] =>
   definitionOf(ctx, card).subtypes ?? [];
+
+/** Everything a selector asks about a card, from its printed definition. */
+export const factsOf = (ctx: EngineContext, card: CardInstance): CardFacts => {
+  const def = definitionOf(ctx, card);
+  return { subtypes: def.subtypes ?? [], level: def.level, colour: def.color };
+};
 
 /**
  * The characters an ability may be pointed at. Rules.md §13.
@@ -302,6 +385,8 @@ export function legalTargets(
   state: BoardView,
   source: CardInstance,
   spec: TargetSpec,
+  /** The battle in progress, for a spec that asks who is "currently in combat". */
+  battle?: BattleState | null,
 ): CardInstance[] {
   return Object.values(state.cards).filter((card) => {
     // The source counts as face-up whatever the board says right now. An
@@ -311,18 +396,118 @@ export function legalTargets(
     // means itself, and offering nothing would make it do nothing.
     const standing = card.faceUp || card.instanceId === source.instanceId;
     if (card.zone !== 'city' || !standing || !isCharacter(ctx, card)) return false;
+    // "Target another character" — Rules.md §13.
+    if (spec.excludeSelf === true && card.instanceId === source.instanceId) return false;
     const side = spec.side ?? 'any';
     if (side === 'yours' && card.controller !== source.controller) return false;
     if (side === 'theirs' && card.controller === source.controller) return false;
-    if ((spec.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
+    // Distance widens "this area" rather than replacing it: the source's own
+    // city is distance 0, so it is always in reach. Rules.md §15 "Distance".
+    if (spec.maxDistance !== undefined) {
+      if (card.cityIndex === undefined || source.cityIndex === undefined) return false;
+      if (cityDistance(source.cityIndex, card.cityIndex) > spec.maxDistance) return false;
+    } else if ((spec.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
       return false;
     }
     if (spec.subtype !== undefined && !subtypesOf(ctx, card).includes(spec.subtype)) return false;
-    const level = definitionOf(ctx, card).level;
-    if (spec.maxLevel !== undefined && (level === null || level > spec.maxLevel)) return false;
+    if (spec.unlocked === true && card.locked) return false;
+    // Rules.md §11 ③ — the participants, not merely everyone standing in the
+    // contested city. With no battle on, nobody is in combat.
+    if (spec.inCombat === true && !battle?.participants.includes(card.instanceId)) return false;
+    const def = definitionOf(ctx, card);
+    if (spec.colour !== undefined && def.color !== spec.colour) return false;
+    if (spec.maxLevel !== undefined && (def.level === null || def.level > spec.maxLevel)) {
+      return false;
+    }
     return true;
   });
 }
+
+/* ------------------------------------------------------- activated abilities
+ *
+ * Rules.md §13: a cost-bearing ability is used by choice and paid for. The
+ * timing is the printed distinction — "usable only in your own Main phase,
+ * unless the ability has Quick".
+ */
+
+/** An ability the player may choose to use, with the index the wire names it by. */
+export interface ActivatedAbility {
+  readonly index: number;
+  readonly ability: Ability;
+}
+
+export const activatedAbilities = (ctx: EngineContext, card: CardInstance): ActivatedAbility[] =>
+  (definitionOf(ctx, card).abilities ?? [])
+    .map((ability, index) => ({ index, ability }))
+    .filter((entry) => entry.ability.trigger === 'activated');
+
+/**
+ * Has this ability already been used this turn? Rules.md §13.
+ *
+ * Compared against the turn number rather than cleared at end of turn, so a
+ * card that leaves the field and comes back cannot carry a stale mark.
+ */
+export const usedThisTurn = (state: BoardView, card: CardInstance, index: number): boolean =>
+  card.counters[usedOnTurnCounter(index)] === turnOrdinal(state);
+
+/**
+ * May this player use this ability right now? Rules.md §13.
+ *
+ * Timing only — what it *costs* is checked against the hand and the board by
+ * the caller, which has to choose a payment anyway.
+ */
+export function canActivate(
+  ctx: EngineContext,
+  state: GameState,
+  card: CardInstance,
+  entry: ActivatedAbility,
+  player: PlayerId,
+): boolean {
+  // §13 — abilities are "active only while the card is on the field".
+  if (card.zone !== 'city' || !card.faceUp) return false;
+  if (card.controller !== player) return false;
+  if (usedThisTurn(state, card, entry.index)) return false;
+  if (entry.ability.cost?.lockSelf === true && card.locked) return false;
+  if (!conditionHolds(ctx, state, card, entry.ability.condition, state.battle)) return false;
+
+  // An ability that must be pointed at somebody, with nobody to point at, is
+  // not a move — offering it would spend the cost for nothing.
+  if (
+    entry.ability.target &&
+    legalTargets(ctx, state, card, entry.ability.target, state.battle).length === 0
+  ) {
+    return false;
+  }
+  if (
+    entry.ability.cost?.lockAlly &&
+    legalTargets(ctx, state, card, entry.ability.cost.lockAlly, state.battle).length === 0
+  ) {
+    return false;
+  }
+
+  // A Quick ability rides the same windows a Quick card does: `state.quick`
+  // is where an interrupt lives, and DesignNotes "When to offer a Quick" says
+  // when one opens. Anything looser would let a Quick ability be used at
+  // moments the engine never offers, and `legalActions` would stop matching
+  // what `reduce` accepts.
+  if (state.quick !== null) {
+    return entry.ability.quick === true && state.quick.waitingOn === player;
+  }
+  if (state.battle !== null) return false;
+
+  // Otherwise §13's plain rule: your own Main phase. Read inline rather than
+  // through `currentPhase`, which lives in the reducer — the rules must not
+  // depend on it, or the two would import each other.
+  return (
+    state.turn.activePlayer === player &&
+    state.turn.priorityPlayer === player &&
+    state.phases[state.turn.phaseIndex]?.id === 'main'
+  );
+}
+
+/** The cost of an activated ability, in the notation `validatePayment` reads. */
+export const activationCost = (ability: Ability): Cost =>
+  ability.cost?.pay === undefined ? [] : parseCost(ability.cost.pay);
 
 /** The abilities on a card that will ask the player to choose, in order. */
 export type TargetingAbility = Ability & { readonly target: TargetSpec };
@@ -348,7 +533,7 @@ export function cannotAttack(ctx: EngineContext, state: BoardView, card: CardIns
     if (source.zone !== 'city' || !source.faceUp) continue;
     for (const ability of definitionOf(ctx, source).abilities ?? []) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'cannotAttack') continue;
-      if (!selects(ability.effect.who, source, card, (c) => subtypesOf(ctx, c))) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
       if (conditionHolds(ctx, state, source, ability.condition)) return true;
     }
   }

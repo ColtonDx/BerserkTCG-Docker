@@ -30,6 +30,17 @@ body,
   height: 100%;
 }
 
+/* The table is a fixed, viewport-sized surface (`.app--match`), so nothing on
+ * it should ever put the document itself on a scrollbar — scrolling the board
+ * away slides the two halves out of line with the city row between them. The
+ * menu screens are left alone: the deckbuilder and settings genuinely have
+ * more than a screenful and scroll inside their own panels. */
+html.is-playing,
+html.is-playing body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -963,7 +974,8 @@ button:disabled {
   /* Every transform on a card is composed here, from custom properties, so
    * the fan, the locked tilt and the zone-change slide can all apply at once
    * instead of overwriting one another. `--flip-*` is driven by useCardFlip. */
-  transform: translate(var(--flip-x, 0px), var(--flip-y, 0px)) translateY(var(--lift, 0px))
+  transform: translate(var(--flip-x, 0px), var(--flip-y, 0px))
+    translate(var(--clash-x, 0px), var(--clash-y, 0px)) translateY(var(--lift, 0px))
     rotate(calc(var(--rot, 0deg) + var(--tilt, 0deg)))
     scale(calc(var(--scale, 1) * var(--depth, 1)));
   /* Locking turns the card (Rules.md §6). It is a move the player made, so it
@@ -1995,7 +2007,15 @@ button.card:hover {
 
 .app--match .city__lane {
   min-height: 0;
-  overflow-y: auto;
+  /* Never scrolls.
+   *
+   * This was `overflow-y: auto`, which put a scrollbar inside an area the
+   * moment anything in it was locked. A transform contributes its *rotated*
+   * bounding box to an ancestor's scrollable overflow, and locking turns a
+   * card 45° (Rules.md §6) — so tapping a character to attack visibly grew
+   * the zone it stood in. Cards that will not fit now spill instead, and
+   * `.app--match` clips at the edge of the table. */
+  overflow: visible;
 }
 
 .app--match .city__lane:first-child {
@@ -2056,6 +2076,66 @@ button.card:hover {
   color: var(--blood-bright);
   font-size: clamp(9px, 0.7vw, 12px);
   font-weight: 600;
+}
+
+/* What an ability is doing to this character's numbers, on the character.
+ * Rules.md §13.
+ *
+ * Opposite corner from the damage counter, which is the other number on the
+ * card that is not printed on it — the two are read together (a +2/+2 with
+ * three damage on it is a different card from either alone) and they must
+ * never sit on top of one another. */
+.card .card__boost {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.82);
+  font-size: clamp(9px, 0.7vw, 12px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.card__boost--up {
+  color: #7cc4ff;
+  box-shadow: 0 0 0 1px rgb(79 159 224 / 60%);
+  /* Beats once as it lands, so a bonus that arrives mid-turn is *seen*
+   * arriving rather than found later. */
+  animation: boost-land 420ms ease-out;
+}
+
+.card__boost--down {
+  color: #ff8a86;
+  box-shadow: 0 0 0 1px rgb(125 10 20 / 65%);
+  animation: boost-land 420ms ease-out;
+}
+
+@keyframes boost-land {
+  0% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Reduced motion keeps the marker and drops the pounce: the number is the
+ * information, the beat is only the flourish. */
+@media (prefers-reduced-motion: reduce) {
+  .card__boost--up,
+  .card__boost--down {
+    animation: none;
+  }
 }
 
 /* ------------------------------------------------- card menu & targeting */
@@ -2608,10 +2688,17 @@ button.card:hover {
  * A battle runs across both players' turns, so its prompt sits above the
  * board where the defender will see it on the attacker's turn too.
  */
+/* Along the bottom, with the rest of what the game is asking you for. The
+ * top edge reads as a status line — something being noted — and a battle step
+ * is a question, not a note. Same reasoning as `.aim-bar`, and the same
+ * height, since the two are never both the live question. */
 .battlebar {
   position: absolute;
   left: 50%;
-  top: 74px;
+  /* Clear of the hand. At 96px it sat inside the hand's reach and the cards
+   * rose straight through it; measured off the hand's own metrics so it stays
+   * clear if the card size changes. */
+  bottom: calc(var(--hand-bottom, 74px) + var(--card-h, 120px) * 0.9);
   transform: translateX(-50%);
   z-index: 34;
   display: flex;
@@ -2631,10 +2718,23 @@ button.card:hover {
   color: var(--ink-faint);
 }
 
+.battlebar__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .battlebar__ask {
   font-size: 13px;
   letter-spacing: 0.06em;
   color: var(--ink-dim);
+}
+
+/* Where to answer, under what is being asked. */
+.battlebar__how {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
 }
 
 .battlebar__ask--yours {
@@ -2706,23 +2806,90 @@ button.card:hover {
   color: var(--blood-bright);
 }
 
-.assign__dial {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* The character is the button: a click is a blow. */
+.assign__hit {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 2px;
+  transition:
+    transform 90ms ease-out,
+    filter 120ms ease-out;
 }
 
-.assign__dial .btn {
-  padding: 2px 10px;
-  font-size: 15px;
-  line-height: 1.1;
+.assign__hit:hover:not(:disabled) {
+  transform: translateY(-3px);
+  filter: brightness(1.1);
 }
 
-.assign__amount {
-  min-width: 22px;
-  text-align: center;
-  font-size: 16px;
+/* The recoil of the blow landing — brief, so a fast run of clicks still
+ * registers each one. */
+.assign__hit:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.assign__hit:disabled {
+  cursor: default;
+  filter: saturate(0.5) brightness(0.75);
+}
+
+/* What this assignment is putting into them, as opposed to the damage they
+ * already carry — which is in the line underneath. */
+.assign__dealt {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.85);
+  color: var(--blood-bright);
+  font-size: 12px;
   font-weight: 600;
+}
+
+/* The whole point of the step: who dies. Countable at a glance. */
+.assign__skull {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgb(216 16 32 / 70%));
+  animation: skull-land 260ms ease-out;
+}
+
+@keyframes skull-land {
+  from {
+    transform: scale(0.4) rotate(-25deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* The skull stays — it is the answer to the question the step is asking. Only
+ * the pounce and the recoil go. */
+@media (prefers-reduced-motion: reduce) {
+  .assign__skull {
+    animation: none;
+  }
+
+  .assign__hit,
+  .assign__hit:hover:not(:disabled),
+  .assign__hit:active:not(:disabled) {
+    transform: none;
+    transition: filter 120ms ease-out;
+  }
+}
+
+.assign__toll {
+  color: var(--blood-bright);
+  white-space: nowrap;
 }
 
 .assign__left {
@@ -3250,5 +3417,824 @@ button {
 
   .assign__art {
     height: clamp(70px, 26vh, 120px);
+  }
+}
+
+/* ------------------------------------------------------- pointing a card
+ *
+ * Rules.md §13. Choosing who a card affects happens on the board, not in a
+ * dialog: the candidates light up where they are standing, everything else
+ * steps back, and an arrow runs from the card doing the pointing to the
+ * pointer. The whole point is that the player keeps looking at the table.
+ */
+
+/* Low on the screen, not high on it. An instruction along the top edge reads
+ * as a status line — something the game is noting — while the same words down
+ * by the hand read as the game asking *you* for something. */
+.aim-bar {
+  position: fixed;
+  left: 50%;
+  /* Same height as the battle bar — they are never both the live question,
+   * and both have to clear the hand. */
+  bottom: calc(74px + var(--card-h, 120px) * 0.9);
+  transform: translateX(-50%);
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: min(560px, 88vw);
+  padding: 10px 18px;
+  text-align: center;
+  background: rgb(6 6 7 / 92%);
+  border: 1px solid var(--blood);
+  border-radius: 3px;
+  box-shadow:
+    0 6px 30px rgb(0 0 0 / 75%),
+    0 0 22px rgb(216 16 32 / 25%);
+  /* Comes up from the bottom, after the card has turned over. */
+  animation: aim-bar-in 260ms 140ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  pointer-events: auto;
+}
+
+@keyframes aim-bar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+}
+
+.aim-bar__title {
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.aim-bar__text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  /* The printed line, which on a few cards is a paragraph. */
+  white-space: pre-wrap;
+}
+
+.aim-bar__cancel {
+  margin-top: 4px;
+}
+
+/* The arrow. Covers the viewport and never eats a click — the card
+ * underneath is the thing being aimed at. */
+.aim-arrow {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 44;
+  pointer-events: none;
+  /* The svg already spans the viewport, so there is nothing legitimate
+   * outside it to keep — and letting it paint out there is a scrollbar. */
+  overflow: hidden;
+}
+
+.aim-arrow__glow {
+  fill: none;
+  stroke: rgb(255 61 47 / 38%);
+  stroke-width: 14;
+  stroke-linecap: round;
+  filter: blur(6px);
+}
+
+.aim-arrow__line {
+  fill: none;
+  stroke: var(--blood-bright);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  /* Runs toward the tip, so the arrow reads as travelling even at rest. */
+  stroke-dasharray: 13 9;
+  animation: aim-crawl 520ms linear infinite;
+}
+
+@keyframes aim-crawl {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.aim-arrow__head {
+  fill: var(--blood-bright);
+}
+
+/* Snapped onto a candidate: the line goes solid, which is the difference
+ * between "somewhere over there" and "this one". */
+.aim-arrow--locked .aim-arrow__line {
+  stroke-dasharray: none;
+  stroke-width: 4.5;
+  animation: none;
+}
+
+.aim-arrow--locked .aim-arrow__glow {
+  stroke: rgb(255 61 47 / 62%);
+}
+
+/* ------------------------------------------------- boost associations */
+
+/* Who is holding whom up, drawn while the pointer rests on a card. Rules.md
+ * §13. Quieter than the targeting arrow on purpose: that one is a question
+ * being asked, this one is an explanation being offered. */
+.boost-links {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 42;
+  pointer-events: none;
+  /* Same reason as the arrow: the svg already spans the viewport, so anything
+   * painting outside it is a scrollbar and nothing else. */
+  overflow: hidden;
+}
+
+.boost-links__glow {
+  fill: none;
+  stroke: rgb(79 159 224 / 30%);
+  stroke-width: 11;
+  stroke-linecap: round;
+  filter: blur(5px);
+}
+
+.boost-links__line {
+  fill: none;
+  stroke: rgb(124 196 255 / 70%);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* The dash runs from the card giving the bonus to the card getting it, which
+ * is what says which end is which without a legend. */
+.boost-links__flow {
+  fill: none;
+  stroke: #dff0ff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 4 20;
+  animation: boost-flow 900ms linear infinite;
+}
+
+.boost-links__bead {
+  fill: #dff0ff;
+}
+
+@keyframes boost-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+/* The line still says who is connected to whom; only the travel stops. */
+@media (prefers-reduced-motion: reduce) {
+  .boost-links__flow {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-width: 1;
+  }
+}
+
+/* Nothing on the table responds to the pointer except the candidates, so a
+ * misclick cannot set something else off mid-choice. The hand is shut out
+ * entirely: the cost is already paid, and there is nothing left in there to
+ * decide until the card has been pointed at somebody. */
+.board--aiming .card,
+.board--aiming .city {
+  cursor: default;
+}
+
+.board--aiming .hand,
+.board--aiming .ohand,
+.board--aiming .corner {
+  pointer-events: none;
+}
+
+/* Both sit at the same height, so the battle step stands down while a target
+ * is being chosen — that is the live question, and it is the one to answer. */
+.board--aiming .battlebar {
+  opacity: 0;
+}
+
+.card--aim-muted {
+  opacity: 0.32;
+  filter: saturate(0.35);
+  pointer-events: none;
+}
+
+.card--aim-source {
+  box-shadow:
+    0 0 0 2px var(--blood-bright),
+    0 0 26px rgb(255 61 47 / 55%);
+}
+
+.card--aim-target {
+  cursor: pointer;
+  box-shadow:
+    0 0 0 2px var(--blood-bright),
+    0 0 20px rgb(255 61 47 / 50%);
+  animation: aim-pulse 1.15s ease-in-out infinite;
+}
+
+@keyframes aim-pulse {
+  50% {
+    box-shadow:
+      0 0 0 3px var(--blood-bright),
+      0 0 34px rgb(255 61 47 / 80%);
+  }
+}
+
+.card--aim-target:hover {
+  animation: none;
+  transform: translateY(-6px) scale(1.05);
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 38px rgb(255 61 47 / 85%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aim-arrow__line {
+    animation: none;
+  }
+
+  .card--aim-target {
+    animation: none;
+  }
+
+  .aim-bar {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ blows and deaths
+ *
+ * Drawn over the table from the events that caused them (`BoardFx`). All of
+ * it is presentation: the numbers underneath have already changed.
+ */
+
+.fx {
+  position: fixed;
+  inset: 0;
+  z-index: 43;
+  pointer-events: none;
+  /* Ghosts are placed at viewport coordinates and a card dying against an
+   * edge would otherwise hang outside this box. */
+  overflow: hidden;
+}
+
+/* A character leaving the field, drawn where it last stood. Rules.md §12. */
+.fx__ghost {
+  position: absolute;
+  border-radius: 3px;
+  overflow: hidden;
+  transform-origin: 50% 60%;
+  animation: fx-fade 900ms cubic-bezier(0.3, 0, 0.7, 1) both;
+}
+
+.fx__ghost img,
+.fx__ghost .card__art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fx__ghost-back {
+  width: 100%;
+  height: 100%;
+  background: var(--card-back) center / cover no-repeat;
+}
+
+@keyframes fx-fade {
+  0% {
+    opacity: 1;
+    filter: none;
+  }
+  35% {
+    opacity: 0.85;
+    filter: brightness(1.9) saturate(0.5);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(0.4) saturate(0);
+    transform: translateY(-16px) scale(0.86) rotate(-4deg);
+  }
+}
+
+.fx__hit {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+}
+
+.fx__burst {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  animation: fx-burst 620ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* Steel: a hard, pale flash for a blow struck in a battle. */
+.fx__hit--combat .fx__burst {
+  background: radial-gradient(
+    circle,
+    rgb(255 255 255 / 85%) 0%,
+    rgb(255 190 120 / 55%) 32%,
+    rgb(216 16 32 / 22%) 58%,
+    transparent 72%
+  );
+}
+
+/* An effect reaching across the board reads colder, so the two are not
+ * mistaken for each other. Rules.md §13. */
+.fx__hit--effect .fx__burst {
+  background: radial-gradient(
+    circle,
+    rgb(210 240 255 / 85%) 0%,
+    rgb(120 190 255 / 55%) 34%,
+    rgb(90 120 240 / 22%) 60%,
+    transparent 74%
+  );
+}
+
+@keyframes fx-burst {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+.fx__amount {
+  position: relative;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow:
+    0 0 10px rgb(0 0 0 / 90%),
+    0 2px 4px rgb(0 0 0 / 80%);
+  animation: fx-amount 620ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes fx-amount {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1) translateY(-6px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1) translateY(-20px);
+  }
+}
+
+/* The clash. Rules.md §11 ④ — both sides strike at once, so both cards throw
+ * themselves at the city and come back.
+ *
+ * Driven through `--clash-x/-y`, which the base `.card` transform composes
+ * alongside the fan, the locked tilt and the zone-change slide — so a lunging
+ * card keeps its rotation instead of snapping upright for half a second. The
+ * out-and-back is two writes from `BoardFx` against the transform transition
+ * the card already has, rather than a keyframe that would have to restate the
+ * whole composition to avoid clobbering it. */
+.card--clash {
+  z-index: 12;
+  /* Sharper than the settle a lock gets: this is a blow, not a placement. */
+  transition: transform 240ms cubic-bezier(0.35, 0, 0.3, 1);
+}
+
+/* Reduced motion takes away the *travel*, not the news.
+ *
+ * A death still has to be visible as a death: cutting the fade to a single
+ * frame is how a character came to "pop and be gone", which is worse than the
+ * animation it was replacing. So the opacity work stays — a cross-fade is
+ * motion-free — and only the drifting, scaling and rotating is dropped. The
+ * lunge is genuine travel and goes; `BoardFx` skips it at the source rather
+ * than leaving a transition-less jump out and back. */
+@media (prefers-reduced-motion: reduce) {
+  .fx__ghost {
+    animation: fx-fade-still 700ms ease-out both;
+  }
+
+  .fx__burst {
+    animation: fx-burst-still 500ms ease-out both;
+  }
+
+  .fx__amount {
+    animation: fx-amount-still 620ms ease-out both;
+  }
+}
+
+@keyframes fx-fade-still {
+  0% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0.8;
+    filter: brightness(1.7) saturate(0.5);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(0.4) saturate(0);
+  }
+}
+
+@keyframes fx-burst-still {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+
+@keyframes fx-amount-still {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  20%,
+  70% {
+    opacity: 1;
+  }
+}
+
+/* The card being pointed turns face up as the question is asked.
+ *
+ * Rules.md §13 targeting used to be answered about a grey rectangle: the card
+ * was still Set while its controller chose a victim for it. It is shown to its
+ * controller only, and only while the question is on screen — see the note in
+ * `Board.tsx:CardTile`. */
+.card--revealing {
+  animation: aim-reveal 280ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Opacity and brightness only — deliberately *not* transform. Every transform
+ * on a card is composed from custom properties (see `.card`), and a keyframe
+ * that set `transform` directly would drop the fan, the tilt and the depth
+ * scale for the duration and then hold the wrong one, because the animation
+ * fills forwards. */
+@keyframes aim-reveal {
+  0% {
+    opacity: 0.3;
+    filter: brightness(2.4) contrast(1.2);
+  }
+  60% {
+    opacity: 1;
+    filter: brightness(1.3);
+  }
+  100% {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+/* ---------------------------------------------------------- a city taken
+ *
+ * Rules.md §12. Two of the three cities you need to win (§1), and two cards
+ * paid on the spot — held up like an opened card, with what it paid spelled
+ * out along the bottom where the game does its telling.
+ */
+
+.taken {
+  position: fixed;
+  inset: 0;
+  z-index: 57;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  pointer-events: none;
+  background: radial-gradient(58% 48% at 50% 44%, rgb(0 0 0 / 68%), rgb(0 0 0 / 0%));
+  animation: taken-in 340ms cubic-bezier(0.18, 0.9, 0.28, 1) both;
+}
+
+.taken--leaving {
+  animation: taken-out 450ms ease-in both;
+}
+
+@keyframes taken-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes taken-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.taken__card {
+  width: clamp(120px, 22vh, 190px);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 2px var(--blood-bright),
+    0 0 46px rgb(255 61 47 / 55%),
+    0 20px 60px rgb(0 0 0 / 80%);
+  animation: taken-card 620ms cubic-bezier(0.16, 0.9, 0.26, 1) both;
+}
+
+/* Slams down and settles, the way a claim reads. */
+@keyframes taken-card {
+  0% {
+    transform: scale(1.5) translateY(-24px);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(0.97);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.taken__art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The Royal Capital is the whole game, so it burns rather than glows. */
+.taken--capital .taken__card {
+  box-shadow:
+    0 0 0 3px var(--blood-bright),
+    0 0 70px rgb(255 61 47 / 80%),
+    0 20px 60px rgb(0 0 0 / 80%);
+}
+
+.taken__label {
+  position: absolute;
+  left: 50%;
+  bottom: 12vh;
+  transform: translateX(-50%);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 26px;
+  text-align: center;
+  white-space: nowrap;
+  background: rgb(6 6 7 / 92%);
+  border: 1px solid var(--blood);
+  border-radius: 3px;
+  box-shadow: 0 8px 34px rgb(0 0 0 / 78%);
+  animation: taken-label 420ms 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes taken-label {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 18px);
+  }
+}
+
+.taken__title {
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.taken__draw {
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.taken__where {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card--revealing {
+    animation: none;
+  }
+
+  .taken__card {
+    animation: taken-in 300ms ease-out both;
+  }
+
+  .taken__label {
+    animation: taken-in 300ms 200ms ease-out both;
+  }
+}
+
+/* --------------------------------------------- what you buy, what you spend
+ *
+ * Rules.md §7. Two piles, side by side: the card being opened on the left and
+ * the cards leaving your hand for it on the right. The dialog used to show
+ * only the hand, which left the purchase as a name in a heading and the price
+ * as a row of pips — and which cards you are about to lose is the whole
+ * decision here.
+ */
+
+.pay__ledger {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: clamp(14px, 4vw, 44px);
+  width: 100%;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pay__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 0;
+  max-width: 46%;
+}
+
+/* A seam between the two, so they read as a trade rather than a row. */
+.pay__side--spending {
+  border-left: 1px solid var(--border);
+  padding-left: clamp(14px, 4vw, 44px);
+}
+
+.pay__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.pay__subject {
+  width: clamp(96px, 11vw, 150px);
+  height: auto;
+  aspect-ratio: 703 / 1008;
+  object-fit: cover;
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px var(--blood-deep),
+    0 10px 34px rgb(0 0 0 / 70%);
+}
+
+.pay__subject--unknown {
+  background: var(--card-back) center / cover no-repeat;
+}
+
+.pay__name {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Which of the card's abilities is about to go off. A card may carry two, and
+ * the price alone does not say which. Rules.md §13. */
+.pay__ability {
+  margin: 4px 0 0;
+  max-width: 22ch;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink-faint);
+}
+
+.pay__empty {
+  margin: 0;
+  padding: 22px 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+.pay__spent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* Clicking one puts it back — the same toggle as the hand, from the other
+ * side, so a mis-picked card is undone where you noticed it. */
+.pay__spentcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  width: clamp(70px, 7.5vw, 104px);
+  animation: pay-spend 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.pay__spentcard .focus__art {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 703 / 1008;
+  object-fit: cover;
+  border-radius: 3px;
+  /* Going to the graveyard, and drawn like it. */
+  filter: grayscale(0.45) brightness(0.82);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.pay__spentcard:hover .focus__art {
+  filter: none;
+  box-shadow: 0 0 0 1px var(--blood);
+}
+
+@keyframes pay-spend {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.94);
+  }
+}
+
+/* Holds the card and its magnifier together, so the badge has something of
+ * the card's own size to sit in the corner of. */
+.focus__slot {
+  position: relative;
+  display: flex;
+}
+
+/* A look at a card you are about to throw away for good. */
+.focus__look {
+  position: absolute;
+  padding: 0;
+  color: var(--ink);
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 15px;
+  line-height: 1;
+  background: rgb(6 6 7 / 88%);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  opacity: 0.55;
+  transition:
+    opacity 140ms ease,
+    border-color 140ms ease;
+}
+
+.focus__look:hover,
+.focus__look:focus-visible {
+  opacity: 1;
+  border-color: var(--blood);
+  outline: none;
+}
+
+@media (max-width: 900px), (max-height: 560px) {
+  .pay__ledger {
+    gap: 14px;
+  }
+
+  .pay__side--spending {
+    padding-left: 14px;
+  }
+
+  .pay__heading {
+    font-size: 12px;
+    letter-spacing: 0.14em;
   }
 }

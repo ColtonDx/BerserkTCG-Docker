@@ -55,6 +55,13 @@ were updated to match, so don't re-open them from an older reading.
   opening a character there does nothing to it. City Level therefore only
   climbs, and the board shows it: `Board.tsx` lays a city on its side until
   somebody holds it, and stands it upright when they do.
+- **A city is spent by the vanguard, not by the declaration.** §10 ④(4) allows
+  one battle per city per turn, and §11 ① lets the attacker name nobody, which
+  ends the phase before anything is locked, opened or struck. The allowance is
+  charged when a vanguard steps forward, so calling an attack off costs
+  nothing — `designateVanguard` in `reducer.ts` is where `battledCities` grows.
+  There is no loop worth exploiting: the city turns face up on the _first_
+  declaration and stays that way (§5).
 - **The vanguard is the character that started the attack.** It was on the
   field before the battle was declared and is named in §11 ① — before the
   combat open in ② — so a character opened during the battle may join it but
@@ -265,7 +272,7 @@ initialised from that data at container start (`db/init/`). The deckbuilder
 enforces `Docs/Deckbuilding.md` live, and decks save to the database. See
 `Docs/CardData.md` for what is still missing.
 
-**Abilities** (§13) have a registry and a first thirteen cards. Continuous ones
+**Abilities** (§13) have a registry and 40 cards. Continuous ones
 (Griffith's aura, Casca's condition) are read off the board by `powerOf` /
 `hpOf` / `moveOf` rather than stored, so they stop the instant their source
 moves and there is nothing to undo. Triggered ones — on open, on attack, at
@@ -276,10 +283,41 @@ damage in the End phase. `cannotAttack` is asked of the board by
 character: `OPEN_CARD` carries the choice, `legalActions` suggests a legal one
 the way it suggests a payment, and the reducer accepts any other legal one.
 
+**Cost-bearing abilities** (§13) are `USE_ABILITY`. The wire names one by its
+index on the card (`abilityKey`), because the ability list is static card data.
+A cost may lock the card itself — the printed "Tap:", which §6 allows as a cost
+— lock a character the player picks, take cards out of hand, or be once per
+turn; every part must be payable or the ability is never offered. `canActivate`
+in `rules.ts` is the single authority on timing, which is why `reduce` lets
+`USE_ABILITY` past the priority gate rather than duplicating the rule. A Quick
+ability rides the same windows a Quick card does — `offerQuick` probes the
+window it is _about_ to open, since a Quick ability is only usable inside one.
+
+The client offers them from the card's right-click menu, and needs the printed
+ability list to do it: `legalActions` names an ability by its index, which is a
+number with no label and no price. `/api/catalogue` therefore ships each card's
+abilities alongside it — static card data, nothing hidden — and the client
+reads them through `abilityOf`. `targets` on that payload is what tells the two
+kinds of choice apart: a cost that locks an ally (§6) puts a name in the
+action too, and raising the targeting arrow over it would be asking a question
+nobody posed.
+
+Effects can scale (`per`, §13's "for each"), soften damage on the way in
+(`reduceDamage`, continuous or a `SHIELD` counter for the turn), reach
+face-down Set Cards (`Selector.faceDown`), and be aimed by Distance
+(`TargetSpec.maxDistance`, §15). One printed line that does two things for one
+price is one ability with `then`, never two entries — a second entry would be
+a second ability the player could use for free.
+
 A face-up character's _current_ numbers travel in the view as
 `VisibleCard.current`, because the client cannot work out an ability's effect
 from the card database — and the damage step spends the current Power exactly,
-so a client reading printed Power could never balance an assignment.
+so a client reading printed Power could never balance an assignment. _Who_ is
+moving them travels as `VisibleCard.boostedBy` (`rules.ts:boostSources`) for
+the same reason: a continuous ability is read off the board and stored nowhere,
+so a character standing at +1/+1 would otherwise have no visible cause. The
+table shows both — a marker on the card for the shift, a line on hover to the
+card causing it.
 
 **Quick windows** (§13) let a Quick Set Card be opened out of turn. The game
 stops at six moments — `DesignNotes` "When to offer a Quick" — and only when
@@ -289,10 +327,11 @@ battle, because that is what an interrupt is; `PASS_PRIORITY` closes it and
 play resumes where it froze. It is _not_ §14: no stack, no interrupting an
 interrupt.
 
-**Not implemented.** The list of what is left lives in `TODO.md`. 28 of the 41
-transcribed BK1 abilities are outstanding, mostly waiting on chosen targets
-and on a way for an effect to stop and ask a question. The **priority stack**
-(§14) is still unbuilt, and `USE_ABILITY` is still stubbed.
+**Not implemented.** The list of what is left lives in `TODO.md`. Green is 26
+of its 38 printed lines; the twelve outstanding wait mostly on a way for an
+effect to stop and ask a question (a deck search), on attachments, and on
+being able to aim an effect at an _area_ rather than a character. The
+**priority stack** (§14) is still unbuilt.
 Recovering a _forgotten_ password is not built — that needs a channel the
 server does not have. `DesignNotes` 3 (room passwords and a start-game button)
 is also outstanding:

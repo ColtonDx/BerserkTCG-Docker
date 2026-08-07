@@ -179,3 +179,21 @@ export function playShuffle(): void {
     at += 0.05 - 0.022 * Math.sin(progress * Math.PI);
   }
 }
+
+/**
+ * A phase going by: one long, soft sweep of air.
+ *
+ * Darker and slower than a card — a phase is the turn moving rather than
+ * anything landing on the table, so it wants breadth instead of a snap. It
+ * plays once per phase the banner walks through, which is what makes a turn
+ * that skips three of them audibly a turn that skipped three of them.
+ */
+export function playPhase(): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  rush(ctx, now, 0.46, 0.075, 320, 1400);
+  // A second, quieter tail a beat behind, so it settles rather than stops.
+  rush(ctx, now + 0.13, 0.34, 0.03, 480, 950);
+}

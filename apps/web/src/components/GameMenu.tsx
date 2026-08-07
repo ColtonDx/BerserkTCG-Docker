@@ -1,6 +1,7 @@
 import type { GameAction, PlayerView } from '@berserk/engine';
 import { useRef, useState, type JSX } from 'react';
 import { CardMenu, type CardMenuItem } from './CardMenu.js';
+import { nameOf } from '../state/useCardNames.js';
 
 /**
  * The game menu, in the header.
@@ -89,7 +90,7 @@ export function GameMenu({
   for (const action of view.legalActions) {
     if (action.type === 'CONCEDE') continue;
     if (ON_THE_CARD.has(action.type) || ON_THE_TURN.has(action.type)) continue;
-    items.push({ label: strayLabel(action), onPick: () => onAction(action) });
+    items.push({ label: strayLabel(action, view), onPick: () => onAction(action) });
   }
 
   return (
@@ -142,12 +143,17 @@ export function GameMenu({
 }
 
 /** Anything not yet given a home of its own, so it stays reachable. */
-function strayLabel(action: GameAction): string {
+function strayLabel(action: GameAction, view: PlayerView): string {
   switch (action.type) {
     case 'DECLARE_BATTLE':
       return `Battle at area ${action.city + 1}`;
-    case 'USE_ABILITY':
-      return `Use ${action.ability}`;
+    case 'USE_ABILITY': {
+      // The wire names an ability by its position on the card, which means
+      // nothing to a player — say whose ability it is instead.
+      const card = view.cards[action.card];
+      const defId = card && 'defId' in card ? card.defId : undefined;
+      return defId ? `Use ${nameOf(defId)}’s ability` : 'Use ability';
+    }
     default:
       return action.type.toLowerCase().replace(/_/g, ' ');
   }

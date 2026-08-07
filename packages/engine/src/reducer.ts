@@ -1,9 +1,13 @@
 import {
+  abilityKey,
   counterFor,
   selects,
   BOOST_COUNTERS,
+  SHIELD,
   targetPlayer,
+  usedOnTurnCounter,
   type Ability,
+  type Effect,
   type Selector,
   type StatLine,
   type Trigger,
@@ -14,22 +18,26 @@ import { legalActions, quickOpens } from './legal.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { ok, violation, type Result, type RuleViolation } from './result.js';
 import {
+  activatedAbilities,
+  activationCost,
   battleResult,
+  canActivate,
   canCommit,
   canVanguard,
   checkWinConditions,
   cityLevel,
   conditionHolds,
+  damageAfterReduction,
   definitionOf,
   hpOf,
   isCharacter,
   moveOf,
   nextRangeBand,
   powerOf,
+  factsOf,
   presenceIn,
   refreshBoard,
   legalTargets,
-  subtypesOf,
   targetingAbilities,
   turnOrdinal,
   OPENED_ON_TURN,
@@ -115,8 +123,16 @@ export function reduce(
     if (actor !== state.quick.waitingOn) {
       return violation('NOT_YOUR_PRIORITY', 'Waiting on your opponent to answer.', '§13');
     }
-    if (action.type !== 'OPEN_CARD' && action.type !== 'PASS_PRIORITY') {
-      return violation('WRONG_PHASE', 'You may open a Quick card, or pass.', '§13');
+    if (
+      action.type !== 'OPEN_CARD' &&
+      action.type !== 'USE_ABILITY' &&
+      action.type !== 'PASS_PRIORITY'
+    ) {
+      return violation(
+        'WRONG_PHASE',
+        'You may open a Quick card, use a Quick ability, or pass.',
+        '§13',
+      );
     }
   }
 
@@ -126,9 +142,13 @@ export function reduce(
   // assigning damage throughout the attacker's Main phase.
   const inBattle = state.battle !== null && isBattleAction(action);
 
-  // Conceding is always legal, including out of turn.
+  // Conceding is always legal, including out of turn. So is reaching for an
+  // ability: a Quick one may be used at any time (§13), and `canActivate` is
+  // the single authority on when — it holds everything else to its
+  // controller's own Main phase, which this gate could only duplicate.
   if (
     action.type !== 'CONCEDE' &&
+    action.type !== 'USE_ABILITY' &&
     !inBattle &&
     state.quick === null &&
     state.turn.priorityPlayer !== actor
@@ -332,11 +352,7 @@ function applyAction(
     }
 
     case 'USE_ABILITY':
-      return violation(
-        'NOT_IMPLEMENTED',
-        `${action.type} is not implemented yet.`,
-        action.type === 'USE_ABILITY' ? '§13' : '§14',
-      );
+      return settled(ctx, draft, events, useAbility(ctx, draft, actor, action, events));
 
     default: {
       const exhaustive: never = action;
@@ -396,7 +412,16 @@ function declareBattle(
     pending: [],
     struck: [],
   });
-  draft.turn.battledCities = toDraft([...draft.turn.battledCities, cityIndex]);
+  // The city is *not* spent here. Rules.md §10 ④(4) allows one battle per city
+  // per turn, and §11 ① lets the attacker name no vanguard, which "ends the
+  // Battle phase" before anything has been locked, opened or struck. Charging
+  // the city for a fight that never happened made calling one off cost a turn
+  // of that area — so the allowance is spent when the battle actually
+  // commences, which is the vanguard stepping forward. See `designateVanguard`.
+  //
+  // Nothing is gained by declaring and calling off repeatedly: the city turns
+  // face up on the first declaration and stays that way (§5), so a second
+  // declaration finds the board exactly as the first one left it.
 
   // Being attacked is what wakes a city up. Rules.md §5 — until then it lies
   // face-down and neutral, and contributes nothing to City Level.
@@ -508,6 +533,15 @@ function designateVanguard(
   card.locked = true;
   battle.vanguard = cardId;
   battle.participants = toDraft([cardId]);
+
+  // The battle has actually commenced, so the city's one battle this turn
+  // (Rules.md §10 ④(4)) is spent now rather than on the declaration. Naming a
+  // vanguard is the first irreversible thing in §11 — it locks the character —
+  // and the step before it exists precisely so the attacker can back out.
+  if (!draft.turn.battledCities.includes(battle.city)) {
+    draft.turn.battledCities = toDraft([...draft.turn.battledCities, battle.city]);
+  }
+
   events.push({ type: 'VANGUARD_DESIGNATED', card: cardId });
   // §13 — "when this character attacks". The vanguard is in the fight the
   // moment it is named, and its own conditions can now see the battle.
@@ -748,12 +782,20 @@ function resolveBand(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
   for (const hit of battle.pending) {
     const target = draft.cards[hit.target];
     if (!target) continue;
-    target.damage += hit.amount;
+    // Reduction bites where the blow lands, not where it was assigned: §11 ④
+    // makes the striker spend its Power exactly, so armour makes the wound
+    // smaller rather than letting the attacker hold anything back.
+    const amount = damageAfterReduction(ctx, draft, target as CardInstance, hit.amount, {
+      combat: true,
+    });
+    if (amount === 0) continue;
+    target.damage += amount;
     events.push({
       type: 'DAMAGE_DEALT',
       source: hit.source,
       target: hit.target,
-      amount: hit.amount,
+      amount,
+      combat: true,
     });
   }
   battle.pending = toDraft([]);
@@ -761,10 +803,7 @@ function resolveBand(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
   for (const id of battle.participants) {
     const card = draft.cards[id];
     if (!card || card.zone !== 'city') continue;
-    if (card.damage >= hpOf(ctx, draft, card)) {
-      moveToZone(draft, id, { player: card.owner, zone: 'trash' });
-      events.push({ type: 'CHARACTER_DESTROYED', card: id });
-    }
+    if (card.damage >= hpOf(ctx, draft, card)) destroy(ctx, draft, card, events);
   }
 
   refreshBoard(ctx, draft, events);
@@ -1377,9 +1416,16 @@ function offerQuick(
 
   const responder = draft.seats.find((seat) => seat !== actedBy);
   if (!responder) return;
-  if (quickOpens(ctx, draft as GameState, responder).length === 0) return;
 
-  draft.quick = { waitingOn: responder, trigger };
+  // Asked of the window we are about to open, not of the one that is not
+  // there yet: a Quick *ability* is only usable inside a window, so probing
+  // the current state would answer "nothing to do" every time and no window
+  // would ever open for one.
+  const candidate = { waitingOn: responder, trigger };
+  const probe = { ...(draft as GameState), quick: candidate };
+  if (quickOpens(ctx, probe, responder).length === 0) return;
+
+  draft.quick = toDraft(candidate);
   events.push({ type: 'QUICK_OFFERED', player: responder, trigger });
 }
 
@@ -1428,6 +1474,110 @@ function checkTargets(
 }
 
 /**
+ * Uses a cost-bearing ability. Rules.md §13.
+ *
+ * The cost is paid before the effect resolves and is not refunded if the
+ * effect finds nothing — that is what paying for something means. Everything
+ * is validated here rather than trusted from the client, because `legalActions`
+ * offering only legal uses is a convenience, not a guarantee.
+ */
+function useAbility(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  action: Extract<GameAction, { type: 'USE_ABILITY' }>,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const card = draft.cards[action.card];
+  if (!card) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§13');
+
+  const entry = activatedAbilities(ctx, card as CardInstance).find(
+    (candidate) => abilityKey(candidate.index) === action.ability,
+  );
+  if (!entry) return violation('ILLEGAL_TARGET', 'That card has no such ability.', '§13');
+  if (!canActivate(ctx, draft as GameState, card as CardInstance, entry, actor)) {
+    return violation('WRONG_PHASE', 'That ability cannot be used right now.', '§13');
+  }
+
+  const cost = entry.ability.cost;
+  const pay = action.pay ?? [];
+  const payCards: CardInstance[] = [];
+  for (const id of pay) {
+    const payCard = draft.cards[id];
+    if (!payCard || payCard.zone !== 'hand' || payCard.controller !== actor) {
+      return violation('CARD_NOT_IN_ZONE', 'Cost must be paid with cards from your hand.', '§13');
+    }
+    payCards.push(payCard as CardInstance);
+  }
+  const payment = validatePayment(ctx, activationCost(entry.ability), payCards);
+  if (!payment.ok) return payment;
+
+  // The chosen ally to lock comes first, ahead of any target for the effect:
+  // a cost is settled before what it buys. Both are validated against the
+  // same board the client saw.
+  const choices = [...(action.targets ?? [])];
+  let lockedAlly: CardInstanceId | undefined;
+  if (cost?.lockAlly) {
+    const picked = choices.shift();
+    if (picked === undefined) {
+      return violation('ILLEGAL_TARGET', 'That ability must lock one of your characters.', '§13');
+    }
+    const allowed = legalTargets(ctx, draft, card as CardInstance, cost.lockAlly, draft.battle);
+    if (!allowed.some((option) => option.instanceId === picked)) {
+      return violation('ILLEGAL_TARGET', 'That character cannot pay for this.', '§13');
+    }
+    lockedAlly = picked;
+  }
+
+  let chosen: CardInstanceId | undefined;
+  if (entry.ability.target) {
+    const picked = choices.shift();
+    if (picked === undefined) {
+      return violation('ILLEGAL_TARGET', 'That ability must be pointed at somebody.', '§13');
+    }
+    const allowed = legalTargets(
+      ctx,
+      draft,
+      card as CardInstance,
+      entry.ability.target,
+      draft.battle,
+    );
+    if (!allowed.some((option) => option.instanceId === picked)) {
+      return violation('ILLEGAL_TARGET', 'That character cannot be targeted.', '§13');
+    }
+    chosen = picked;
+  }
+  if (choices.length > 0) {
+    return violation('ILLEGAL_TARGET', 'That ability does not ask for that many choices.', '§13');
+  }
+
+  /* ------------------------------------------------------------ pay for it */
+
+  for (const id of pay) {
+    moveToZone(draft, id, { player: actor, zone: 'trash' });
+    events.push({ type: 'CARD_TRASHED', player: actor, card: id });
+  }
+  if (pay.length > 0) events.push({ type: 'COST_PAID', player: actor, cards: [...pay] });
+
+  if (cost?.lockSelf === true) card.locked = true;
+  if (lockedAlly !== undefined) {
+    const ally = draft.cards[lockedAlly];
+    if (ally) ally.locked = true;
+  }
+  if (cost?.oncePerTurn === true) {
+    card.counters[usedOnTurnCounter(entry.index)] = turnOrdinal(draft);
+  }
+
+  events.push({ type: 'ABILITY_USED', player: actor, card: action.card, ability: action.ability });
+  resolveEffect(ctx, draft, card as CardInstance, entry.ability, events, chosen);
+
+  // An open Quick window is left open, exactly as opening a Quick card leaves
+  // it open: §13 lets a Quick interrupt another effect, so the responder may
+  // answer again and closes the window themselves by passing.
+  return ok(true);
+}
+
+/**
  * Fires every ability on `source` that answers to this trigger.
  *
  * Conditions are checked here rather than by the caller so that a trigger
@@ -1454,7 +1604,12 @@ function fireAbilities(
   }
 }
 
-/** Runs one ability's effect. Rules.md §13. */
+/**
+ * Runs one ability: its effect, then anything chained after it. Rules.md §13.
+ *
+ * The printed line is announced once however many effects it carries, because
+ * a card that does two things for one price said so in one sentence.
+ */
 function resolveEffect(
   ctx: EngineContext,
   draft: Draft<GameState>,
@@ -1463,17 +1618,35 @@ function resolveEffect(
   events: GameEvent[],
   chosen?: CardInstanceId | undefined,
 ): void {
-  const effect = ability.effect;
-  const controller = source.controller;
   events.push({
     type: 'ABILITY_RESOLVED',
     card: source.instanceId,
-    player: controller,
+    player: source.controller,
     text: ability.text,
   });
 
+  runEffect(ctx, draft, source, ability.effect, events, chosen);
+  for (const next of ability.then ?? []) {
+    runEffect(ctx, draft, source, next, events, chosen);
+  }
+}
+
+/** One effect of one ability. */
+function runEffect(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  effect: Effect,
+  events: GameEvent[],
+  chosen?: CardInstanceId | undefined,
+): void {
+  const controller = source.controller;
+
   switch (effect.do) {
     case 'buff': {
+      // Counted before anything is written, so a "for each" reads the board
+      // as it was when the ability resolved rather than as it becomes.
+      const scale = scaleOf(ctx, draft, source, effect.per);
       // Under a trigger this is "until end of turn", so it is written onto
       // the card and cleared with damage in the End phase (Rules.md §10 ⑤).
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
@@ -1481,7 +1654,7 @@ function resolveEffect(
           const change = effect.stats[stat];
           if (change === undefined) continue;
           const key = counterFor(stat);
-          card.counters[key] = (card.counters[key] ?? 0) + change;
+          card.counters[key] = (card.counters[key] ?? 0) + change * scale;
         }
       }
       return;
@@ -1489,7 +1662,8 @@ function resolveEffect(
 
     case 'draw': {
       const player = targetPlayer(draft, controller, effect.player);
-      if (player) drawInto(draft, player, effect.count, events);
+      const count = effect.count * scaleOf(ctx, draft, source, effect.per);
+      if (player && count > 0) drawInto(draft, player, count, events);
       return;
     }
 
@@ -1512,10 +1686,93 @@ function resolveEffect(
       return;
     }
 
+    case 'damage': {
+      // Marked as damage rather than dealt as its own thing, so it stacks
+      // with combat damage, kills at HP and clears at end of turn — the
+      // three rules a separate kind of damage would have to repeat.
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        // Not combat: a card that only softens blows "during combat" says
+        // nothing about a spell, and must not quietly absorb this.
+        const amount = damageAfterReduction(ctx, draft, card as CardInstance, effect.amount, {
+          combat: false,
+        });
+        if (amount === 0) continue;
+        card.damage += amount;
+        events.push({
+          type: 'DAMAGE_DEALT',
+          source: source.instanceId,
+          target: card.instanceId,
+          amount,
+          combat: false,
+        });
+      }
+      // Checked after all of it lands, so an effect that hits several
+      // characters kills them together rather than one at a time.
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        if (card.damage >= hpOf(ctx, draft, card as CardInstance)) {
+          destroy(ctx, draft, card, events);
+        }
+      }
+      return;
+    }
+
+    case 'destroy': {
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        destroy(ctx, draft, card, events);
+      }
+      return;
+    }
+
+    case 'moveTo': {
+      // Where the card doing this is standing. An ability whose own card has
+      // left the field has nowhere to send anybody.
+      const to = source.cityIndex;
+      if (to === undefined) return;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        const from = card.cityIndex;
+        if (from === undefined || from === to) continue;
+        // Not locked and no Move spent: this is the effect moving them, not
+        // the character taking their Main-phase move (Rules.md §10 ④(1), §14).
+        card.cityIndex = to;
+        events.push({ type: 'CHARACTER_MOVED', card: card.instanceId, from, to });
+      }
+      // A city whose occupier has just walked away is no longer theirs
+      // (Rules.md §12); `refreshBoard` runs after the action and settles it.
+      return;
+    }
+
+    case 'reduceDamage': {
+      // Under a trigger this is a shield for the turn, written onto the card
+      // and swept with the boosts. The continuous kind never reaches here —
+      // it is read off the board by `damageReduction` as each blow lands.
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        card.counters[SHIELD] = (card.counters[SHIELD] ?? 0) + effect.amount;
+      }
+      return;
+    }
+
     // Continuous by nature: asked of the board by `cannotAttack`, never run.
     case 'cannotAttack':
       return;
   }
+}
+
+/**
+ * Sends a character to the Trash, firing whatever it has to say on the way.
+ *
+ * The order matters: `death` abilities are asked *before* the card leaves the
+ * field, because an ability read off a card in the Trash is an ability read
+ * off a card that is not there. Rules.md §3.
+ */
+function destroy(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  card: Draft<CardInstance>,
+  events: GameEvent[],
+): void {
+  fireAbilities(ctx, draft, card as CardInstance, 'death', events);
+  moveToZone(draft, card.instanceId, { player: card.owner, zone: 'trash' });
+  events.push({ type: 'CHARACTER_DESTROYED', card: card.instanceId });
 }
 
 /** The cards on the field an effect's selector reaches. */
@@ -1526,12 +1783,36 @@ function selected(
   selector: Selector,
   chosen?: CardInstanceId | undefined,
 ): Draft<CardInstance>[] {
-  return Object.values(draft.cards).filter(
-    (card) =>
-      card.zone === 'city' &&
-      card.faceUp &&
-      selects(selector, source, card as CardInstance, (c) => subtypesOf(ctx, c), chosen),
-  );
+  return Object.values(draft.cards).filter((card) => {
+    if (card.zone !== 'city') return false;
+    // A selector reaches one population or the other, never both — `selects`
+    // enforces which. Face-down Set Cards are whatever they are, so the
+    // character test would be wrong to ask; face-up cards must be *people*,
+    // because every effect in the set that reaches across the board reaches
+    // characters, and an Eternal standing in the area is not one of them.
+    if (!card.faceUp) {
+      if (selector.faceDown !== true) return false;
+    } else if (!isCharacter(ctx, card as CardInstance)) {
+      return false;
+    }
+    return selects(selector, source, card as CardInstance, (c) => factsOf(ctx, c), chosen);
+  });
+}
+
+/**
+ * How many cards a `per` selector counts. Rules.md §13's "for each".
+ *
+ * One is the multiplier when a card does not scale, so callers can apply this
+ * unconditionally rather than branching around it.
+ */
+function scaleOf(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  per: Selector | undefined,
+): number {
+  if (!per) return 1;
+  return selected(ctx, draft, source, per).length;
 }
 
 /**

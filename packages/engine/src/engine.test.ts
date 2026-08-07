@@ -1332,10 +1332,53 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     expect(state.battle).toBeNull();
   });
 
-  it('will not let the same city be battled twice in a turn', () => {
+  it('leaves the city free when the attack is called off before it starts', () => {
+    // Rules.md §11 ① — naming no vanguard "ends the Battle phase", and nothing
+    // has been locked, opened or struck by then. The city's one battle a turn
+    // (§10 ④(4)) is for a fight that happened, so backing out at the only step
+    // that offers it must not cost the area for the rest of the turn.
     const { state: start, attacker } = withGarrison(['dev-001', 'dev-003'], ['dev-001']);
     let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
     state = apply(state, attacker, { type: 'BATTLE_PASS' });
+
+    expect(state.battle).toBeNull();
+    expect(state.turn.battledCities).not.toContain(2);
+    expect(engine.reduce(state, attacker, { type: 'DECLARE_BATTLE', city: 2 }).ok).toBe(true);
+  });
+
+  it('keeps the city awake even though the attack was called off', () => {
+    // §5 — being attacked is what turns a city face up, and it stays that way.
+    // So declaring and backing out changes nothing a second declaration would
+    // find: there is no loop here worth exploiting.
+    const { state: start, attacker } = withGarrison(['dev-001', 'dev-003'], ['dev-001']);
+    let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'BATTLE_PASS' });
+    expect(state.cities[2]?.faceUp).toBe(true);
+  });
+
+  it('will not let the same city be battled twice in a turn', () => {
+    // The defender outnumbers the attacker, so the attack is repelled and
+    // nobody takes the city — otherwise the second declaration is refused for
+    // occupying it (§10) and this would never reach the once-per-city rule.
+    const { state: start, attacker } = withGarrison(['dev-001'], ['dev-001', 'dev-003']);
+    let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+
+    // Naming the vanguard is what commits the attack, and what spends the city.
+    const lead = engine
+      .legalActions(state, attacker)
+      .find((action) => action.type === 'DESIGNATE_VANGUARD');
+    state = apply(state, attacker, lead as GameAction);
+    expect(state.turn.battledCities).toContain(2);
+
+    // Run it out, so the re-declaration is attempted from Main as it would be.
+    for (let guard = 0; guard < 24 && state.battle; guard++) {
+      const waiting = state.battle.waitingOn;
+      const next = engine.legalActions(state, waiting).find((action) => action.type !== 'CONCEDE');
+      if (!next) break;
+      state = apply(state, waiting, next);
+    }
+    expect(state.battle).toBeNull();
+    expect(state.cities[2]?.occupiedBy).not.toBe(attacker);
 
     const again = engine.reduce(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
     expect(again.ok).toBe(false);
