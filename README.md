@@ -1,4 +1,7 @@
-# Berserk TCG
+# Berk TCG
+All Rights, images, etc., belong to Kentaro Miura, Studio Gaga, Konami.
+This is a fan based project to keep the memory and playability of the Berserk TCG alive.
+Always keep struggling.
 
 A browser-based, Docker-hosted way to play the Berserk trading card game
 (Konami, 2003 — based on Kentaro Miura's _Berserk_).
