@@ -15,7 +15,12 @@ services:
       NODE_ENV: development
       HOST: 0.0.0.0
       PORT: 3001
-      CORS_ORIGIN: http://localhost:5173
+      # Only consulted when the browser reaches the API cross-origin. The web
+      # container proxies /api and /socket.io through Vite, so the usual case
+      # is same-origin and this never comes up — including from another
+      # machine at http://10.10.100.36:5173. Override it (comma-separated) if
+      # you point `VITE_SERVER_URL` straight at the API and bypass the proxy.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       CARD_DIR: /app/art-assets/cards
       DATABASE_URL: postgresql://berserk:berserk@db:5432/berserk
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}

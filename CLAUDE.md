@@ -185,6 +185,54 @@ docker compose up                            # full dev stack + Postgres
 docker compose -f docker-compose.prod.yml up --build   # single-container prod
 ```
 
+## Where it runs
+
+**The dev server is `10.10.100.36`** (`dev-1`), and it is the only deployment.
+**Never treat `localhost` as the deployment.** This checkout lives on a
+different machine (`10.10.100.99`), so `docker compose up` here builds a
+private stack that nobody else can see — it is not a deploy, and verifying
+against it proves nothing about `.36`.
+
+| What          | URL                             |
+| ------------- | ------------------------------- |
+| The game      | http://10.10.100.36:3001        |
+| Server health | http://10.10.100.36:3001/health |
+
+One port, because `.36` runs the **prod** stack: a single container serving
+the API and the built client same-origin. There is no `:5173` there — that is
+the dev stack's Vite port and only exists on a machine running
+`docker-compose.yml`.
+
+### Deploying
+
+The deployment is a **file copy at `/home/dxadmin/berserk-tcg`, not a git
+checkout**, so there is nothing to `git pull` there. Push first, then rsync
+the tree and rebuild:
+
+```bash
+rsync -az --delete \
+  --exclude '.git' --exclude 'node_modules' --exclude 'dist' --exclude '.env' \
+  -e "ssh -i ~/.ssh/dxadmin_id_rsa" \
+  ./ dxadmin@10.10.100.36:/home/dxadmin/berserk-tcg/
+
+ssh -i ~/.ssh/dxadmin_id_rsa dxadmin@10.10.100.36 \
+  'cd /home/dxadmin/berserk-tcg && docker compose -f docker-compose.prod.yml up -d --build'
+```
+
+**Excluding `.env` is not optional.** The one on `.36` holds that box's real
+`SESSION_SECRET` and `POSTGRES_PASSWORD`; overwriting it signs out every
+account and breaks the database login. It also sets `CORS_ORIGIN` to the host
+URL, which the prod stack needs because the browser's `Origin` is
+`http://10.10.100.36:3001`.
+
+Prod builds the client into the image, so **every change needs a rebuild** —
+there is no hot-reload and no bind mount. Verify against the host afterwards,
+never against `localhost`:
+
+```bash
+curl -s http://10.10.100.36:3001/health    # uptime near 0 means it restarted
+```
+
 Run `npm run typecheck` and `npm test` before declaring work finished. The
 strict TypeScript settings (`noUncheckedIndexedAccess`,
 `exactOptionalPropertyTypes`) catch real bugs — do not loosen them, and do not
