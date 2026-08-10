@@ -500,6 +500,16 @@ function battleOffersAChoice(
   draft: Draft<GameState>,
   battle: BattleState,
 ): boolean {
+  // §11 ④ — the striker spends all of its Power among enemy participants. With
+  // one enemy left standing there is only one legal split: every point goes
+  // there. Asking would be offering a single button, and the player has to
+  // press it before the battle can finish.
+  //
+  // Two or more is a real decision — concentrating kills one, spreading may
+  // kill neither — and is always asked. So is a striker with no Power, whose
+  // one legal answer is an empty assignment.
+  if (battle.step === 'damage') return damageTargets(draft, battle).length > 1;
+
   if (battle.step !== 'opens' && battle.step !== 'commit') return true;
 
   const wanted = battle.step === 'opens' ? 'OPEN_CARD' : 'COMMIT_CHARACTER';
@@ -509,20 +519,77 @@ function battleOffersAChoice(
 }
 
 /**
+ * Enemies the current striker could still be assigned onto. Rules.md §11 ④.
+ *
+ * Read off the battle rather than the city: only *participants* can be hit,
+ * and a character destroyed by an earlier band has left the field and is no
+ * longer among them.
+ */
+function damageTargets(draft: Draft<GameState>, battle: BattleState): CardInstanceId[] {
+  const striker = battle.assigning[0];
+  const owner = striker ? draft.cards[striker]?.controller : undefined;
+  if (owner === undefined) return [];
+
+  return battle.participants.filter((id) => {
+    const card = draft.cards[id];
+    return card !== undefined && card.zone === 'city' && card.controller !== owner;
+  });
+}
+
+/**
  * Answers for a player who has nothing to say, so a battle never stops on a
- * question with one possible answer. Bounded, because each pass either ends a
- * step or counts toward the two that end commitment.
+ * question with one possible answer.
+ *
+ * Bounded because a rules bug here would spin forever, but the bound has to
+ * clear a whole exchange: every participant on both sides can strike, one band
+ * at a time (§11 ④), and a forced assignment is answered here rather than by
+ * the player. Two per participant is far more than the steps a battle has.
  */
 function settleBattle(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
-  for (let guard = 0; guard < 8; guard++) {
+  const limit = Math.max(8, (draft.battle?.participants.length ?? 0) * 2 + 8);
+  for (let guard = 0; guard < limit; guard++) {
     // A battle cannot be answered for a player who is mid-question: the card
     // they are still resolving may be about to change what the step offers.
     if (draft.quick || draft.pending) return;
     const battle = draft.battle;
     if (!battle || battleOffersAChoice(ctx, draft, battle)) return;
-    const result = battlePass(ctx, draft, battle.waitingOn, events);
+
+    // §11 ④ — damage is assigned, never passed, so the forced split is spent
+    // here rather than routed through `battlePass`, which rightly refuses it.
+    const result =
+      battle.step === 'damage'
+        ? forcedAssignment(ctx, draft, battle, events)
+        : battlePass(ctx, draft, battle.waitingOn, events);
     if (!result.ok) return;
   }
+}
+
+/**
+ * Spends a striker's whole Power on the only enemy it could hit. Rules.md
+ * §11 ④.
+ *
+ * Only ever called once {@link battleOffersAChoice} has established there is
+ * nothing to choose between — at most one target — so this is the assignment
+ * the player would have been made to confirm.
+ */
+function forcedAssignment(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  battle: BattleState,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const striker = battle.assigning[0];
+  if (striker === undefined) return violation('WRONG_PHASE', 'Nobody is striking.', '§11');
+  const card = draft.cards[striker];
+  if (!card) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§11');
+
+  const power = powerOf(ctx, draft, card as CardInstance);
+  const target = damageTargets(draft, battle)[0];
+  // No Power, or nobody left to hit: the strike resolves as an empty
+  // assignment rather than stalling the battle on an impossible question.
+  const hits = target !== undefined && power > 0 ? [{ target, amount: power }] : [];
+
+  return assignDamage(ctx, draft, card.controller, striker, hits, events);
 }
 
 /**

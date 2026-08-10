@@ -1080,26 +1080,18 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     const theirSide = inCity(state, defender)[0] as CardInstance;
     state = commitThen(state, [{ player: defender, card: theirSide.instanceId }]);
 
-    expect(state.battle?.step).toBe('damage');
-    // §11 ④ — Range 2 goes before Range 1.
-    expect(state.battle?.assigning[0]).toBe(scout.instanceId);
-
+    // One character a side, so each strike has exactly one enemy to spend its
+    // Power on and there is nothing to choose. The engine answers a question
+    // with one answer rather than asking it, so the whole exchange resolves
+    // on the commitment that started it — see `battleOffersAChoice`.
     const merc = inCity(state, defender)[0] as CardInstance;
-    state = apply(state, attacker, {
-      type: 'ASSIGN_DAMAGE',
-      card: scout.instanceId,
-      hits: [{ target: merc.instanceId, amount: 1 }],
-    });
-    // 1 damage on 2 HP is not lethal, so it survives and strikes back.
+    expect(state.battle).toBeNull();
+
+    // 1 Power against 2 HP either way: both take a point and both live.
     expect(state.cards[merc.instanceId]?.damage).toBe(1);
     expect(state.cards[merc.instanceId]?.zone).toBe('city');
-
-    state = apply(state, defender, {
-      type: 'ASSIGN_DAMAGE',
-      card: merc.instanceId,
-      hits: [{ target: scout.instanceId, amount: 1 }],
-    });
-    expect(state.battle).toBeNull();
+    expect(state.cards[scout.instanceId]?.damage).toBe(1);
+    expect(state.cards[scout.instanceId]?.zone).toBe('city');
     // Both survived on 1 damage each, so nobody took the city. §12 stalemate.
     expect(state.cities[2]?.occupiedBy).toBeNull();
   });
@@ -1112,25 +1104,17 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     const merc = inCity(state, defender)[0] as CardInstance;
     state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: guardian.instanceId });
     state = skipOpens(state);
+    // Taken before the fight: winning the city draws two (§12), and the
+    // exchange now resolves as soon as the last character is committed.
+    const handBefore = zoneSize(state, attacker, 'hand');
     // The defender has to commit, or there is nobody to fight: an unopposed
     // battle ends as a stalemate with no damage exchanged at all. §11 ③.
     const theirSide = inCity(state, defender)[0] as CardInstance;
     state = commitThen(state, [{ player: defender, card: theirSide.instanceId }]);
 
-    const handBefore = zoneSize(state, attacker, 'hand');
-
-    // Both are Range 1, so they strike in the same band — the attacker
-    // assigns first, but the damage lands together. §11 ④.
-    state = apply(state, attacker, {
-      type: 'ASSIGN_DAMAGE',
-      card: guardian.instanceId,
-      hits: [{ target: merc.instanceId, amount: 2 }],
-    });
-    state = apply(state, defender, {
-      type: 'ASSIGN_DAMAGE',
-      card: merc.instanceId,
-      hits: [{ target: guardian.instanceId, amount: 1 }],
-    });
+    // Both are Range 1, so they strike in the same band and the damage lands
+    // together (§11 ④). One enemy each, so neither assignment is a choice and
+    // the engine spends both without asking.
 
     // The Mercenary died but still dealt its damage, being simultaneous.
     expect(state.cards[merc.instanceId]?.zone).toBe('trash');
@@ -1157,24 +1141,62 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     const theirSide = inCity(state, defender)[0] as CardInstance;
     state = commitThen(state, [{ player: defender, card: theirSide.instanceId }]);
 
-    state = apply(state, attacker, {
-      type: 'ASSIGN_DAMAGE',
-      card: merc.instanceId,
-      hits: [{ target: guardian.instanceId, amount: 1 }],
-    });
-    state = apply(state, defender, {
-      type: 'ASSIGN_DAMAGE',
-      card: guardian.instanceId,
-      hits: [{ target: merc.instanceId, amount: 2 }],
-    });
-
+    // One enemy each, so both strikes are forced and the engine spends them.
+    expect(state.battle).toBeNull();
     expect(state.cards[merc.instanceId]?.zone).toBe('trash');
+    // The Guardian took its point but has 5 HP, so it is still standing.
+    expect(state.cards[guardian.instanceId]?.zone).toBe('city');
     // §12 Repel — you only occupy by attacking successfully.
     expect(state.cities[2]?.occupiedBy).toBeNull();
   });
 
-  it('refuses an assignment that does not spend the whole Power', () => {
+  it('assigns damage itself when there is only one enemy to hit', () => {
+    // §11 ④ — the striker spends all of its Power among enemy participants.
+    // With one enemy standing, every legal split puts everything on that one
+    // card, so asking would be offering a single button the player has to
+    // press before the battle can finish. A battle never stops on a question
+    // with one answer.
     const { state: start, attacker, defender } = withGarrison(['dev-003'], ['dev-001']);
+    let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    const guardian = inCity(state, attacker)[0] as CardInstance;
+    const merc = inCity(state, defender)[0] as CardInstance;
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: guardian.instanceId });
+    state = skipOpens(state);
+    state = commitThen(state, [{ player: defender, card: merc.instanceId }]);
+
+    // Never rested on the damage step, and nobody was asked to assign.
+    expect(state.battle).toBeNull();
+    expect(engine.legalActions(state, attacker).some((a) => a.type === 'ASSIGN_DAMAGE')).toBe(
+      false,
+    );
+
+    // And the damage still landed: Power 2 against 2 HP is lethal.
+    expect(state.cards[merc.instanceId]?.zone).toBe('trash');
+    expect(state.cities[2]?.occupiedBy).toBe(attacker);
+  });
+
+  it('still asks when the Power could be split between two enemies', () => {
+    // The mirror of the above: two enemies is a real decision — concentrating
+    // kills one, spreading may kill neither — so it is always asked.
+    const { state: start, attacker, defender } = withGarrison(['dev-003'], ['dev-001', 'dev-001']);
+    let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    const guardian = inCity(state, attacker)[0] as CardInstance;
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: guardian.instanceId });
+    state = skipOpens(state);
+    state = commitThen(
+      state,
+      inCity(state, defender).map((card) => ({ player: defender, card: card.instanceId })),
+    );
+
+    expect(state.battle?.step).toBe('damage');
+    expect(engine.legalActions(state, attacker).some((a) => a.type === 'ASSIGN_DAMAGE')).toBe(true);
+  });
+
+  it('refuses an assignment that does not spend the whole Power', () => {
+    // Two defenders, so the split is a real decision and the engine asks
+    // rather than answering: with one enemy there is only one legal
+    // assignment, and the step resolves itself before anything can be sent.
+    const { state: start, attacker, defender } = withGarrison(['dev-003'], ['dev-001', 'dev-001']);
     let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
     const guardian = inCity(state, attacker)[0] as CardInstance;
     const merc = inCity(state, defender)[0] as CardInstance;
@@ -1182,8 +1204,12 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     state = skipOpens(state);
     // The defender has to commit, or there is nobody to fight: an unopposed
     // battle ends as a stalemate with no damage exchanged at all. §11 ③.
-    const theirSide = inCity(state, defender)[0] as CardInstance;
-    state = commitThen(state, [{ player: defender, card: theirSide.instanceId }]);
+    const theirs = inCity(state, defender);
+    state = commitThen(
+      state,
+      theirs.map((card) => ({ player: defender, card: card.instanceId })),
+    );
+    expect(state.battle?.step).toBe('damage');
 
     // Guardian has Power 2; assigning 1 leaves damage unspent.
     const short = engine.reduce(state, attacker, {
@@ -1241,17 +1267,10 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     state = skipOpens(state);
     state = commitThen(state, [{ player: defender, card: guardian.instanceId }]);
 
-    state = apply(state, attacker, {
-      type: 'ASSIGN_DAMAGE',
-      card: (lead as CardInstance).instanceId,
-      hits: [{ target: guardian.instanceId, amount: 1 }],
-    });
-    state = apply(state, defender, {
-      type: 'ASSIGN_DAMAGE',
-      card: guardian.instanceId,
-      hits: [{ target: (lead as CardInstance).instanceId, amount: 2 }],
-    });
-
+    // Only one character a side is *committed*, so each strike has a single
+    // enemy and neither assignment is a choice — the bystander is not a
+    // participant and can never be hit. The engine resolves both.
+    expect(state.battle).toBeNull();
     expect(state.cards[(lead as CardInstance).instanceId]?.zone).toBe('trash');
     // The spare never fought and is untouched, but it does not save the attack.
     expect(state.cards[(spare as CardInstance).instanceId]?.zone).toBe('city');
@@ -1267,23 +1286,16 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     const merc = inCity(state, defender)[0] as CardInstance;
     state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: guardian.instanceId });
     state = skipOpens(state);
-    state = commitThen(state, [{ player: defender, card: merc.instanceId }]);
 
-    const result = engine.reduce(state, attacker, {
-      type: 'ASSIGN_DAMAGE',
-      card: guardian.instanceId,
-      hits: [{ target: merc.instanceId, amount: 2 }],
-    });
-    if (!result.ok) throw new Error('expected the strike to land');
-
-    // The defender still has to strike back before the band resolves, so
-    // follow through and then read the events.
-    const after = engine.reduce(result.value.state, defender, {
-      type: 'ASSIGN_DAMAGE',
+    // One enemy each, so both assignments are forced and the engine spends
+    // them itself — the last commitment is what carries the whole exchange,
+    // and its events are where the strikes are reported.
+    const last = engine.reduce(state, defender, {
+      type: 'COMMIT_CHARACTER',
       card: merc.instanceId,
-      hits: [{ target: guardian.instanceId, amount: 1 }],
     });
-    if (!after.ok) throw new Error('expected the counter-strike to land');
+    if (!last.ok) throw new Error('expected the commitment to land');
+    const after = last;
 
     const dealt = after.value.events.filter((e) => e.type === 'DAMAGE_DEALT');
     expect(dealt.length).toBe(2);

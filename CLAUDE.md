@@ -67,10 +67,16 @@ were updated to match, so don't re-open them from an older reading.
   combat open in ② — so a character opened during the battle may join it but
   can never lead it. `isVanguard` in `abilities.ts` means this one character.
 - **A battle never stops on a question with one answer.** A combat open with
-  nothing openable in the contested city, or a commitment step with nobody
-  left to commit, is answered by the engine — `settleBattle` in `reducer.ts`,
-  run from the action dispatch so every route into a step is covered. The
-  vanguard and damage steps are always real choices and are always asked.
+  nothing openable in the contested city, a commitment step with nobody left
+  to commit, or a strike with a single enemy to spend its Power on, is
+  answered by the engine — `settleBattle` in `reducer.ts`, run from the action
+  dispatch so every route into a step is covered. The damage step is a real
+  choice only when there are _two or more_ enemy participants standing: §11 ④
+  spends the striker's whole Power among them, so one enemy leaves exactly one
+  legal split and asking would be offering a single button the player has to
+  press before the battle can finish. Two is a genuine decision —
+  concentrating kills one, spreading may kill neither — and is always asked.
+  The vanguard step is always a real choice.
 - **Only the first player skips their draw**, and only on their first turn; the
   second player draws normally on theirs (`Rules.md` §10 ②, `DesignNotes` 6).
 - **A card that cannot be legally opened is never offered.** `Rules.md` §7 says
@@ -154,7 +160,13 @@ redacted views.
 - **`isHidden` is not `faceUp`.** The first says what the server redacted, the
   second says what is face up on the table. Your own Set Cards are not
   redacted — Rules.md §7 lets you check them — so a card in a city must be
-  drawn from `faceUp`, or it shows its face to its own controller.
+  drawn from `faceUp`, or it shows its face to its own controller. The one
+  exception is a card being pointed at somebody (§13): its controller has
+  already chosen it and paid, so it is turned up for the moment the question
+  is on screen. That is keyed off `aimSource`, **not** off the `aim` role — a
+  character may target itself when it is the only one in its area, and such a
+  card is reported as `'target'` so it stays clickable. Reading the role alone
+  left exactly that card face-down while asking the player to choose it.
 - **Touch is landscape-only, and every hover has a tap.** A phone on its side
   is the shape of the table; portrait is not supported. `useCardDrag` rebuilds
   drag-to-set on pointer events because touch devices never fire HTML5

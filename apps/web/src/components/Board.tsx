@@ -355,6 +355,16 @@ export function Board({
     return aiming.source === instanceId ? 'source' : 'muted';
   };
 
+  /**
+   * Whether this card is the one doing the pointing — asked separately from
+   * the role above, because a card that may target itself answers `'target'`
+   * there and is still the source. A face-down Set Card is turned up while it
+   * is pointing (§7 lets its controller check it anyway), and reading the role
+   * alone left the self-targeting case as a grey rectangle asking to be
+   * chosen.
+   */
+  const isAimSource = (instanceId: string): boolean => aiming?.source === instanceId;
+
   // Both directions from whatever is under the pointer: what is lifting this
   // card, and what this card is lifting. Rules.md §13 — a continuous ability
   // reaches out from its own card, so a player hovering the *source* is asking
@@ -428,6 +438,7 @@ export function Board({
               onBattleMove={onAction}
               peek={peek}
               aimRole={aimRole}
+              isAimSource={isAimSource}
               onHover={setHovered}
               {...(onAimAt ? { onAimAt } : {})}
               {...(onAimHover ? { onAimHover } : {})}
@@ -533,6 +544,7 @@ function CityColumn({
   onDeclare,
   peek,
   aimRole,
+  isAimSource,
   onHover,
   onAimAt,
   onAimHover,
@@ -557,6 +569,8 @@ function CityColumn({
   onDeclare: (action: GameAction) => void;
   peek: Peekable;
   aimRole: (instanceId: string) => 'source' | 'target' | 'muted' | undefined;
+  /** Separate from the role: a card may point at itself. Rules.md §13. */
+  isAimSource: (instanceId: string) => boolean;
   /** The card under the pointer, for the boost lines. Rules.md §13. */
   onHover: (card: string | null) => void;
   onAimAt?: ((card: string) => void) | undefined;
@@ -613,6 +627,7 @@ function CityColumn({
             onClickCard={onClickCard}
             peek={peek}
             aim={aimRole(card.instanceId)}
+            aimSource={isAimSource(card.instanceId)}
             onHover={onHover}
             {...(onAimAt ? { onAimAt } : {})}
             {...(onAimHover ? { onAimHover } : {})}
@@ -666,6 +681,7 @@ function CityColumn({
             })()}
             marked={battleMoveFor(card.instanceId) ? 'battle' : undefined}
             aim={aimRole(card.instanceId)}
+            aimSource={isAimSource(card.instanceId)}
             onHover={onHover}
             {...(onAimAt ? { onAimAt } : {})}
             {...(onAimHover ? { onAimHover } : {})}
@@ -1025,6 +1041,7 @@ function CardTile({
   onOpen,
   marked,
   aim,
+  aimSource,
   onAimAt,
   onAimHover,
   onHover,
@@ -1046,6 +1063,14 @@ function CardTile({
   marked?: 'battle' | undefined;
   /** What this card is to a target picker, if one is running. Rules.md §13. */
   aim?: 'source' | 'target' | 'muted' | undefined;
+  /**
+   * Whether this card is the one doing the pointing, which `aim` alone cannot
+   * say: a character that is a legal target for its own ability is reported as
+   * `'target'` so it stays clickable, and would otherwise stop being treated
+   * as the source. Rules.md §13 — "target 1 character in this area" means
+   * itself when it is the only one standing there.
+   */
+  aimSource?: boolean | undefined;
   onAimAt?: ((card: string) => void) | undefined;
   onAimHover?: ((card: string | null) => void) | undefined;
   /** Under the pointer, so the board can draw who is boosting whom. §13. */
@@ -1075,7 +1100,12 @@ function CardTile({
   // controller, who may check their own Set Cards anyway (§7, and the
   // press-and-hold already does exactly this), and only for the moment the
   // question is on screen.
-  const revealing = aim === 'source' && !isHidden(card);
+  // Asked of `aimSource` rather than of `aim`, because a card that can point
+  // at itself is reported as a *target* so it stays clickable — and reading
+  // the role alone left exactly that card face-down while being asked to
+  // choose it. That is the case this exists for: choosing a victim for a grey
+  // rectangle is worst when the rectangle is the card that just opened.
+  const revealing = aimSource === true && !isHidden(card);
   const setCard = rawSetCard && !revealing;
 
   // A card that can be opened says so, and asks when clicked — the menu is
