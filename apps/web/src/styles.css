@@ -1562,17 +1562,39 @@ button.card:hover {
   color: var(--ink-faint);
 }
 
+/* The printed name, not the card number, so monospace is wrong here now —
+   these are words. Truncated rather than wrapped: a long name must not push
+   the +/− buttons out of the cell or make one row taller than its neighbours. */
 .cell__id {
   flex: 1;
-  font-family: ui-monospace, monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Add and remove sit together, and both are always present so the row never
+   reflows as the count changes — a button that moves out from under the
+   pointer while clicking through copies is a button that gets misclicked. */
+.cell__spin {
+  display: flex;
+  gap: 3px;
+  flex: none;
 }
 
 .cell__minus,
+.cell__plus,
 .decklist__minus {
   padding: 0 6px;
   font-size: 14px;
   line-height: 1.4;
   border-radius: 2px;
+}
+
+.cell__minus:disabled,
+.cell__plus:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* Card colour, as printed. */
@@ -1644,9 +1666,27 @@ button.card:hover {
   color: var(--ink-dim);
 }
 
+/* A button, because clicking a name in the deck reads that card — but it has
+   to look like the line of text it replaced, not like a control. The name is
+   words rather than a card number, so the monospace is gone. */
 .decklist__id {
   flex: 1;
-  font-family: ui-monospace, monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.decklist__id:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 .decklist__merc {

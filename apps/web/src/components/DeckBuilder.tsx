@@ -1,6 +1,8 @@
 import { DECK_SIZE, MIN_MERCENARIES, type CatalogueCard } from '@berserk/engine';
 import { useMemo, useState, type JSX } from 'react';
 import { useDeckBuilder } from '../state/useDeckBuilder.js';
+import { useCardNames } from '../state/useCardNames.js';
+import { Inspect } from './Inspect.js';
 
 /**
  * The deck builder: browse all 448 cards, build a 45-card deck, see legality
@@ -25,6 +27,10 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
   const [colour, setColour] = useState<ColourFilter>('all');
   const [mercenariesOnly, setMercenariesOnly] = useState(false);
   const [search, setSearch] = useState('');
+  // The card being read, by printed number. Rules text and stats come from the
+  // same `/api/catalogue` the table uses, so `useCardNames` has to have run.
+  const [inspecting, setInspecting] = useState<string | null>(null);
+  useCardNames();
 
   const sets = useMemo(
     () => [...new Set(builder.catalogue.map((card) => card.set))].sort(),
@@ -37,7 +43,16 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
       if (set !== 'all' && card.set !== set) return false;
       if (colour !== 'all' && card.color !== colour) return false;
       if (mercenariesOnly && !card.mercenary) return false;
-      if (needle && !card.id.toLowerCase().includes(needle)) return false;
+      // Name *or* number: the grid shows names now, so a search that only
+      // matched `BK1-011` would find nothing for "guts" — which is what
+      // anybody looking for a card actually types.
+      if (
+        needle &&
+        !card.id.toLowerCase().includes(needle) &&
+        !(card.name ?? '').toLowerCase().includes(needle)
+      ) {
+        return false;
+      }
       return true;
     });
   }, [builder.catalogue, set, colour, mercenariesOnly, search]);
@@ -49,7 +64,15 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
           entry,
           card: builder.catalogue.find((card) => card.id === entry.cardId),
         }))
-        .sort((a, b) => a.entry.cardId.localeCompare(b.entry.cardId)),
+        // By the name the list actually shows, so the order reads as
+        // alphabetical rather than as an arbitrary shuffle. Ties — several
+        // printings share a name — fall back to the number, which keeps them
+        // adjacent and in set order.
+        .sort(
+          (a, b) =>
+            (a.card?.name ?? a.entry.cardId).localeCompare(b.card?.name ?? b.entry.cardId) ||
+            a.entry.cardId.localeCompare(b.entry.cardId),
+        ),
     [builder.entries, builder.catalogue],
   );
 
@@ -126,7 +149,7 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Card number"
+              placeholder="Name or number"
               aria-label="Search by card number"
             />
             <span className="filters__count">{visible.length} cards</span>
@@ -144,6 +167,7 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
                   canAdd={builder.canAdd(card.id)}
                   onAdd={() => builder.add(card.id)}
                   onRemove={() => builder.remove(card.id)}
+                  onInspect={() => setInspecting(card.id)}
                 />
               ))}
             </div>
@@ -154,25 +178,40 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
           <div className="builder__decklist">
             <h2>Deck</h2>
             {chosen.length === 0 ? (
-              <p className="muted">No cards yet. Click a card to add it.</p>
+              <p className="muted">No cards yet. Use + on a card to add it.</p>
             ) : (
               <ul className="decklist">
-                {chosen.map(({ entry, card }) => (
-                  <li key={entry.cardId}>
-                    <button
-                      type="button"
-                      className="decklist__minus"
-                      onClick={() => builder.remove(entry.cardId)}
-                      aria-label={`Remove ${entry.cardId}`}
-                    >
-                      −
-                    </button>
-                    <span className="decklist__count">{entry.quantity}</span>
-                    <span className={`swatch swatch--${card?.color ?? 'white'}`} />
-                    <span className="decklist__id">{entry.cardId}</span>
-                    {card?.mercenary && <span className="decklist__merc">merc</span>}
-                  </li>
-                ))}
+                {chosen.map(({ entry, card }) => {
+                  // The printed name, which is how anybody thinks about a
+                  // deck — "three Guts", not "three BK1-011". The number is
+                  // kept on the title, because it is still the thing to quote
+                  // when comparing against a printed list, and it is the
+                  // fallback for a card whose name never came off the scan.
+                  const label = card?.name ?? entry.cardId;
+                  return (
+                    <li key={entry.cardId} title={entry.cardId}>
+                      <button
+                        type="button"
+                        className="decklist__minus"
+                        onClick={() => builder.remove(entry.cardId)}
+                        aria-label={`Remove one ${label}`}
+                      >
+                        −
+                      </button>
+                      <span className="decklist__count">{entry.quantity}</span>
+                      <span className={`swatch swatch--${card?.color ?? 'white'}`} />
+                      <button
+                        type="button"
+                        className="decklist__id"
+                        onClick={() => setInspecting(entry.cardId)}
+                        title={`Read ${label} (${entry.cardId})`}
+                      >
+                        {label}
+                      </button>
+                      {card?.mercenary && <span className="decklist__merc">merc</span>}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -227,6 +266,10 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
           </div>
         </aside>
       </div>
+
+      {/* The same reader the table uses, so a card looks and reads the same
+       * whether it is being chosen or played. */}
+      {inspecting && <Inspect defId={inspecting} onClose={() => setInspecting(null)} />}
     </div>
   );
 }
@@ -237,33 +280,67 @@ function CardCell({
   canAdd,
   onAdd,
   onRemove,
+  onInspect,
 }: {
   card: CatalogueCard;
   count: number;
   canAdd: boolean;
   onAdd: () => void;
   onRemove: () => void;
+  onInspect: () => void;
 }): JSX.Element {
+  // The printed name where there is one. A card whose name never came off the
+  // scan falls back to its number, which is at least a handle — see
+  // `Docs/CardData.md`.
+  const label = card.name ?? card.id;
+
   return (
     <div className={count > 0 ? 'cell cell--chosen' : 'cell'}>
+      {/* Clicking the art reads the card. Building a deck means comparing
+       * cards you cannot make out at this size, and the art was previously an
+       * Add button — so the one gesture everybody tries first silently
+       * changed the deck instead of answering the question. Adding and
+       * removing are the explicit +/− below. */}
       <button
         type="button"
         className="cell__art"
-        onClick={onAdd}
-        disabled={!canAdd}
-        title={canAdd ? `Add ${card.id}` : 'Copy limit reached'}
+        onClick={onInspect}
+        title={`Read ${label}`}
+        aria-label={`Read ${label}`}
       >
-        <img src={`${CARD_ROOT}/${card.image}`} alt={card.id} loading="lazy" />
+        <img src={`${CARD_ROOT}/${card.image}`} alt={label} loading="lazy" />
         {count > 0 && <span className="cell__count">{count}</span>}
       </button>
       <div className="cell__foot">
         <span className={`swatch swatch--${card.color ?? 'white'}`} />
-        <span className="cell__id">{card.id}</span>
-        {count > 0 && (
-          <button type="button" className="cell__minus" onClick={onRemove} aria-label="Remove one">
+        <span className="cell__id" title={card.id}>
+          {label}
+        </span>
+        {/* Both buttons are always present, so the row never reflows as the
+         * count changes and the target does not move under the pointer while
+         * clicking through copies. Minus is merely disabled at zero. */}
+        <span className="cell__spin">
+          <button
+            type="button"
+            className="cell__minus"
+            onClick={onRemove}
+            disabled={count === 0}
+            aria-label={`Remove one ${label}`}
+            title={count === 0 ? 'None in the deck' : `Remove one ${label}`}
+          >
             −
           </button>
-        )}
+          <button
+            type="button"
+            className="cell__plus"
+            onClick={onAdd}
+            disabled={!canAdd}
+            aria-label={`Add one ${label}`}
+            title={canAdd ? `Add one ${label}` : 'Copy limit reached'}
+          >
+            +
+          </button>
+        </span>
       </div>
     </div>
   );
