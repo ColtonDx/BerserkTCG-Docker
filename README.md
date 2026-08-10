@@ -1,7 +1,8 @@
-# Berk TCG
-All Rights, images, etc., belong to Kentaro Miura, Studio Gaga, Konami.
-This is a fan based project to keep the memory and playability of the Berserk TCG alive.
-Always keep struggling.
+# Berserk TCG
+
+All rights, images, etc., belong to Kentaro Miura, Studio Gaga and Konami.
+This is a fan-based project to keep the memory and playability of the Berserk
+TCG alive. Always keep struggling.
 
 A browser-based, Docker-hosted way to play the Berserk trading card game
 (Konami, 2003 — based on Kentaro Miura's _Berserk_).
@@ -46,11 +47,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-That gives you a local dev stack for iterating — see
+That gives you a local dev stack for iterating: both services hot-reload on
+file changes, so ordinary edits need no rebuild. See
 [Deploying](#deploying) for getting a change onto the dev server.
-
-Both services hot-reload on file changes, so ordinary edits need no rebuild;
-rebuild when dependencies or the Dockerfile change.
 
 ### Local Node
 
