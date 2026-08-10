@@ -34,6 +34,23 @@ export const PROTOCOL_VERSION = 2;
  */
 export const BANNER_HOLD_MS = 4200;
 
+/**
+ * How long the opening ceremony runs before a player is asked anything, in
+ * milliseconds.
+ *
+ * The client burns the menu off the board, then tosses for first player
+ * (Rules.md §9.2), and only then asks about the opening hand (§9.4). Shared
+ * for the same reason as the banner above: the computer opponent settles its
+ * own hand during setup, and doing that underneath the ceremony puts shuffle
+ * sounds and a redealt hand behind an animation the human is still watching.
+ *
+ * The sum of the client's own timings, with a little slack: the burn is
+ * 1875ms (`BurnAway.DURATION`) and the toss 1700 + 2400ms (`CoinFlip`'s
+ * `SPIN_MS` and `HOLD_MS`), so 5975ms of ceremony and 325ms spare. Raising
+ * any of those should raise this, or Femto starts moving early again.
+ */
+export const OPENING_CEREMONY_MS = 6300;
+
 /* ------------------------------------------------------- client -> server */
 
 export interface ClientToServerEvents {

@@ -437,6 +437,19 @@ would be a rule living in the client. It fires off the first view arriving,
 which _is_ the deal, and only while the match is still in setup, so a player
 rejoining on turn nine is not told the toss all over again.
 
+**The opening ceremony is a sequence, not three overlapping effects.**
+`App.tsx`'s `Ceremony` stage runs `burn` → `toss` → `playing`: the menu burns
+off the board, the coin lands, and only then is the opening hand asked for
+(§9.4). Each stage waits for the previous one to report done rather than for a
+timer, so nothing has to guess how long a burn takes. They were independent
+booleans set in the same tick once, which played all three at once. Two things
+hang off this and are easy to break: the shuffle is heard when the ceremony
+clears rather than when the view arrives, because that is when the hand
+actually appears; and `OPENING_CEREMONY_MS` in the protocol holds Femto back
+through setup, or it settles its hand — shuffle sounds and all — underneath an
+animation the human is still watching. Raising `BurnAway.DURATION` or
+`CoinFlip`'s spin/hold means raising that constant too.
+
 `data/placeholder-cards.ts` is invented filler that survives _only_ as a
 fixture for the engine's own tests. Never build against it, and never serve it.
 

@@ -8,7 +8,7 @@ import {
   type MatchId,
   type PlayerId,
 } from '@berserk/engine';
-import { BANNER_HOLD_MS } from '@berserk/protocol';
+import { BANNER_HOLD_MS, OPENING_CEREMONY_MS } from '@berserk/protocol';
 import type { MatchManager } from './matches.js';
 
 /**
@@ -642,11 +642,14 @@ export async function driveAi(
       // to the starting player, so it never changes when the turn passes from
       // the human to the AI.
       //
-      // Not during setup: mulligans announce nothing, so there is nothing to
-      // wait for and the human is already waiting on the deal.
+      // During setup the wait is the opening ceremony instead: the human is
+      // watching the menu burn away and the coin land, and Femto settling its
+      // hand under that puts a shuffle behind an animation nobody has
+      // finished watching. Both waits are shared through the protocol so
+      // lengthening either in the UI cannot leave it moving early.
       if (!waited) {
         waited = true;
-        if (state.status.kind === 'playing') await pause(LEAD_IN_MS);
+        await pause(state.status.kind === 'playing' ? LEAD_IN_MS : OPENING_CEREMONY_MS);
       }
 
       // Wider early, when spreading cheap bodies over a face-down row is what

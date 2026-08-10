@@ -68,7 +68,20 @@ export function App(): JSX.Element {
   // The board is dealt behind a sheet that burns away to reveal it. Leaving
   // the menu turns the screen away like a page instead — two weights of
   // transition: a page turn moves you along, a burn starts the game.
-  const [burning, setBurning] = useState(false);
+  /**
+   * How far into the opening ceremony the match is.
+   *
+   * These three happen in order and each one waits for the last: the menu
+   * burns off the board, the toss decides who goes first (Rules.md §9.2), and
+   * only then is the player asked about their opening hand (§9.4). They used
+   * to be independent flags all set in the same tick, which played the burn,
+   * the coin and the mulligan on top of each other — the start of a match is
+   * the one moment with three things to say and no reason to say them at once.
+   *
+   * `'playing'` is both the end of the sequence and the state a player
+   * rejoining a match in progress starts in: there is no ceremony to replay.
+   */
+  const [ceremony, setCeremony] = useState<Ceremony>('playing');
   const [inspecting, setInspecting] = useState<string | null>(null);
   // Both are pure display: nothing about looking at a card leaves this tab.
   const [peeking, setPeeking] = useState<string | null>(null);
@@ -81,9 +94,22 @@ export function App(): JSX.Element {
   // The toss for first player, shown once when a match deals. Rules.md §9.2 —
   // the engine has already decided it; this only says so.
   const [toss, setToss] = useState<Toss | null>(null);
-  // Stable, because the toss times itself off this callback: a fresh arrow on
-  // every render would restart the coin mid-spin and it would never land.
-  const clearToss = useCallback(() => setToss(null), []);
+  // Both stable, because each stage times itself off its callback: a fresh
+  // arrow on every render would restart the burn or the coin mid-flight and
+  // neither would ever finish.
+  //
+  // The toss is kept rather than cleared when it ends — `TossAnnouncement`
+  // has already said it, and the stage is what decides whether it draws.
+  const burnDone = useCallback(() => setCeremony('toss'), []);
+  const tossDone = useCallback(() => {
+    setCeremony('playing');
+    // The deal is heard here rather than when the view arrived. The cards were
+    // dealt server-side before any of this began — there is no event for it,
+    // the first view *is* the deal — but the hand does not appear until the
+    // ceremony clears, and a shuffle played under the burn is a shuffle for
+    // cards the player will not see for another six seconds.
+    playShuffle();
+  }, []);
   // Settings sits over whatever is underneath — the main menu or a match —
   // rather than being a screen of its own, so a game is never left to reach it.
   const [settings, setSettings] = useState(false);
@@ -117,20 +143,16 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (match.view && !dealt.current) {
       dealt.current = true;
-      setBurning(true);
-      // The opening shuffle and deal happen when the match is built, not
-      // through an action, so no events describe them — the first view
-      // arriving *is* the deal.
-      playShuffle();
 
       // Rules.md §9.2 randomises the first player, and `seats[0]` is the
-      // result: the engine shuffled the seats from the match seed. Announced
-      // here rather than from `MATCH_STARTED`, because that event is in the
+      // result: the engine shuffled the seats from the match seed. Read here
+      // rather than from `MATCH_STARTED`, because that event is in the
       // opening log rather than in a live batch — a player rejoining a match
       // in progress would otherwise be told the toss all over again.
       //
       // Only while the match is still in setup, for the same reason: come
-      // back on turn nine and the toss is long settled.
+      // back on turn nine and the toss is long settled. Rejoining mid-match
+      // therefore skips straight to `'playing'` and nothing is replayed.
       const view = match.view;
       const first = view.seats[0];
       if (first && view.status.kind === 'setup') {
@@ -139,9 +161,19 @@ export function App(): JSX.Element {
           mine: first === view.viewer,
           who: view.players[first]?.name ?? 'Your opponent',
         });
+        setCeremony('burn');
+      } else {
+        // Rejoining a match already under way: no ceremony to play, so the
+        // shuffle is the only thing to say and it belongs here.
+        setCeremony('playing');
+        playShuffle();
       }
     }
-    if (!match.view) dealt.current = false;
+    if (!match.view) {
+      dealt.current = false;
+      setCeremony('playing');
+      setToss(null);
+    }
   }, [match.view]);
 
   // Sound follows the events the server sent, not the state it produced: the
@@ -380,7 +412,10 @@ export function App(): JSX.Element {
         disabled={match.status !== 'connected'}
       />
 
-      {step && (
+      {/* Last of the three. The opening hand is a decision (Rules.md §9.4),
+       * and asking for one while the board is still burning in and the coin
+       * is still in the air is asking someone to choose during the fanfare. */}
+      {step && ceremony === 'playing' && (
         <HandFocus
           view={match.view}
           step={step}
@@ -476,21 +511,38 @@ export function App(): JSX.Element {
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} onDone={() => setReveal(null)} />}
       {taken && <CityTaken taken={taken} onDone={() => setTaken(null)} />}
-      {/* Over the mulligan, not beside it: the toss settles who acts first and
-       * should be read before the opening hand is decided. It takes no pointer
-       * events, so the deal animates underneath and nothing is blocked. */}
-      {toss && (
+      {/* After the burn and before the mulligan: the toss settles who acts
+       * first (Rules.md §9.2), which is worth reading before deciding whether
+       * to keep a hand. It takes no pointer events, so the deal animates
+       * underneath it. */}
+      {ceremony === 'toss' && toss && (
         <>
-          <CoinFlip toss={toss} onDone={clearToss} />
+          <CoinFlip toss={toss} onDone={tossDone} />
           <TossAnnouncement toss={toss} />
         </>
       )}
       {peeking && <Peek defId={peeking} />}
       {inspecting && <Inspect defId={inspecting} onClose={() => setInspecting(null)} />}
-      {burning && <BurnAway onDone={() => setBurning(false)} />}
+      {/* The sheet burns off the board, and only when it is gone does the
+       * toss begin. Chained rather than timed: the burn measures itself and
+       * reports back, so nothing has to guess how long it takes. */}
+      {ceremony === 'burn' && <BurnAway onDone={burnDone} />}
     </div>
   );
 }
+
+/**
+ * The opening ceremony, in the order it happens.
+ *
+ * `'burn'` — the menu is burning off the board.
+ * `'toss'` — the coin is deciding who goes first (Rules.md §9.2).
+ * `'playing'` — done, and everything else may show.
+ *
+ * A stage rather than three booleans because they are strictly sequential and
+ * each waits for the last. Three flags set together is what made the burn, the
+ * coin and the mulligan play at once.
+ */
+type Ceremony = 'burn' | 'toss' | 'playing';
 
 /** A paid-for play still waiting to be pointed at somebody. Rules.md §13. */
 interface Aiming {
