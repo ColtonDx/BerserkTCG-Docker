@@ -98,12 +98,31 @@ const EARLY_WANTED = 2;
  */
 const MIN_WORTH_KEEPING = 5;
 /**
- * Set at most one card a turn. There is no rule against setting more
- * (Rules.md §10 ④(2) says "any number of times"), but only one can be opened
- * per turn (§10 ③) and cards in hand are what pay for opening (§7), so
- * emptying the hand onto the table buys nothing and spends the cost.
+ * How many cards Femto sets in a turn.
+ *
+ * Rules.md §10 ④(2) allows any number. The cap is a judgement, not a rule:
+ * only one card can be *opened* per turn (§10 ③), and cards in hand are what
+ * pay for opening (§7), so a hand emptied onto the table cannot afford what
+ * it put there.
+ *
+ * Two early, one after that. A Set Card is a threat the opponent must read
+ * face-down and a claim on an area they have to answer, so the first turns —
+ * when there is nothing to answer with and the hand refills from a full
+ * deck — are cheap ones to spend spreading out. Later the hand is the
+ * bottleneck and every card set is a cost that cannot be paid.
  */
+const EARLY_SETS_PER_TURN = 2;
 const SETS_PER_TURN = 1;
+/** Turns counted as "early" for the wider set limit above. */
+const EARLY_TURNS = 3;
+
+/**
+ * The Level-0 body every deck carries ten of (`Docs/Deckbuilding.md`).
+ *
+ * Matched by printed name, which is the deckbuilding rule — the `mercenary`
+ * *subtype* is the faction on the type line and is a different set of cards.
+ */
+const MERCENARY = 'Mercenary';
 
 const REGISTRY = catalogueRegistry();
 
@@ -125,27 +144,99 @@ function hand(state: GameState, player: PlayerId): readonly CardInstanceId[] {
   return state.zoneOrder[`${player}:hand`] ?? [];
 }
 
+/** The printed name of a card, or null where the scan never yielded one. */
+function nameOf(state: GameState, cardId: CardInstanceId): string | null {
+  const card = state.cards[cardId];
+  if (!card || !REGISTRY.has(card.defId)) return null;
+  return REGISTRY.get(card.defId).name ?? null;
+}
+
+const isMercenary = (state: GameState, cardId: CardInstanceId): boolean =>
+  nameOf(state, cardId) === MERCENARY;
+
+/**
+ * Is Femto on the back foot of the turn order? Rules.md §9.2, §10 ②.
+ *
+ * `seats[0]` goes first and skips their first draw. It matters for what to
+ * set on turn one: the player going second reaches their first Open step with
+ * a City Level the *first* player has usually already raised, so a Level 1
+ * card is openable there while a Level 0 Mercenary would have been openable
+ * either way. Setting the thing that only just became affordable is strictly
+ * better than setting the thing that was always affordable.
+ */
+const goingSecond = (state: GameState, player: PlayerId): boolean => state.seats[1] === player;
+
+/**
+ * How many cards a player has committed to a city.
+ *
+ * Presence, not Power: this answers "is anybody there" for deciding where to
+ * put a card down, which is a different question from who would win a fight.
+ *
+ * `faceUp` picks out which cards count, and it differs by side. Femto's own
+ * face-down Set Cards count — it knows what they are, and a card already
+ * committed to an area is a reason to spread the next one elsewhere. The
+ * opponent's do not: only a face-up character contests an area (Rules.md §5),
+ * and counting their face-down cards would be reading information the engine
+ * redacts from a player anyway.
+ */
+function presence(
+  state: GameState,
+  city: number,
+  player: PlayerId,
+  options: { faceUpOnly: boolean },
+): number {
+  return Object.values(state.cards).filter(
+    (card) =>
+      card.zone === 'city' &&
+      card.cityIndex === city &&
+      card.controller === player &&
+      (!options.faceUpOnly || card.faceUp),
+  ).length;
+}
+
 /**
  * Where to put a card down.
  *
- * The Royal Capital is face-down and equally likely to be any of the five
- * cities (Rules.md §5), and it is the one that wins the game — so Femto
- * spreads, taking the city where it is thinnest. Ties go to the middle, which
- * is within Move range of more of the row than either end.
+ * Three things decide it, in order.
+ *
+ * **The Royal Capital outranks everything.** It is one of the three cities
+ * needed to win and the win is impossible without it (Rules.md §1), so an
+ * area known to be the Capital is worth contesting even when it is crowded.
+ * It is only *known* once the city is face up (§5) — face-down it could be
+ * any of the five, and spreading is what covers that.
+ *
+ * **Then somewhere uncontested.** A card set where the opponent has nobody
+ * can be opened and can take the area without a fight, which is the cheapest
+ * board presence in the game. An area they already hold has to be won through
+ * a battle, so it is worth less per card put into it.
+ *
+ * **Then spread.** Femto's own cards already there count against an area:
+ * five thin claims cover more of a face-down row than one deep stack, and
+ * only one of those areas is the Capital. Ties go to the middle, which is
+ * within Move range of more of the row than either end.
  */
 function bestCity(state: GameState, player: PlayerId, offered: readonly number[]): number | null {
-  const mine = (index: number): number =>
-    Object.values(state.cards).filter(
-      (card) => card.zone === 'city' && card.cityIndex === index && card.controller === player,
-    ).length;
-
+  const enemy = enemyOf(state, player);
   const centre = (state.cities.length - 1) / 2;
+
   let best: number | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
   for (const index of offered) {
-    // Fewest cards first; distance from the middle only breaks a tie.
-    const score = mine(index) * 100 + Math.abs(index - centre);
+    const city = state.cities[index];
+    if (!city) continue;
+
+    // Weights are spaced so each beats every combination of the ones below
+    // it: the Capital outranks any amount of crowding, and being unopposed
+    // outranks any tie-break on position.
+    let score = 0;
+    if (city.faceUp && city.royalCapital) score -= 10_000;
+    // Somewhere they are not, or somewhere they are but do not yet hold.
+    score += presence(state, index, enemy, { faceUpOnly: true }) * 400;
+    if (city.occupiedBy === enemy) score += 600;
+    score += presence(state, index, player, { faceUpOnly: false }) * 100;
+    score += Math.abs(index - centre);
+
     if (score < bestScore) {
       bestScore = score;
       best = index;
@@ -267,21 +358,42 @@ export function chooseAction(
   const battle = state.battle;
   if (battle) return fight(state, actions, battle, player);
 
-  // Attack where it can win the exchange. Rules.md §10 ④(4).
+  // Attack. Rules.md §10 ④(4).
+  //
+  // Winning the exchange is the usual reason, but it is not the only one. An
+  // *unheld* area is taken by fighting over it at all — §12 reads the result
+  // off the characters committed, and an attacker who shows up against a
+  // defender with nobody to commit takes it. So the bar is "can this be won",
+  // not "is my stack bigger", and an empty area clears it outright.
+  //
+  // The Capital is worth attacking into on worse odds than anywhere else,
+  // because it is the one area the game cannot be won without (§1).
   const attacks = actions.filter(
     (action): action is Extract<GameAction, { type: 'DECLARE_BATTLE' }> =>
       action.type === 'DECLARE_BATTLE',
   );
-  for (const attack of attacks) {
-    if (powerIn(state, attack.city, player) > powerIn(state, attack.city, enemyOf(state, player))) {
-      return attack;
-    }
-  }
+  const worthAttacking = attacks
+    .map((attack) => {
+      const city = state.cities[attack.city];
+      const mine = powerIn(state, attack.city, player);
+      const theirs = powerIn(state, attack.city, enemyOf(state, player));
+      const capital = city?.faceUp === true && city.royalCapital;
+      // Trading evenly into the Capital is worth it; trading evenly anywhere
+      // else spends two characters to move nothing.
+      const winnable = capital ? mine >= theirs : mine > theirs;
+      return { attack, capital, margin: mine - theirs, winnable };
+    })
+    .filter((option) => option.winnable)
+    // The Capital first, then the fight it wins by the most.
+    .sort((a, b) => Number(b.capital) - Number(a.capital) || b.margin - a.margin);
 
-  // Set the card it could open soonest, into the thinnest city. `driveAi`
-  // stops offering this once Femto has set its one card for the turn.
+  const best = worthAttacking[0];
+  if (best) return best.attack;
+
+  // Put a card down. `driveAi` stops offering this once Femto has set its
+  // allowance for the turn.
   if (has('SET_CARD')) {
-    const card = pickCard(actions, 'SET_CARD', soonest);
+    const card = pickCard(actions, 'SET_CARD', setPriority(state, player));
     if (card && card.type === 'SET_CARD') {
       const cities = actions
         .filter((a) => a.type === 'SET_CARD' && a.card === card.card)
@@ -292,6 +404,47 @@ export function chooseAction(
   }
 
   return actions.find((action) => action.type === 'END_PHASE') ?? null;
+}
+
+/**
+ * Which card to set, as a rank where lower wins.
+ *
+ * Ordinarily "whatever opens soonest", because a Set Card that cannot be
+ * opened is a card face-down doing nothing. Two things bend that.
+ *
+ * **Going second, on the first turn, prefer Level 1 over Level 0.** The
+ * player going second reaches their first Open step *after* the opener has
+ * had a turn, so City Level has usually already risen to 1 (Rules.md §5, §7)
+ * — and a Level 1 card is a bigger body for the same single open. Setting the
+ * Mercenary there would spend the turn's set on something that was openable
+ * either way. Only Level 1: Level 2 is a guess about a level that has not
+ * been reached yet, and a card that cannot be opened is worse than one that
+ * can.
+ *
+ * **Early on, prefer Mercenaries.** They are Level 0, so they open under any
+ * City Level, and every deck carries ten (`Docs/Deckbuilding.md`) — which
+ * makes them the cards to spend on claiming areas while the areas are still
+ * unclaimed. Spreading cheap bodies early is what creates the uncontested
+ * opens later, and holding them back achieves nothing: they never get better.
+ */
+function setPriority(state: GameState, player: PlayerId): (card: CardInstanceId) => number {
+  const turn = state.turn.turnNumber;
+  const firstTurn = turn <= 1;
+  const early = turn <= EARLY_TURNS;
+  const second = goingSecond(state, player);
+
+  return (card: CardInstanceId): number => {
+    const level = levelOf(state, card);
+
+    // The first turn going second: the open that is about to be available is
+    // a Level 1 one, so set for that rather than for the level on the table.
+    if (firstTurn && second && level === 1) return -100;
+
+    // Early: a Level 0 Mercenary is a claim that can always be cashed.
+    if (early && isMercenary(state, card)) return -50;
+
+    return level;
+  };
 }
 
 /** Total Power a player has standing in a city — the crude measure of a fight. */
@@ -352,10 +505,30 @@ function fight(
       return strongest(leads) ?? pass;
     }
 
-    case 'opens':
-      // Its one open a turn is better spent in its own Open phase, where the
-      // whole board is available rather than one city.
-      return pass;
+    case 'opens': {
+      // §11 ② — the combat open is *free*. It does not touch the one open a
+      // turn (§10 ③), so a card flipped here is board presence that cost
+      // nothing but its price in cards, and Femto used to decline it every
+      // time on reasoning that only applies to the turn's open.
+      //
+      // Worth taking even in a fight it will lose. §11 ③ makes committing a
+      // separate choice from opening, so a character can come down, stay out
+      // of the battle, and still be standing in the area afterwards — and the
+      // area is lost anyway if the fight was already lost. The one thing that
+      // would waste it is opening into a battle it is *winning*, where the
+      // card was never needed; that is still worth doing, because the card is
+      // on the board either way and the area is about to be held.
+      const combatOpens = actions.filter(
+        (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          action.type === 'OPEN_CARD',
+      );
+      // Biggest first, and ties to the cheapest payment — the same judgement
+      // as the turn's own open.
+      const best = [...combatOpens].sort(
+        (a, b) => levelOf(state, b.card) - levelOf(state, a.card) || a.pay.length - b.pay.length,
+      )[0];
+      return best ?? pass;
+    }
 
     case 'commit': {
       const joins = actions.filter(
@@ -372,8 +545,24 @@ function fight(
       const mine = committed(player);
       const theirs = committed(enemyOf(state, player));
       const best = strongest(joins);
-      if (best && mine <= theirs) return best;
-      return pass;
+      if (!best) return pass;
+
+      // Already ahead: every extra body is one more that can be killed for
+      // nothing (§11 ④).
+      if (mine > theirs) return pass;
+
+      // Behind, and this is the Capital: keep feeding. It is the one area the
+      // game cannot be won without (§1), so losing it costs more than the
+      // characters spent holding it.
+      const city = state.cities[battle.city];
+      if (city?.faceUp === true && city.royalCapital) return best;
+
+      // Behind anywhere else: only join if this character actually turns the
+      // fight. Throwing one more into a battle it still loses spends a
+      // character to change nothing — §12 reads the result off who fought, so
+      // a body that does not close the gap dies for an area already lost.
+      // Declining leaves it standing there for next turn.
+      return mine + powerOf(state, best.card) > theirs ? best : pass;
     }
 
     case 'damage': {
@@ -460,8 +649,12 @@ export async function driveAi(
         if (state.status.kind === 'playing') await pause(LEAD_IN_MS);
       }
 
+      // Wider early, when spreading cheap bodies over a face-down row is what
+      // buys uncontested opens later; narrower after that, when the hand is
+      // the bottleneck and a card set is a cost that cannot be paid.
+      const allowance = state.turn.turnNumber <= EARLY_TURNS ? EARLY_SETS_PER_TURN : SETS_PER_TURN;
       let legal = matches.legalActions(matchId, AI_PLAYER_ID);
-      if (setsThisTurn >= SETS_PER_TURN) {
+      if (setsThisTurn >= allowance) {
         legal = legal.filter((action) => action.type !== 'SET_CARD');
       }
 

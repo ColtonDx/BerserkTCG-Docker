@@ -1,10 +1,12 @@
 import {
   asCardInstanceId,
   catalogueRegistry,
+  MERCENARIES,
   type CardInstance,
   type CardInstanceId,
   type GameAction,
   type GameState,
+  type PlayerId,
 } from '@berserk/engine';
 import { describe, expect, it } from 'vitest';
 import { AI_NAME, AI_PLAYER_ID, chooseAction, isAi } from './ai.js';
@@ -15,6 +17,8 @@ import { AI_NAME, AI_PLAYER_ID, chooseAction, isAi } from './ai.js';
  */
 
 const ME = AI_PLAYER_ID;
+/** The other seat, so "the opponent" resolves to somebody. */
+const THEM = 'human' as PlayerId;
 const registry = catalogueRegistry();
 
 /** Real card ids at a given printed Level, so the levels under test are real. */
@@ -27,8 +31,21 @@ function cardsAtLevel(level: number, count: number): string[] {
   return ids.slice(0, count);
 }
 
-/** A state holding just a hand and an empty row, which is all these read. */
-function withHand(defIds: readonly string[], handTarget = 7): GameState {
+/**
+ * A state holding a hand, an empty row of cities, and the seat and turn the
+ * judgement reads.
+ *
+ * `seats` and `turn` are not decoration: which seat Femto holds decides
+ * whether it is going second (Rules.md §9.2), and the turn number decides
+ * whether the game is still early — both of which change what it sets. `THEM`
+ * occupies the other seat so "the opponent" resolves to somebody.
+ */
+function withHand(
+  defIds: readonly string[],
+  handTarget = 7,
+  turnNumber = 1,
+  seats: readonly PlayerId[] = [ME, THEM],
+): GameState {
   const cards: Record<string, CardInstance> = {};
   const order: CardInstanceId[] = [];
 
@@ -50,6 +67,8 @@ function withHand(defIds: readonly string[], handTarget = 7): GameState {
 
   return {
     cards,
+    seats,
+    turn: { turnNumber, activePlayer: ME, priorityPlayer: ME, phaseIndex: 3 },
     zoneOrder: { [`${ME}:hand`]: order },
     handTarget: { [ME]: handTarget },
     cities: [0, 1, 2, 3, 4].map((index) => ({
@@ -340,11 +359,228 @@ describe('the computer opponent', () => {
       expect((chosen as Extract<GameAction, { type: 'SET_CARD' }>).city).not.toBe(2);
     });
 
+    it('going second, sets a Level 1 over a Level 0 on the first turn', () => {
+      // Rules.md §10 ② — the player going second reaches their first Open
+      // step after the opener has had a turn, so City Level has usually
+      // already risen to 1. A Level 1 card is the bigger body for the same
+      // one open; the Mercenary would have been openable either way.
+      const mercenary = MERCENARIES[0]!.id;
+      const state = withHand([mercenary, cardsAtLevel(1, 1)[0]!], 7, 1, [THEM, ME]);
+      const cards = handOf(state);
+      const chosen = chooseAction(state, everywhere(cards));
+      expect(chosen).toMatchObject({ type: 'SET_CARD', card: cards[1] });
+    });
+
+    it('going first, still sets the card it can open soonest', () => {
+      // The mirror: going first there is no raised Level to bank on, so the
+      // Level 0 body is the one that can actually be opened.
+      const mercenary = MERCENARIES[0]!.id;
+      const state = withHand([mercenary, cardsAtLevel(1, 1)[0]!], 7, 1, [ME, THEM]);
+      const cards = handOf(state);
+      const chosen = chooseAction(state, everywhere(cards));
+      expect(chosen).toMatchObject({ type: 'SET_CARD', card: cards[0] });
+    });
+
+    it('prefers a Mercenary early, over another card of the same Level', () => {
+      // Level 0 either way, so nothing separates them on speed. The Mercenary
+      // is the card a deck carries ten of, which makes it the one to spend on
+      // claiming an area while areas are still there for the claiming.
+      const mercenary = MERCENARIES[0]!.id;
+      const other = registry.all().find((def) => def.level === 0 && def.name !== 'Mercenary')?.id;
+      if (!other) return; // no such card in the set; nothing to compare
+      const state = withHand([other, mercenary], 7, 1, [ME, THEM]);
+      const cards = handOf(state);
+      const chosen = chooseAction(state, everywhere(cards));
+      expect(chosen).toMatchObject({ type: 'SET_CARD', card: cards[1] });
+    });
+
+    it('sets into the Royal Capital once it is known, crowded or not', () => {
+      // Rules.md §1 — the Capital is the one area the game cannot be won
+      // without, so it outranks spreading the moment it is face up.
+      const state = withHand(cardsAtLevel(1, 1));
+      const known = {
+        ...state,
+        cities: state.cities.map((city, index) =>
+          index === 4 ? { ...city, faceUp: true, royalCapital: true } : city,
+        ),
+      } as unknown as GameState;
+      const chosen = chooseAction(known, everywhere(handOf(state)));
+      expect(chosen).toMatchObject({ type: 'SET_CARD', city: 4 });
+    });
+
+    it('avoids an area the opponent is standing in', () => {
+      // A card set where they are has to win a battle to matter; one set
+      // where they are not can simply take the area.
+      const state = withHand(cardsAtLevel(1, 1));
+      const contested = {
+        ...state,
+        cards: {
+          ...state.cards,
+          theirs: {
+            instanceId: asCardInstanceId('theirs'),
+            defId: cardsAtLevel(1, 1)[0]! as CardInstance['defId'],
+            owner: THEM,
+            controller: THEM,
+            zone: 'city',
+            cityIndex: 2,
+            faceUp: true,
+            locked: false,
+            damage: 0,
+            counters: {},
+          },
+        },
+      } as unknown as GameState;
+
+      const chosen = chooseAction(contested, everywhere(handOf(state)));
+      expect((chosen as Extract<GameAction, { type: 'SET_CARD' }>).city).not.toBe(2);
+    });
+
     it('ends the phase when it has nothing to set', () => {
       const state = withHand([]);
       expect(chooseAction(state, [{ type: 'CONCEDE' }, { type: 'END_PHASE' }])).toEqual({
         type: 'END_PHASE',
       });
+    });
+  });
+
+  describe('picking a fight', () => {
+    /** A board with `mine`/`theirs` face-up characters standing in a city. */
+    const board = (
+      city: number,
+      mine: number,
+      theirs: number,
+      options: { capital?: boolean; occupiedBy?: PlayerId } = {},
+    ): GameState => {
+      const state = withHand([], 7, 4);
+      const cards: Record<string, unknown> = { ...state.cards };
+      const put = (owner: PlayerId, count: number, tag: string): void => {
+        for (let i = 0; i < count; i++) {
+          const id = `${tag}${i}`;
+          cards[id] = {
+            instanceId: asCardInstanceId(id),
+            // A Level 1 character, so each body carries real Power.
+            defId: cardsAtLevel(1, 1)[0]! as CardInstance['defId'],
+            owner,
+            controller: owner,
+            zone: 'city',
+            cityIndex: city,
+            faceUp: true,
+            locked: false,
+            damage: 0,
+            counters: {},
+          };
+        }
+      };
+      put(ME, mine, 'm');
+      put(THEM, theirs, 't');
+
+      return {
+        ...state,
+        cards,
+        cities: state.cities.map((c, index) =>
+          index === city
+            ? {
+                ...c,
+                faceUp: true,
+                royalCapital: options.capital ?? false,
+                occupiedBy: options.occupiedBy ?? null,
+              }
+            : c,
+        ),
+      } as unknown as GameState;
+    };
+
+    const attack = (city: number): GameAction => ({ type: 'DECLARE_BATTLE', city });
+
+    it('attacks an area nobody is defending', () => {
+      // Rules.md §12 reads the result off who was committed, so an attacker
+      // who turns up against nobody takes the area outright. Femto used to
+      // need a strictly bigger stack, which an empty area never produced.
+      const state = board(2, 1, 0);
+      expect(chooseAction(state, [{ type: 'END_PHASE' }, attack(2)])).toMatchObject({
+        type: 'DECLARE_BATTLE',
+        city: 2,
+      });
+    });
+
+    it('does not attack into a fight it would lose', () => {
+      const state = board(2, 1, 3);
+      expect(chooseAction(state, [{ type: 'END_PHASE' }, attack(2)])).toEqual({
+        type: 'END_PHASE',
+      });
+    });
+
+    it('trades evenly into the Royal Capital, but nowhere else', () => {
+      // §1 — the Capital is the area the game cannot be won without, so an
+      // even trade there is worth making and an even trade elsewhere is not.
+      const capital = board(2, 2, 2, { capital: true });
+      expect(chooseAction(capital, [{ type: 'END_PHASE' }, attack(2)])).toMatchObject({
+        type: 'DECLARE_BATTLE',
+      });
+
+      const ordinary = board(2, 2, 2);
+      expect(chooseAction(ordinary, [{ type: 'END_PHASE' }, attack(2)])).toEqual({
+        type: 'END_PHASE',
+      });
+    });
+
+    it('goes for the Capital ahead of an easier fight elsewhere', () => {
+      const state = {
+        ...board(2, 3, 0),
+        cities: board(2, 3, 0).cities.map((c, index) =>
+          index === 4 ? { ...c, faceUp: true, royalCapital: true } : c,
+        ),
+      } as unknown as GameState;
+      // City 4 is the Capital and empty; city 2 is a bigger win on paper.
+      const chosen = chooseAction(state, [{ type: 'END_PHASE' }, attack(2), attack(4)]);
+      expect(chosen).toMatchObject({ type: 'DECLARE_BATTLE', city: 4 });
+    });
+
+    it('takes the free combat open rather than passing it up', () => {
+      // §11 ② — the combat open does not spend the turn's one open (§10 ③),
+      // so declining it gains nothing. §11 ③ keeps committing separate, so
+      // the card can come down and stay out of a fight it would lose.
+      const state = {
+        ...board(2, 1, 3),
+        battle: {
+          city: 2,
+          step: 'opens',
+          waitingOn: ME,
+          attacker: THEM,
+          defender: ME,
+          participants: [],
+          opened: [],
+          passes: 0,
+          vanguard: null,
+          assigning: [],
+        },
+      } as unknown as GameState;
+
+      const chosen = chooseAction(state, [
+        { type: 'BATTLE_PASS' },
+        { type: 'OPEN_CARD', card: asCardInstanceId('x'), pay: [] },
+      ]);
+      expect(chosen).toMatchObject({ type: 'OPEN_CARD' });
+    });
+
+    it('passes the combat open when there is nothing to open', () => {
+      const state = {
+        ...board(2, 1, 3),
+        battle: {
+          city: 2,
+          step: 'opens',
+          waitingOn: ME,
+          attacker: THEM,
+          defender: ME,
+          participants: [],
+          opened: [],
+          passes: 0,
+          vanguard: null,
+          assigning: [],
+        },
+      } as unknown as GameState;
+
+      expect(chooseAction(state, [{ type: 'BATTLE_PASS' }])).toEqual({ type: 'BATTLE_PASS' });
     });
   });
 });

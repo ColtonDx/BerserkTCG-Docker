@@ -311,7 +311,25 @@ where, which Set Card to open and what to spend on it, when to attack, who
 leads, who joins, and where damage goes. `chooseAction` is a pure function of
 the position, so its judgement is unit-tested; pacing lives in `driveAi`, and
 its moves are broadcast as events so the client's feed is not one-sided.
-It does not yet march characters toward a city it wants.
+
+It plays for territory rather than for exchanges. **The Royal Capital
+outranks everything** once it is face up — §1 makes the game unwinnable
+without it, so Femto sets into it however crowded, attacks into it on an even
+trade it would decline anywhere else, and keeps feeding characters into
+defending it. **An unheld area is worth attacking with anyone**, because §12
+reads the result off who was committed and a defender with nobody to commit
+loses it — the bar is "can this be won", not "is my stack bigger". **The
+combat open (§11 ②) is always taken**: it does not spend the turn's one open
+(§10 ③), and §11 ③ keeps committing separate, so a card can come down and
+stay out of a fight already lost. **Early turns spread**: two sets a turn for
+the first three, preferring Mercenaries — Level 0, ten to a deck — into areas
+the opponent is not standing in, because uncontested claims are the cheapest
+board presence there is. Going second it sets a Level 1 on turn one rather
+than a Level 0, since its first Open step arrives at a City Level the opener
+has already raised (§10 ②).
+
+Against the previous version it wins about two games in three. It still does
+not march characters toward a city it wants.
 
 **The card database and deckbuilder.** All 448 cards are cut from the scans
 (`art-assets/cards/`, `scripts/extract-cards.py`).

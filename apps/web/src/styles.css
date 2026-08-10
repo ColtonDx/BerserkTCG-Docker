@@ -4409,3 +4409,73 @@ button {
     transition: none;
   }
 }
+
+/* ------------------------------------------------- whose decision it is
+ *
+ * A soft glow on the hand of whoever the game is waiting on. Berserk hands
+ * the decision to the non-turn player often enough that "it is not moving —
+ * is that me?" is the question a player asks most: the defender opens,
+ * commits and assigns damage on the attacker's turn (Rules.md §11), a Quick
+ * window names its own responder (§13), and a pending choice outranks both.
+ * `waitingOn.ts` decides who; this only draws it.
+ *
+ * On the cards rather than on the container, so the light traces the fan
+ * instead of boxing it. Both hands can light up — yours and theirs — because
+ * a signal that only ever appeared on your own would leave the opponent
+ * thinking indistinguishable from a stalled game.
+ */
+.hand--live .hand__fan .card,
+.ohand--live .ohand__fan .card {
+  animation: hand-live 2.4s ease-in-out infinite;
+}
+
+/* Warm on your side. The colour is the one difference between the two: it is
+   the same information, but "you decide" should not read the same at a glance
+   as "they are deciding". */
+@keyframes hand-live {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgb(255 206 122 / 34%));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 11px rgb(255 190 88 / 68%));
+  }
+}
+
+/* Cooler and dimmer on theirs: it is information, not a prompt, and it sits
+   at the top of the screen where a bright pulse would nag. */
+.ohand--live .ohand__fan .card {
+  animation-name: ohand-live;
+}
+
+@keyframes ohand-live {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgb(150 190 255 / 24%));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 9px rgb(130 175 255 / 46%));
+  }
+}
+
+/* A hover already lifts and brightens a card; the pulse fighting it makes the
+   card you are reaching for flicker. The hover wins. */
+.hand--live .hand__fan .card:hover {
+  animation: none;
+}
+
+/* The glow is a nicety, and a slow pulse is exactly the kind of motion that
+   makes people ill. Reduced motion keeps the signal and drops the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .hand--live .hand__fan .card,
+  .ohand--live .ohand__fan .card {
+    animation: none;
+    filter: drop-shadow(0 0 7px rgb(255 190 88 / 55%));
+  }
+
+  .ohand--live .ohand__fan .card {
+    filter: drop-shadow(0 0 6px rgb(130 175 255 / 40%));
+  }
+}

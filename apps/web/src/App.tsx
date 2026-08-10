@@ -33,7 +33,7 @@ import { LobbyBrowser } from './components/LobbyBrowser.js';
 import { Settings } from './components/Settings.js';
 import { SignIn } from './components/SignIn.js';
 import { turnPage } from './net/pageTurn.js';
-import { playDraw, playShuffle } from './net/sound.js';
+import { playDraw, playSchwing, playShuffle } from './net/sound.js';
 import { useAuth } from './state/useAuth.js';
 import { useMatch } from './state/useMatch.js';
 
@@ -157,6 +157,16 @@ export function App(): JSX.Element {
       playShuffle();
       return;
     }
+
+    // Steel drawn. Declaring a battle (Rules.md §11) is the loudest thing a
+    // player does, and it outranks anything else in the same batch: a city
+    // flipping face up is part of the declaration, not a separate event worth
+    // its own sound.
+    if (events.some((e) => e.type === 'BATTLE_DECLARED')) {
+      playSchwing();
+      return;
+    }
+
     const drawn = events.filter((e) => e.type === 'CARD_DRAWN').length;
     if (drawn > 0) playDraw(drawn);
   }, [match.recentEvents]);

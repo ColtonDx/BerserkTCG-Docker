@@ -18,6 +18,7 @@ import {
 import { CardImage, CITY_BACK, CITY_CAPITAL, CITY_FACE } from './CardImage.js';
 import { CardMenu, type CardMenuItem } from './CardMenu.js';
 import { BattleBar } from './BattleBar.js';
+import { waitingOn } from './waitingOn.js';
 import { BoostLinks, type BoostLink } from './BoostLinks.js';
 import { Nameplate, seatColour } from './Nameplate.js';
 import { ZonePile } from './ZonePile.js';
@@ -878,9 +879,18 @@ function OpponentHand({
   const middle = (count - 1) / 2;
   const spread = count > 1 ? Math.min(4.5, 22 / count) : 0;
 
+  // Lit on their side too, so "waiting for them" is visible rather than
+  // inferred from nothing happening. Same signal, same rule, both ends of the
+  // table — a glow that only ever appeared on your own hand would leave the
+  // opponent's thinking indistinguishable from a stalled game.
+  const theirs = waitingOn(view) === player;
+  const classes = ['ohand'];
+  if (open) classes.push('ohand--open');
+  if (theirs) classes.push('ohand--live');
+
   return (
     <div
-      className={open ? 'ohand ohand--open' : 'ohand'}
+      className={classes.join(' ')}
       // Pointer events rather than mouse ones, because they say what the
       // pointer *is*. A tap makes the browser fire a compatibility
       // `mouseleave` a moment later, which shut this again the instant a
@@ -953,9 +963,18 @@ function Hand({
   const middle = (cards.length - 1) / 2;
   const spread = cards.length > 1 ? Math.min(4.5, 22 / cards.length) : 0;
 
+  // Lit while the game is waiting on you. The hand is where a turn is spent,
+  // so it is the natural place to say "you", and it answers the question a
+  // player asks most often in a game that can hand the decision to the
+  // non-turn player — see `waitingOn`.
+  const yours = waitingOn(view) === view.viewer;
+  const classes = ['hand'];
+  if (open) classes.push('hand--open');
+  if (yours) classes.push('hand--live');
+
   return (
     <div
-      className={open ? 'hand hand--open' : 'hand'}
+      className={classes.join(' ')}
       // A finger cannot hover, so a tap raises the hand and a tap anywhere
       // else puts it back down (see Board). Without this the hand stayed
       // below the screen edge on a phone and the game was unplayable — you

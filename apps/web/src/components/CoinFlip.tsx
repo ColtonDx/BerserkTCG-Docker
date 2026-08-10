@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
+import { playCoinFlip } from '../net/sound.js';
 
 /**
  * The toss for first player, held up before the opening hands.
@@ -56,6 +57,9 @@ export function CoinFlip({ toss, onDone }: { toss: Toss; onDone: () => void }): 
     const spin = reducedMotion() ? 0 : SPIN_MS;
     setLanded(spin === 0);
     setLeaving(false);
+    // Scored to the same spin, so the landing ring arrives with the coin
+    // settling rather than over the top of it.
+    playCoinFlip(spin);
     const settle = window.setTimeout(() => setLanded(true), spin);
     const fade = window.setTimeout(() => setLeaving(true), spin + HOLD_MS - FADE_MS);
     const done = window.setTimeout(onDone, spin + HOLD_MS);

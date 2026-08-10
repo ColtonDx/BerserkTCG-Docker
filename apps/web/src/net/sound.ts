@@ -181,6 +181,104 @@ export function playShuffle(): void {
 }
 
 /**
+ * A struck metal tone: a sine that starts sharp and rings away.
+ *
+ * The counterpart to `rush`. Paper is noise, but a coin and a blade are
+ * *pitched* — they ring — so noise through a filter can never be either.
+ * `detune` adds a second partial slightly out of tune with the first, which
+ * is what stops it sounding like a test tone: real metal is inharmonic, and
+ * the beating between two close partials is most of that character.
+ */
+function ring(
+  ctx: AudioContext,
+  at: number,
+  hz: number,
+  duration: number,
+  peak: number,
+  detune = 1.0,
+): void {
+  for (const [multiple, share] of [
+    [1, 1],
+    [detune, 0.6],
+  ] as const) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(hz * multiple, at);
+
+    const gain = ctx.createGain();
+    // Struck, not blown: full amplitude almost immediately, then a long decay.
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak * share, at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+
+    osc.connect(gain).connect(master ?? ctx.destination);
+    osc.start(at);
+    osc.stop(at + duration);
+  }
+}
+
+/**
+ * The toss for first player. Rules.md §9.2.
+ *
+ * Three parts, matching what `CoinFlip.tsx` draws: the thumb-flick that sends
+ * it up, a thin shimmer while it spins, and the ring as it lands. The spin
+ * timing is deliberately tied to the component's own — see `SPIN_MS` there —
+ * so the landing ring arrives with the coin settling rather than over it.
+ *
+ * `spinMs` of 0 is the reduced-motion path: there is no spin to score, so it
+ * plays the flick and the landing together.
+ */
+export function playCoinFlip(spinMs = 1700): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const spin = spinMs / 1000;
+
+  // The flick: a short, bright chime as it leaves the hand.
+  ring(ctx, now, 1180, 0.5, 0.09, 2.02);
+
+  if (spin > 0.2) {
+    // Tumbling: faint taps thinning out as it slows, so the ear hears the
+    // arc rather than a held note. Quiet enough to sit under the flick's tail.
+    const taps = 7;
+    for (let i = 0; i < taps; i++) {
+      const progress = i / (taps - 1);
+      // Eased so the gaps widen towards the top of the arc.
+      const at = now + 0.16 + spin * 0.78 * (progress * progress * 0.7 + progress * 0.3);
+      ring(ctx, at, 2200 + 260 * Math.sin(progress * Math.PI), 0.1, 0.022, 1.48);
+    }
+  }
+
+  // Landing: lower, louder and long, because this is the answer.
+  const lands = now + Math.max(0.22, spin);
+  ring(ctx, lands, 660, 1.5, 0.13, 1.995);
+  ring(ctx, lands + 0.02, 990, 0.9, 0.05, 2.01);
+  // A touch of noise on the strike, so it lands on a surface rather than in air.
+  rush(ctx, lands, 0.09, 0.05, 2400, 5600);
+}
+
+/**
+ * A blade drawn: the "schwing" when a battle is declared. Rules.md §11.
+ *
+ * Steel leaving a scabbard is a rising scrape that turns into a ring — so it
+ * is a bright noise sweep for the draw and a struck tone for the edge coming
+ * free, the second arriving just before the first has finished. Pitched high
+ * and kept short: it punctuates the declaration rather than playing over it.
+ */
+export function playSchwing(): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  // The scrape up the scabbard.
+  rush(ctx, now, 0.3, 0.11, 1800, 7200);
+  // The edge coming free and ringing, overlapping the tail of the scrape.
+  ring(ctx, now + 0.16, 1560, 0.85, 0.085, 2.03);
+  ring(ctx, now + 0.175, 2340, 0.5, 0.035, 1.99);
+}
+
+/**
  * A phase going by: one long, soft sweep of air.
  *
  * Darker and slower than a card — a phase is the turn moving rather than
