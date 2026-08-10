@@ -20,12 +20,36 @@ import { nameOf } from '../state/useCardNames.js';
 export type HandStep =
   | { readonly kind: 'mulligan'; readonly costOfKeeping: number }
   | { readonly kind: 'bottom'; readonly owed: number }
-  | { readonly kind: 'discard'; readonly over: number };
+  | { readonly kind: 'discard'; readonly over: number }
+  /**
+   * A card's printed line has stopped to ask which cards. Rules.md §13.
+   *
+   * Carries the line itself rather than a paraphrase, so the prompt says what
+   * the card says. `from` is the zone being picked out of: a pitch reads the
+   * hand, a search reads the cards the server revealed out of the deck.
+   */
+  | {
+      readonly kind: 'choose';
+      readonly owed: number;
+      readonly text: string;
+      readonly from: 'hand' | 'deck';
+    };
 
 /** Which hand step, if any, the player owes right now. */
 export function handStep(view: PlayerView): HandStep | null {
   const has = (type: GameAction['type']): boolean =>
     view.legalActions.some((action) => action.type === type);
+
+  // First, because it outranks everything: until it is answered nothing else
+  // in the game is legal at all (Rules.md §13).
+  if (view.pending && view.pending.waitingOn === view.viewer) {
+    return {
+      kind: 'choose',
+      owed: view.pending.count,
+      text: view.pending.text,
+      from: view.pending.kind.zone,
+    };
+  }
 
   if (view.pendingBottom > 0) return { kind: 'bottom', owed: view.pendingBottom };
   if (has('KEEP_HAND')) {
@@ -56,15 +80,27 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
   // to click a card *for*, so a click is a look: it zooms, and clicking away
   // puts it back.
   const [zoomed, setZoomed] = useState<string | null>(null);
-  const hand = (view.zoneOrder[`${view.viewer}:hand`] ?? [])
-    .map((id) => view.cards[id])
-    .filter((card): card is NonNullable<typeof card> => card !== undefined);
+  // Which cards are laid out. Every step but one is about the hand; a deck
+  // search is about the cards the *server* revealed out of the deck, which is
+  // exactly the set it offered a `CHOOSE_CARD` for. Reading them off the legal
+  // actions rather than off the deck zone is deliberate: the client is never
+  // sent the rest of the deck, so this cannot show a card it should not.
+  const searching = step.kind === 'choose' && step.from === 'deck';
+  const shown = searching
+    ? view.legalActions
+        .filter((action) => action.type === 'CHOOSE_CARD')
+        .map((action) => view.cards[(action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card])
+        .filter((card): card is NonNullable<typeof card> => card !== undefined)
+    : (view.zoneOrder[`${view.viewer}:hand`] ?? [])
+        .map((id) => view.cards[id])
+        .filter((card): card is NonNullable<typeof card> => card !== undefined);
 
   // A card is clickable only when the current step actually acts on cards.
   const picking = step.kind !== 'mulligan';
   const actionFor = (instanceId: string): GameAction | null => {
     if (step.kind === 'bottom') return { type: 'BOTTOM_CARD', card: instanceId as never };
     if (step.kind === 'discard') return { type: 'DISCARD_CARD', card: instanceId as never };
+    if (step.kind === 'choose') return { type: 'CHOOSE_CARD', card: instanceId as never };
     return null;
   };
 
@@ -97,7 +133,7 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
           <p className="focus__hint">{hint(step)}</p>
 
           <div className="focus__hand">
-            {hand.map((card) => {
+            {shown.map((card) => {
               const defId = 'defId' in card ? card.defId : null;
               const clickable = picking && legal(card.instanceId);
               return (
@@ -186,10 +222,24 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
 function title(step: HandStep): string {
   if (step.kind === 'mulligan') return 'Your opening hand';
   if (step.kind === 'bottom') return 'Put cards on the bottom';
+  if (step.kind === 'choose') {
+    return step.from === 'deck' ? 'Search your deck' : 'Discard';
+  }
   return 'Discard to seven';
 }
 
 function hint(step: HandStep): string {
+  if (step.kind === 'choose') {
+    // The printed line first, in the card's own words: the player is being
+    // interrupted by a card, and what it says is the whole reason they are
+    // being asked. Then what to click, and how many times.
+    const many = step.owed === 1 ? 'a card' : `${step.owed} cards`;
+    const what =
+      step.from === 'deck'
+        ? `Click ${many} to add to your hand — your deck is shuffled afterwards.`
+        : `Click ${many} to discard, or 🔍 to read one first.`;
+    return `${step.text} ${what}`;
+  }
   if (step.kind === 'mulligan') {
     if (step.costOfKeeping === 0) return 'Keep this hand, or shuffle it back and draw again.';
     const cards = step.costOfKeeping === 1 ? 'one card' : `${step.costOfKeeping} cards`;

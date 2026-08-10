@@ -116,6 +116,74 @@ describe('the computer opponent', () => {
     });
   });
 
+  describe('answering an effect that stopped to ask', () => {
+    /** A choice of `zone` waiting on Femto. Rules.md §13. */
+    const asking = (state: GameState, zone: 'hand' | 'deck'): GameState =>
+      ({
+        ...state,
+        pending: {
+          waitingOn: ME,
+          source: 'c0',
+          text: 'a printed line',
+          count: 1,
+          kind:
+            zone === 'hand' ? { zone, action: 'discard' } : { zone, action: 'toHand', named: null },
+        },
+      }) as unknown as GameState;
+
+    const picks = (cards: readonly CardInstanceId[]): GameAction[] =>
+      cards.map((card) => ({ type: 'CHOOSE_CARD' as const, card }));
+
+    it('pitches the card it could open latest', () => {
+      // The same judgement as the hand limit: a card it cannot open for
+      // several turns is the one it misses least.
+      const state = asking(withHand([cardsAtLevel(1, 1)[0]!, cardsAtLevel(4, 1)[0]!]), 'hand');
+      const cards = handOf(state);
+      expect(chooseAction(state, [{ type: 'CONCEDE' }, ...picks(cards)])).toEqual({
+        type: 'CHOOSE_CARD',
+        card: cards[1],
+      });
+    });
+
+    it('searches out the card it could actually use', () => {
+      // The opposite end of the same ordering. A search is a free pick, so it
+      // takes something it can open now rather than a card it must sit on.
+      const state = asking(withHand([cardsAtLevel(1, 1)[0]!, cardsAtLevel(4, 1)[0]!]), 'deck');
+      const cards = handOf(state);
+      expect(chooseAction(state, [{ type: 'CONCEDE' }, ...picks(cards)])).toEqual({
+        type: 'CHOOSE_CARD',
+        card: cards[0],
+      });
+    });
+
+    it('answers the question before anything else it could do', () => {
+      // A pending choice outranks every other move: until it is answered
+      // nothing else is legal, so reaching past it would hang the match.
+      const state = asking(withHand(cardsAtLevel(1, 2)), 'hand');
+      const cards = handOf(state);
+      const chosen = chooseAction(state, [
+        { type: 'END_PHASE' },
+        { type: 'SET_CARD', card: cards[0]!, city: 2 },
+        ...picks(cards),
+      ]);
+      expect(chosen).toMatchObject({ type: 'CHOOSE_CARD' });
+    });
+
+    it('leaves a question meant for the other player alone', () => {
+      const state = {
+        ...withHand(cardsAtLevel(1, 2)),
+        pending: {
+          waitingOn: 'somebody-else',
+          source: 'c0',
+          text: 'a printed line',
+          count: 1,
+          kind: { zone: 'hand', action: 'discard' },
+        },
+      } as unknown as GameState;
+      expect(chooseAction(state, [{ type: 'END_PHASE' }])).toEqual({ type: 'END_PHASE' });
+    });
+  });
+
   describe('settling its opening hand', () => {
     const decide = (state: GameState): GameAction | null =>
       chooseAction(state, [{ type: 'CONCEDE' }, { type: 'KEEP_HAND' }, { type: 'MULLIGAN' }]);

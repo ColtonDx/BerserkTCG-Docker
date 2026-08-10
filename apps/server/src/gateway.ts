@@ -3,6 +3,7 @@ import {
   GAME_NAMESPACE,
   type ClientToServerEvents,
   type MatchLobby,
+  type OngoingMatch,
   type OpenMatch,
   type ServerToClientEvents,
 } from '@berserk/protocol';
@@ -233,6 +234,25 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
         age: now - match.createdAt,
       }));
       ack(open);
+    });
+
+    // Games this account is still seated in. Derived from the authenticated
+    // session, never from the payload: a client that could name a player id
+    // here would be asking which games somebody *else* is in.
+    socket.on('matches:mine', (_payload, ack) => {
+      const now = Date.now();
+      const mine: OngoingMatch[] = matches.matchesFor(session.playerId).map((match) => {
+        const opponent = match.seats.find((seat) => seat.playerId !== session.playerId);
+        return {
+          matchId: match.id,
+          opponent: opponent?.displayName ?? null,
+          opponentConnected: opponent?.connected ?? false,
+          yourTurn: match.state?.turn.activePlayer === session.playerId,
+          turnNumber: match.state?.turn.turnNumber ?? 0,
+          age: now - match.createdAt,
+        };
+      });
+      ack(mine);
     });
 
     socket.on('match:selectDeck', async ({ matchId, deckId }, ack) => {

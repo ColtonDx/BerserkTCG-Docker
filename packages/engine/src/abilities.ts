@@ -141,7 +141,34 @@ export type Effect =
       readonly count: number;
       readonly per?: Selector;
     }
+  /**
+   * Cards out of a hand and into the Trash. Rules.md §13.
+   *
+   * Who picks follows who is losing them. `opponent` is taken at random,
+   * because the printed line says "your opponent discards" and not "your
+   * opponent may choose" — letting them pick their worst card is a different
+   * card. `you` stops and asks, for the same reason from the other side: a
+   * line reading "discard 2 cards" has named a number, not the cards.
+   *
+   * Asking suspends the ability — see {@link PendingChoice}. Anything in
+   * `then` runs once the last card has been named, so a card that draws and
+   * then discards still reads in printed order.
+   */
   | { readonly do: 'discard'; readonly player: 'you' | 'opponent'; readonly count: number }
+  /**
+   * Take a card out of your deck and shuffle. Rules.md §13.
+   *
+   * `named` is the printed restriction — "add 1 Serpico from your deck" — and
+   * matches the card's printed *name*, so any printing of it will do. A search
+   * that finds nothing simply finds nothing; it is not an error and does not
+   * stop to ask.
+   */
+  | {
+      readonly do: 'search';
+      readonly player: 'you';
+      readonly count: number;
+      readonly named: string | null;
+    }
   | { readonly do: 'unlock'; readonly who: Selector }
   | { readonly do: 'returnToHand'; readonly who: Selector }
   /**
@@ -402,6 +429,19 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       text: 'When this character attacks, if it is the vanguard, it receives +1/+1 until end of turn.',
     },
   ],
+  'BK1-013': [
+    {
+      trigger: 'activated',
+      quick: true,
+      // The printed "Tap:" — §6 allows a card to lock itself as a cost.
+      cost: { lockSelf: true },
+      // "Target white character in this area" reaches either side: the line
+      // names a colour and an area and says nothing about whose it is.
+      target: { where: 'thisArea', colour: 'white' },
+      effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 1, hp: 1 } },
+      text: '(Quick) Tap: Target white (color) character in this area gains +1/+1 until end of turn.',
+    },
+  ],
   'BK1-014': [
     {
       trigger: 'always',
@@ -500,6 +540,21 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       text: '(Quick) Tap: Target character currently in combat in this area takes 3 damage.',
     },
   ],
+  'BK1-047': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 3 },
+      // One printed line, one ability: "draw 3, then discard 2" is a single
+      // sentence with a single price, so the discard rides in `then` rather
+      // than standing as an entry the player could use on its own.
+      //
+      // The discard stops and asks — see `PendingChoice`. It is the last thing
+      // on the line, which is what makes that safe: nothing is left waiting
+      // behind the question.
+      then: [{ do: 'discard', player: 'you', count: 2 }],
+      text: 'When this card is opened, draw 3 cards, then discard 2 cards.',
+    },
+  ],
   'BK1-048': [
     {
       trigger: 'activated',
@@ -519,6 +574,14 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       text: 'When this card is opened, draw 2 cards.',
     },
   ],
+  'BK1-050': [
+    {
+      trigger: 'open',
+      // "1 Serpico" by printed name, so any Serpico in the deck will do.
+      effect: { do: 'search', player: 'you', count: 1, named: 'Serpico' },
+      text: 'When this card is opened, add 1 Serpico from your deck to your hand.',
+    },
+  ],
   'BK1-053': [
     {
       trigger: 'open',
@@ -528,6 +591,15 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         amount: 4,
       },
       text: 'When this card is opened, deal 4 damage to each enemy character in this area.',
+    },
+  ],
+  'BK1-057': [
+    {
+      trigger: 'open',
+      // The same line as BK1-050, printed with "card" in it. Matched by name,
+      // so both find any Serpico the deck is holding.
+      effect: { do: 'search', player: 'you', count: 1, named: 'Serpico' },
+      text: 'When this card is opened, add 1 Serpico card from your deck to your hand.',
     },
   ],
   'BK1-058': [
@@ -660,6 +732,14 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
       },
       text: 'When this card is opened, destroy all set cards you control in all areas. Draw that many cards.',
+    },
+  ],
+  'BK1-069': [
+    {
+      trigger: 'open',
+      // "any card" — an unrestricted search, which is what `named: null` is.
+      effect: { do: 'search', player: 'you', count: 1, named: null },
+      text: 'When this card is opened, search your deck for any card and add it to your hand.',
     },
   ],
   'BK1-070': [

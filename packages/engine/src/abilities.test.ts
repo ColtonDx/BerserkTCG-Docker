@@ -1446,6 +1446,304 @@ describe('the client is told the numbers the engine will use', () => {
   });
 });
 
+describe('effects that stop and ask (Rules.md §13)', () => {
+  /**
+   * A dealt match from a deck built out of named cards, for the searches that
+   * need something specific to find. `started` deals one repeated card, which
+   * a search would either always or never find.
+   */
+  const startedWith = (cards: readonly string[], seed = 11): GameState => {
+    const deck = { cards: cards.map(asCardDefId) };
+    const match = engine.createMatch({
+      matchId: asMatchId('search'),
+      seed,
+      decks: [
+        { playerId: ALICE, name: 'Alice', ...deck },
+        { playerId: BOB, name: 'Bob', ...deck },
+      ],
+    });
+    const kept = engine.reduceAll(match, [
+      { actor: ALICE, action: { type: 'KEEP_HAND' } },
+      { actor: BOB, action: { type: 'KEEP_HAND' } },
+    ]);
+    if (!kept.ok) throw new Error(`setup failed: ${kept.error.message}`);
+    return kept.value.state;
+  };
+
+  /** Three Serpico — the deck limit — in a deck that can pay a green cost. */
+  const WITH_SERPICO = [...Array(3).fill('BK1-051'), ...Array(42).fill(GREEN)];
+
+  /** The cards the engine is offering as answers to the outstanding choice. */
+  const choicesFor = (state: GameState, player: PlayerId): CardInstanceId[] =>
+    engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+
+  it('BK1-047 Casca draws three and then asks which two to pitch', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const casca = place(state, player, 'BK1-047', 2, { faceUp: false });
+    state = openable(casca.state, player, casca.card);
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, player, openOf(state, player, casca.card) as GameAction);
+
+    // Three drawn, one spent on the cost, and nothing discarded yet: the
+    // discard is the player's to make.
+    expect(state.pending?.waitingOn).toBe(player);
+    expect(state.pending?.count).toBe(2);
+    expect(zoneSize(state, player, 'hand')).toBe(before + 3 - 1);
+
+    // Every card in hand is a legal answer, and nothing else is offered.
+    const hand = state.zoneOrder[`${player}:hand`] ?? [];
+    expect(choicesFor(state, player).sort()).toEqual([...hand].sort());
+    expect(
+      engine
+        .legalActions(state, player)
+        .every((a) => a.type === 'CHOOSE_CARD' || a.type === 'CONCEDE'),
+      'nothing but the choice and conceding should be legal',
+    ).toBe(true);
+
+    // It asks twice, one card at a time.
+    const first = choicesFor(state, player)[0] as CardInstanceId;
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: first });
+    expect(state.cards[first]?.zone).toBe('trash');
+    expect(state.pending?.count).toBe(1);
+
+    const second = choicesFor(state, player)[0] as CardInstanceId;
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: second });
+    expect(state.cards[second]?.zone).toBe('trash');
+    expect(state.pending).toBeNull();
+    expect(zoneSize(state, player, 'hand')).toBe(before + 3 - 1 - 2);
+  });
+
+  it('holds the whole game still until the question is answered', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    const casca = place(state, player, 'BK1-047', 2, { faceUp: false });
+    state = openable(casca.state, player, casca.card);
+    state = apply(state, player, openOf(state, player, casca.card) as GameAction);
+
+    // The opponent may not act around it, and may not answer it either.
+    expect(engine.legalActions(state, other)).toEqual([{ type: 'CONCEDE' }]);
+    const hand = state.zoneOrder[`${player}:hand`] ?? [];
+    const stolen = engine.reduce(state, other, {
+      type: 'CHOOSE_CARD',
+      card: hand[0] as CardInstanceId,
+    });
+    expect(stolen.ok).toBe(false);
+
+    // Nor may the player it is waiting on do anything but answer.
+    expect(engine.reduce(state, player, { type: 'END_PHASE' }).ok).toBe(false);
+    // Conceding is always available, so nobody is trapped by a prompt.
+    expect(engine.reduce(state, player, { type: 'CONCEDE' }).ok).toBe(true);
+  });
+
+  it('never asks for more cards than the hand holds', () => {
+    // A hand of one owing two discards would be a question with no second
+    // answer, and the player would be stuck on the prompt forever. Casca
+    // always draws three before she asks, so the only way to be short is to
+    // ask against a hand that has been emptied — BK1-017's opponent-discard
+    // path is the same effect from the other side and reaches it directly.
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    const corkus = place(state, player, 'BK1-017', 2, { faceUp: false });
+    state = openable(corkus.state, player, corkus.card);
+    state = { ...state, zoneOrder: { ...state.zoneOrder, [`${other}:hand`]: [] } };
+
+    // An empty hand has nothing to lose, and nothing hangs waiting on it.
+    state = apply(state, player, openOf(state, player, corkus.card) as GameAction);
+    expect(state.pending).toBeNull();
+    expect(state.status.kind).toBe('playing');
+  });
+
+  it('does not ask once the match is already over', () => {
+    // BK1-047 draws three before she discards two, and drawing from an empty
+    // deck is a loss (Rules.md §10 ②). The prompt must not survive the match:
+    // `legalActions` rightly offers nothing once the game is decided, so a
+    // pending choice would be a question with no legal answer at all.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const casca = place(state, player, 'BK1-047', 2, { faceUp: false });
+    state = openable(casca.state, player, casca.card);
+    state = { ...state, zoneOrder: { ...state.zoneOrder, [`${player}:deck`]: [] } };
+
+    state = apply(state, player, openOf(state, player, casca.card) as GameAction);
+    expect(state.status).toMatchObject({ kind: 'finished', reason: 'deck_out' });
+    expect(state.pending).toBeNull();
+    expect(engine.legalActions(state, player)).toEqual([]);
+  });
+
+  it('BK1-050 Farnese searches out a Serpico, and only a Serpico', () => {
+    // A deck of Serpico and Mercenary, so the search has both something to
+    // find and something it must not offer.
+    let state = startedWith(WITH_SERPICO);
+    const player = state.turn.activePlayer;
+    const farnese = place(state, player, 'BK1-050', 2, { faceUp: false });
+    state = openable(farnese.state, player, farnese.card);
+    const deckBefore = zoneSize(state, player, 'deck');
+    state = apply(state, player, openOf(state, player, farnese.card) as GameAction);
+
+    expect(state.pending?.count).toBe(1);
+    const offered = choicesFor(state, player);
+    expect(offered.length).toBeGreaterThan(0);
+    // Everything offered is a Serpico still in the deck.
+    for (const id of offered) {
+      expect(registry.get(cardOf(state, id).defId).name).toBe('Serpico');
+      expect(cardOf(state, id).zone).toBe('deck');
+    }
+
+    const taken = offered[0] as CardInstanceId;
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: taken });
+    expect(cardOf(state, taken).zone).toBe('hand');
+    expect(zoneSize(state, player, 'deck')).toBe(deckBefore - 1);
+    expect(state.pending).toBeNull();
+  });
+
+  it('reveals the searchable cards to the searcher and to nobody else', () => {
+    let state = startedWith(WITH_SERPICO);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    const farnese = place(state, player, 'BK1-050', 2, { faceUp: false });
+    state = openable(farnese.state, player, farnese.card);
+    state = apply(state, player, openOf(state, player, farnese.card) as GameAction);
+
+    const deck = state.zoneOrder[`${player}:deck`] ?? [];
+    const mine = engine.viewFor(state, player);
+    const theirs = engine.viewFor(state, other);
+
+    let seen = 0;
+    for (const id of deck) {
+      const card = mine.cards[id];
+      if (!card) continue;
+      const serpico = registry.get(cardOf(state, id).defId).name === 'Serpico';
+      // The searcher sees exactly the Serpicos; the rest of their deck is
+      // still face-down to them, or the search has leaked the draw order.
+      expect(isHidden(card)).toBe(!serpico);
+      if (serpico) seen++;
+      // The opponent sees none of it, searched or not.
+      const theirCopy = theirs.cards[id];
+      expect(theirCopy && isHidden(theirCopy)).toBe(true);
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('shuffles the deck once the search is over, and not before', () => {
+    let state = startedWith(WITH_SERPICO);
+    const player = state.turn.activePlayer;
+    const farnese = place(state, player, 'BK1-050', 2, { faceUp: false });
+    state = openable(farnese.state, player, farnese.card);
+    state = apply(state, player, openOf(state, player, farnese.card) as GameAction);
+
+    // Still in its original order while the player is looking through it.
+    const during = [...(state.zoneOrder[`${player}:deck`] ?? [])];
+    const taken = choicesFor(state, player)[0] as CardInstanceId;
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: taken });
+
+    const after = [...(state.zoneOrder[`${player}:deck`] ?? [])];
+    expect(after).toHaveLength(during.length - 1);
+    // Same cards, different order: the deck was shuffled, not merely shortened.
+    expect([...after].sort()).toEqual(during.filter((id) => id !== taken).sort());
+    expect(after).not.toEqual(during.filter((id) => id !== taken));
+  });
+
+  it('finds nothing without stopping to ask, and still shuffles', () => {
+    // A deck with no Serpico in it. Rules.md §13 — the effect resolves and
+    // finds nobody; it is not an error and must not freeze the game.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const farnese = place(state, player, 'BK1-050', 2, { faceUp: false });
+    state = openable(farnese.state, player, farnese.card);
+
+    state = apply(state, player, openOf(state, player, farnese.card) as GameAction);
+    expect(state.pending).toBeNull();
+    expect(cardOf(state, farnese.card).faceUp).toBe(true);
+  });
+
+  it('fires an on-open ability from the combat open too', () => {
+    // Rules.md §11 ② — the defender's combat open is an open, so "when this
+    // card is opened" fires there exactly as it does in the Open phase. The
+    // step is not a separate way onto the board.
+    let state = started(GREEN);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // Somebody to lead the attack, and Farnese set face-down in the same city.
+    const vanguard = place(state, attacker, GREEN, 2);
+    state = vanguard.state;
+    const farnese = place(state, defender, 'BK1-049', 2, { faceUp: false });
+    state = atMain(farnese.state);
+
+    state = apply(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: vanguard.card });
+    expect(state.battle?.step).toBe('opens');
+    expect(state.battle?.waitingOn).toBe(defender);
+
+    const open = openOf(state, defender, farnese.card);
+    expect(open, 'the defender should be offered the combat open').toBeDefined();
+
+    const before = zoneSize(state, defender, 'hand');
+    state = apply(state, defender, open as GameAction);
+
+    // She is on the board and her line has resolved: two drawn, less whatever
+    // the cost took out of hand.
+    expect(cardOf(state, farnese.card).faceUp).toBe(true);
+    const paid = (open as Extract<GameAction, { type: 'OPEN_CARD' }>).pay.length;
+    expect(zoneSize(state, defender, 'hand')).toBe(before + 2 - paid);
+  });
+
+  it('asks its question from the combat open, and holds the battle for it', () => {
+    // The same again with a card that stops to ask: the battle is frozen on
+    // the question rather than settling past it, because the answer can still
+    // change what the next step offers.
+    let state = startedWith(WITH_SERPICO);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const vanguard = place(state, attacker, GREEN, 2);
+    state = vanguard.state;
+    const farnese = place(state, defender, 'BK1-050', 2, { faceUp: false });
+    state = atMain(farnese.state);
+
+    state = apply(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: vanguard.card });
+    state = apply(state, defender, openOf(state, defender, farnese.card) as GameAction);
+
+    // The search is open and the battle has not moved on without it.
+    expect(state.pending?.waitingOn).toBe(defender);
+    expect(state.battle?.step).toBe('opens');
+    expect(engine.legalActions(state, attacker)).toEqual([{ type: 'CONCEDE' }]);
+
+    const taken = choicesFor(state, defender)[0] as CardInstanceId;
+    state = apply(state, defender, { type: 'CHOOSE_CARD', card: taken });
+
+    // Answered, and the battle picks up where it left off.
+    expect(state.pending).toBeNull();
+    expect(cardOf(state, taken).zone).toBe('hand');
+    expect(state.battle).not.toBeNull();
+  });
+
+  it('an opponent’s discard is still taken at random, not chosen', () => {
+    // The other side of the same effect: BK1-017 says "your opponent
+    // discards", which is not the same as letting them pick their worst.
+    // Corkus is white, so the hand paying for him has to be.
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    const card = place(state, player, 'BK1-017', 2, { faceUp: false });
+    state = openable(card.state, player, card.card);
+
+    const before = zoneSize(state, other, 'hand');
+    state = apply(state, player, openOf(state, player, card.card) as GameAction);
+
+    expect(state.pending, 'nobody should be asked').toBeNull();
+    expect(zoneSize(state, other, 'hand')).toBe(before - 1);
+  });
+});
+
 /** The open the engine is offering for this card, if any. */
 const openOf = (
   state: GameState,

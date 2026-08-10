@@ -15,13 +15,14 @@ import {
   cityLevel,
   definitionOf,
   isCharacter,
+  searchable,
   uniqueConflict,
   validatePayment,
   HAND_LIMIT,
   type EngineContext,
 } from './rules.js';
 import { MIN_KEPT_HAND } from './setup.js';
-import type { BattleState, CardInstance, GameAction, GameState } from './types.js';
+import type { BattleState, CardInstance, GameAction, GameState, PendingChoice } from './types.js';
 import { cardsInZone, cityDistance } from './zones.js';
 
 /**
@@ -45,6 +46,15 @@ export function legalActions(ctx: EngineContext, state: GameState, player: Playe
 
   if (state.status.kind === 'setup') {
     actions.push(...setupActions(state, player));
+    return actions;
+  }
+
+  // An effect that stopped to ask outranks even a Quick window: the window is
+  // a question the player may decline, this is one they may not, because the
+  // card is already half-resolved. Rules.md §13.
+  if (state.pending) {
+    if (state.pending.waitingOn !== player) return actions;
+    actions.push(...choosable(ctx, state, state.pending, player));
     return actions;
   }
 
@@ -102,6 +112,28 @@ export function legalActions(ctx: EngineContext, state: GameState, player: Playe
 }
 
 const discard = (card: CardInstanceId): GameAction => ({ type: 'DISCARD_CARD', card });
+
+/**
+ * Every card that answers the outstanding choice. Rules.md §13.
+ *
+ * A deck search reads the same list the view reveals (`searchable`), so what
+ * the client is offered and what it is allowed to see are one decision made in
+ * one place — offering a card the view had redacted would show the player a
+ * hole in their own deck, and revealing one the reducer would refuse would be
+ * worse.
+ */
+function choosable(
+  ctx: EngineContext,
+  state: GameState,
+  pending: PendingChoice,
+  player: PlayerId,
+): GameAction[] {
+  const cards =
+    pending.kind.zone === 'hand'
+      ? cardsInZone(state, player, 'hand')
+      : searchable(ctx, state, player, pending.kind.named);
+  return cards.map((card) => ({ type: 'CHOOSE_CARD', card: card.instanceId }));
+}
 
 /**
  * Cities that can be attacked. Rules.md §10 ④(4) — one you do not occupy,

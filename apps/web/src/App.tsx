@@ -5,7 +5,7 @@ import {
   type GameEvent,
   type PlayerView,
 } from '@berserk/engine';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { GameMenu } from './components/GameMenu.js';
 import { MatchOver } from './components/MatchOver.js';
 import { TurnButton } from './components/TurnButton.js';
@@ -15,6 +15,7 @@ import { Banner } from './components/Banner.js';
 import { Board } from './components/Board.js';
 import { BoardFx } from './components/BoardFx.js';
 import { CityTaken, type Taken } from './components/CityTaken.js';
+import { CoinFlip, TossAnnouncement, type Toss } from './components/CoinFlip.js';
 import { HandFocus, handStep } from './components/HandFocus.js';
 import { Inspect } from './components/Inspect.js';
 import { CARD_BACK } from './components/CardImage.js';
@@ -77,6 +78,12 @@ export function App(): JSX.Element {
   // A city changing hands, which is the biggest single swing on the board and
   // pays two cards for it. Rules.md §12.
   const [taken, setTaken] = useState<Taken | null>(null);
+  // The toss for first player, shown once when a match deals. Rules.md §9.2 —
+  // the engine has already decided it; this only says so.
+  const [toss, setToss] = useState<Toss | null>(null);
+  // Stable, because the toss times itself off this callback: a fresh arrow on
+  // every render would restart the coin mid-spin and it would never land.
+  const clearToss = useCallback(() => setToss(null), []);
   // Settings sits over whatever is underneath — the main menu or a match —
   // rather than being a screen of its own, so a game is never left to reach it.
   const [settings, setSettings] = useState(false);
@@ -115,6 +122,24 @@ export function App(): JSX.Element {
       // through an action, so no events describe them — the first view
       // arriving *is* the deal.
       playShuffle();
+
+      // Rules.md §9.2 randomises the first player, and `seats[0]` is the
+      // result: the engine shuffled the seats from the match seed. Announced
+      // here rather than from `MATCH_STARTED`, because that event is in the
+      // opening log rather than in a live batch — a player rejoining a match
+      // in progress would otherwise be told the toss all over again.
+      //
+      // Only while the match is still in setup, for the same reason: come
+      // back on turn nine and the toss is long settled.
+      const view = match.view;
+      const first = view.seats[0];
+      if (first && view.status.kind === 'setup') {
+        setToss({
+          key: `${view.matchId}`,
+          mine: first === view.viewer,
+          who: view.players[first]?.name ?? 'Your opponent',
+        });
+      }
     }
     if (!match.view) dealt.current = false;
   }, [match.view]);
@@ -441,6 +466,15 @@ export function App(): JSX.Element {
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} onDone={() => setReveal(null)} />}
       {taken && <CityTaken taken={taken} onDone={() => setTaken(null)} />}
+      {/* Over the mulligan, not beside it: the toss settles who acts first and
+       * should be read before the opening hand is decided. It takes no pointer
+       * events, so the deal animates underneath and nothing is blocked. */}
+      {toss && (
+        <>
+          <CoinFlip toss={toss} onDone={clearToss} />
+          <TossAnnouncement toss={toss} />
+        </>
+      )}
       {peeking && <Peek defId={peeking} />}
       {inspecting && <Inspect defId={inspecting} onClose={() => setInspecting(null)} />}
       {burning && <BurnAway onDone={() => setBurning(false)} />}

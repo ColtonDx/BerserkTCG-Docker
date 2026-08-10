@@ -1,6 +1,8 @@
 import type { MatchId } from '@berserk/engine';
-import { useState, type JSX } from 'react';
+import type { OngoingMatch } from '@berserk/protocol';
+import { useEffect, useState, type JSX } from 'react';
 import wallpaper from '../../../../art-assets/wallpaper.jpg';
+import { getSocket } from '../net/socket.js';
 import { Embers } from './Embers.js';
 
 /**
@@ -30,6 +32,43 @@ interface LobbyProps {
   readonly onSignOut: () => void;
 }
 
+/**
+ * Games this account is still seated in. DesignNotes 3.
+ *
+ * A dropped connection leaves the seat exactly where it was — the server keeps
+ * it so the player can come back — but until this list existed there was no
+ * way to find the match again short of remembering its six-digit code. So the
+ * menu asks on the way in, and keeps asking while it is open: the opponent may
+ * finish their turn, or concede, while this screen is up.
+ *
+ * Polled rather than pushed, like the lobby browser: the list is small, only
+ * interesting while this screen is showing, and a few seconds of staleness
+ * costs nothing.
+ */
+const REFRESH_MS = 5000;
+
+function useOngoingMatches(active: boolean): readonly OngoingMatch[] {
+  const [matches, setMatches] = useState<readonly OngoingMatch[]>([]);
+
+  useEffect(() => {
+    if (!active) return;
+    let live = true;
+    const refresh = (): void => {
+      getSocket().emit('matches:mine', {}, (mine) => {
+        if (live) setMatches(mine);
+      });
+    };
+    refresh();
+    const timer = setInterval(refresh, REFRESH_MS);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [active]);
+
+  return active ? matches : [];
+}
+
 export function Lobby({
   status,
   matchId,
@@ -45,6 +84,7 @@ export function Lobby({
 }: LobbyProps): JSX.Element {
   const [joinCode, setJoinCode] = useState('');
   const connected = status === 'connected';
+  const ongoing = useOngoingMatches(connected && matchId === null);
 
   return (
     <div className="lobby" style={{ backgroundImage: `url(${wallpaper})` }}>
@@ -62,6 +102,39 @@ export function Lobby({
           </div>
         ) : (
           <div className="lobby__panel">
+            {/* A game already under way comes first: it is the only thing on
+                this screen somebody is waiting on. Rejoining is the same
+                `match:join` as any other — the seat was never given up. */}
+            {ongoing.length > 0 && (
+              <div className="lobby__resume">
+                <p className="lobby__hint">
+                  {ongoing.length === 1 ? 'You are in a game' : 'You are in these games'}
+                </p>
+                <ul className="browse">
+                  {ongoing.map((match) => (
+                    <li key={match.matchId}>
+                      <button
+                        type="button"
+                        className="browse__row"
+                        disabled={!connected}
+                        onClick={() => onJoin(match.matchId)}
+                      >
+                        <span className="browse__code">{match.matchId}</span>
+                        <span className="browse__host">{match.opponent ?? 'Waiting'}</span>
+                        <span className="browse__seats">Turn {match.turnNumber}</span>
+                        <span className="browse__age">
+                          {match.yourTurn ? 'Your turn' : 'Their turn'}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="lobby__divider">
+                  <span>or</span>
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               className="btn btn--primary"

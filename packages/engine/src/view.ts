@@ -1,7 +1,15 @@
 import type { CardInstanceId, MatchId, PlayerId } from './ids.js';
 import { legalActions } from './legal.js';
 import type { EngineContext } from './rules.js';
-import { boostSources, cityLevel, hpOf, isCharacter, moveOf, powerOf } from './rules.js';
+import {
+  boostSources,
+  cityLevel,
+  hpOf,
+  isCharacter,
+  moveOf,
+  powerOf,
+  searchable,
+} from './rules.js';
 import type {
   BattleState,
   CardInstance,
@@ -10,6 +18,7 @@ import type {
   GameEvent,
   GameState,
   MatchStatus,
+  PendingChoice,
   PhaseDef,
   PlayerState,
   QuickWindow,
@@ -34,6 +43,10 @@ import type {
  *
  * Any new hidden zone has to be handled here as well, or it leaks the moment
  * it is added.
+ *
+ * One thing looks through the deck: a search that has stopped to ask
+ * (Rules.md §13). It reveals to the searcher exactly the cards their own card
+ * lets them take, and nothing else — see `revealedByPendingSearch`.
  */
 
 /**
@@ -120,6 +133,15 @@ export interface PlayerView {
   readonly battle: BattleState | null;
   /** Set while somebody is being asked whether to open a Quick. Rules.md §13. */
   readonly quick: QuickWindow | null;
+  /**
+   * Set while an effect is waiting on somebody to name cards. Rules.md §13.
+   *
+   * Sent to both seats: an opponent can see that a card has stopped the game
+   * to ask a question, which is what stops the board looking frozen for no
+   * reason. Only the player it names may answer, and only they are shown the
+   * deck cards a search has revealed.
+   */
+  readonly pending: PendingChoice | null;
   /** Exactly what this player may do now — the UI renders from this. */
   readonly legalActions: readonly GameAction[];
   /** Recent events, for the log feed and animations. */
@@ -133,10 +155,16 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
   const cards: Record<string, ViewCard> = {};
   const zoneCounts: Record<string, number> = {};
 
+  // Rules.md §13 — a search reveals the cards it may legally take, and only
+  // those. The rest of the deck stays hidden, so the searcher does not learn
+  // the order of what they are about to shuffle.
+  const revealed = revealedByPendingSearch(ctx, state, viewer);
+
   for (const card of Object.values(state.cards)) {
-    cards[card.instanceId] = canSee(card, viewer)
-      ? withCurrentStats(ctx, state, card)
-      : redactCard(card);
+    cards[card.instanceId] =
+      canSee(card, viewer) || revealed.has(card.instanceId)
+        ? withCurrentStats(ctx, state, card)
+        : redactCard(card);
   }
 
   for (const [key, order] of Object.entries(state.zoneOrder)) {
@@ -162,6 +190,10 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
     handTarget: state.handTarget[viewer] ?? 0,
     battle: state.battle,
     quick: state.quick,
+    // Public in full: an unfinished effect is on the table, and *that* a
+    // player is picking two cards to pitch is something their opponent can
+    // see. What they are picking from is redacted above, not here.
+    pending: state.pending,
     legalActions: legalActions(ctx, state, viewer),
     log: state.log.slice(-LOG_TAIL),
   };
@@ -187,6 +219,27 @@ function withCurrentStats(ctx: EngineContext, state: GameState, card: CardInstan
     // Omitted rather than sent empty: most characters are nobody's business.
     ...(sources.length > 0 ? { boostedBy: sources } : {}),
   };
+}
+
+/**
+ * Deck cards an outstanding search has turned face-up for the searcher.
+ * Rules.md §13.
+ *
+ * The same list `legalActions` offers (`rules.ts:searchable`), so the client
+ * can see exactly what it may take and nothing more. Empty for the opponent,
+ * who may know a search is happening but not what it found, and empty when
+ * nothing is being searched.
+ */
+function revealedByPendingSearch(
+  ctx: EngineContext,
+  state: GameState,
+  viewer: PlayerId,
+): ReadonlySet<CardInstanceId> {
+  const pending = state.pending;
+  if (!pending || pending.waitingOn !== viewer || pending.kind.zone !== 'deck') {
+    return new Set();
+  }
+  return new Set(searchable(ctx, state, viewer, pending.kind.named).map((c) => c.instanceId));
 }
 
 function canSee(card: CardInstance, viewer: PlayerId): boolean {

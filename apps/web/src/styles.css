@@ -148,6 +148,22 @@ body {
   background: linear-gradient(to right, transparent, var(--border-strong), transparent);
 }
 
+/* Games already under way, at the top of the menu. The list inside reuses
+   `.browse` from the lobby browser: it is the same row of match, opponent and
+   state, and the two should not drift apart. Capped shorter than the browser's
+   own list, because this sits above the rest of the menu rather than owning
+   the screen. */
+.lobby__resume {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.lobby__resume .browse {
+  max-height: 30vh;
+}
+
 .lobby__join {
   display: flex;
   gap: 8px;
@@ -4236,5 +4252,160 @@ button {
   .pay__heading {
     font-size: 12px;
     letter-spacing: 0.14em;
+  }
+}
+
+/* ------------------------------------------------------------ the toss
+ *
+ * Who goes first (Rules.md §9.2). The engine decided it from the match seed
+ * before the first view was sent; everything here is the reveal.
+ *
+ * Sits above the mulligan (`.focus`, 45) and the city banner (57), because it
+ * settles something the player should read before deciding on their opening
+ * hand. It takes no pointer events, so the deal animates underneath it.
+ */
+.toss {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: radial-gradient(60% 50% at 50% 46%, rgb(0 0 0 / 74%), rgb(0 0 0 / 30%));
+  animation: taken-in 340ms cubic-bezier(0.18, 0.9, 0.28, 1) both;
+}
+
+.toss--leaving {
+  animation: taken-out 500ms ease-in both;
+}
+
+.toss__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  text-align: center;
+}
+
+.toss__title {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+/* The coin itself. Both faces are in the DOM and the coin is rotated, so the
+   landing is a real half-turn rather than a swap of two images. */
+.toss__coin {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  transform-style: preserve-3d;
+}
+
+.toss__coin--spin {
+  animation: toss-spin 1700ms cubic-bezier(0.3, 0.05, 0.2, 1) both;
+}
+
+.toss__coin--landed {
+  animation: toss-land 420ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+.toss__face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  backface-visibility: hidden;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #2a1d0c;
+  background: radial-gradient(38% 34% at 38% 32%, #ffe9a8, #d9a520 62%, #9a6c10);
+  box-shadow:
+    inset 0 0 0 4px rgb(255 236 176 / 45%),
+    0 12px 30px rgb(0 0 0 / 55%);
+}
+
+/* The far face, pre-turned so it reads the right way up when the coin lands. */
+.toss__face--tails {
+  transform: rotateY(180deg);
+}
+
+@keyframes toss-spin {
+  from {
+    transform: rotateY(0deg) translateY(0);
+  }
+
+  50% {
+    transform: rotateY(900deg) translateY(-46px);
+  }
+
+  to {
+    transform: rotateY(1800deg) translateY(0);
+  }
+}
+
+@keyframes toss-land {
+  from {
+    transform: scale(1.14);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+/* The answer, held back until the coin has settled. */
+.toss__result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 320ms ease,
+    transform 320ms cubic-bezier(0.18, 0.9, 0.28, 1);
+}
+
+.toss__result--in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toss__who {
+  font-size: clamp(26px, 4.4vw, 44px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-shadow: 0 3px 18px rgb(0 0 0 / 70%);
+}
+
+.toss__note {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The spin is the whole point of the animation, so a viewer who has asked for
+   less motion is shown the result directly rather than a shortened spin. */
+@media (prefers-reduced-motion: reduce) {
+  .toss,
+  .toss--leaving,
+  .toss__coin--spin,
+  .toss__coin--landed {
+    animation: none;
+  }
+
+  .toss__result {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }

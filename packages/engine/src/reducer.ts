@@ -13,7 +13,7 @@ import {
   type Trigger,
 } from './abilities.js';
 import { toDraft, type Draft } from './draft.js';
-import { nextInt, type Rng } from './rng.js';
+import { nextInt, shuffle, type Rng } from './rng.js';
 import { legalActions, quickOpens } from './legal.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { ok, violation, type Result, type RuleViolation } from './result.js';
@@ -37,6 +37,7 @@ import {
   factsOf,
   presenceIn,
   refreshBoard,
+  searchable,
   legalTargets,
   targetingAbilities,
   turnOrdinal,
@@ -54,6 +55,7 @@ import type {
   GameAction,
   GameEvent,
   GameState,
+  PendingChoice,
   PhaseDef,
   QuickTrigger,
 } from './types.js';
@@ -117,6 +119,20 @@ export function reduce(
     return finish(state, draft, events);
   }
 
+  // An effect that stopped to ask outranks everything, including a Quick
+  // window and a running battle: it is not a window the player may decline but
+  // an effect that is already half-resolved, and nothing else can happen until
+  // it finishes. Rules.md §13. Conceding is still allowed, because a player
+  // must never be trapped in a match by a prompt.
+  if (state.pending && action.type !== 'CONCEDE') {
+    if (actor !== state.pending.waitingOn) {
+      return violation('NOT_YOUR_PRIORITY', 'Waiting on your opponent to choose.', '§13');
+    }
+    if (action.type !== 'CHOOSE_CARD') {
+      return violation('WRONG_PHASE', 'Answer the card you are being asked for first.', '§13');
+    }
+  }
+
   // A Quick window is an interrupt: while one is open the game is stopped and
   // only the player being asked may act, whoever's turn it is. Rules.md §13.
   if (state.quick && action.type !== 'CONCEDE') {
@@ -146,9 +162,16 @@ export function reduce(
   // ability: a Quick one may be used at any time (§13), and `canActivate` is
   // the single authority on when — it holds everything else to its
   // controller's own Main phase, which this gate could only duplicate.
+  //
+  // So is answering a question the game has stopped to ask. The gate above has
+  // already checked it is the right player's answer, and it is routinely *not*
+  // their turn: a defender's combat open (§11 ②) can be the very card that
+  // asked, and holding the answer to priority would freeze the match on a
+  // prompt nobody was allowed to reply to.
   if (
     action.type !== 'CONCEDE' &&
     action.type !== 'USE_ABILITY' &&
+    action.type !== 'CHOOSE_CARD' &&
     !inBattle &&
     state.quick === null &&
     state.turn.priorityPlayer !== actor
@@ -308,6 +331,13 @@ function applyAction(
 
     case 'DISCARD_CARD':
       return discardCard(draft, actor, action.card, events);
+
+    // Answering suspends nothing further, but it may be the last thing a
+    // battle step was waiting behind — a combat open (§11 ②) whose card asked
+    // a question froze the battle until now, so it settles like any other
+    // action that could have moved one on.
+    case 'CHOOSE_CARD':
+      return settled(ctx, draft, events, chooseCard(ctx, draft, actor, action.card, events));
 
     case 'MULLIGAN':
     case 'BOTTOM_CARD':
@@ -485,7 +515,9 @@ function battleOffersAChoice(
  */
 function settleBattle(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
   for (let guard = 0; guard < 8; guard++) {
-    if (draft.quick) return;
+    // A battle cannot be answered for a player who is mid-question: the card
+    // they are still resolving may be about to change what the step offers.
+    if (draft.quick || draft.pending) return;
     const battle = draft.battle;
     if (!battle || battleOffersAChoice(ctx, draft, battle)) return;
     const result = battlePass(ctx, draft, battle.waitingOn, events);
@@ -1220,8 +1252,9 @@ function settle(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]
   // far more than any legal chain of automatic advances.
   for (let guard = 0; guard < draft.phases.length * 2 + 2; guard++) {
     if (draft.status.kind === 'finished') return;
-    // A window freezes the game where it stands. Rules.md §13.
-    if (draft.quick) return;
+    // A window freezes the game where it stands, and so does an effect that
+    // stopped to ask. Rules.md §13.
+    if (draft.quick || draft.pending) return;
 
     const phase = currentPhase(draft);
     const player = draft.turn.activePlayer;
@@ -1412,7 +1445,9 @@ function offerQuick(
   trigger: QuickTrigger,
   events: GameEvent[],
 ): void {
-  if (draft.quick || draft.status.kind !== 'playing') return;
+  // An unfinished effect comes first: the window is offered once the card that
+  // opened it has finished resolving, not in the middle of its own line.
+  if (draft.quick || draft.pending || draft.status.kind !== 'playing') return;
 
   const responder = draft.seats.find((seat) => seat !== actedBy);
   if (!responder) return;
@@ -1625,9 +1660,20 @@ function resolveEffect(
     text: ability.text,
   });
 
-  runEffect(ctx, draft, source, ability.effect, events, chosen);
+  runEffect(ctx, draft, source, ability.effect, events, chosen, ability.text);
   for (const next of ability.then ?? []) {
-    runEffect(ctx, draft, source, next, events, chosen);
+    // An effect that stopped to ask has suspended the ability (§13), and what
+    // follows it on the printed line has not happened yet. No card in the set
+    // asks in the middle of its own sentence — both that do ask, ask last — so
+    // rather than build a continuation nobody needs, this is an engine bug if
+    // it ever fires, and it says so instead of silently dropping the rest.
+    if (draft.pending) {
+      throw new Error(
+        `${source.defId}: "${ability.text}" asks the player a question before the end of its own line; ` +
+          'a resumable effect chain would be needed to finish it.',
+      );
+    }
+    runEffect(ctx, draft, source, next, events, chosen, ability.text);
   }
 }
 
@@ -1639,6 +1685,8 @@ function runEffect(
   effect: Effect,
   events: GameEvent[],
   chosen?: CardInstanceId | undefined,
+  /** The printed line, quoted back at the player if this effect has to ask. */
+  text = '',
 ): void {
   const controller = source.controller;
 
@@ -1669,7 +1717,43 @@ function runEffect(
 
     case 'discard': {
       const player = targetPlayer(draft, controller, effect.player);
-      if (player) forcedDiscard(draft, player, effect.count, events);
+      if (!player) return;
+      // Your opponent's cards go at random; your own are your choice. See the
+      // note on the effect in `abilities.ts`, and `forcedDiscard` below.
+      if (effect.player === 'opponent') {
+        forcedDiscard(draft, player, effect.count, events);
+        return;
+      }
+      askFor(draft, events, {
+        waitingOn: player,
+        source: source.instanceId,
+        text,
+        // Never ask for more than the hand holds: a player owing two discards
+        // from a hand of one would be stuck on a question with no answer.
+        count: Math.min(effect.count, handSize(draft, player)),
+        kind: { zone: 'hand', action: 'discard' },
+      });
+      return;
+    }
+
+    case 'search': {
+      const player = targetPlayer(draft, controller, effect.player);
+      if (!player) return;
+      // A search that can find nothing does not stop to ask — the effect
+      // resolves, finds nobody, and play carries on (Rules.md §13). The deck
+      // is still shuffled, because the player has looked through it.
+      const found = searchable(ctx, draft, player, effect.named);
+      if (found.length === 0) {
+        shuffleDeck(draft, player);
+        return;
+      }
+      askFor(draft, events, {
+        waitingOn: player,
+        source: source.instanceId,
+        text,
+        count: Math.min(effect.count, found.length),
+        kind: { zone: 'deck', action: 'toHand', named: effect.named },
+      });
       return;
     }
 
@@ -1820,8 +1904,9 @@ function scaleOf(
  *
  * Random because the *opponent* is the one losing cards and nobody has said
  * they get to choose — the cards in this set say "your opponent discards",
- * which is not the same as letting them pick their worst. Their own discards
- * are a choice and go through `DISCARD_CARD` instead.
+ * which is not the same as letting them pick their worst. A player discarding
+ * their *own* cards picks them: to the hand limit through `DISCARD_CARD`
+ * (§10 ⑤), and to an effect through `CHOOSE_CARD` (§13).
  */
 function forcedDiscard(
   draft: Draft<GameState>,
@@ -1839,6 +1924,105 @@ function forcedDiscard(
     moveToZone(draft, cardId, { player, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player, card: cardId });
   }
+}
+
+/* --------------------------------------------- effects that stop and ask */
+
+/**
+ * Suspends the game on a question. Rules.md §13, {@link PendingChoice}.
+ *
+ * A count of zero is not a question — a discard from an empty hand or a search
+ * that found nothing has already resolved — so nothing is asked and play
+ * carries on.
+ */
+function askFor(draft: Draft<GameState>, events: GameEvent[], choice: PendingChoice): void {
+  if (choice.count <= 0) return;
+  // Nothing is asked of a finished match. An earlier part of the same line can
+  // end it — BK1-047 draws three before it discards two, and drawing from an
+  // empty deck is a loss (§10 ②) — and a prompt over a match that is already
+  // over would be a question with no legal answer, because `legalActions`
+  // rightly offers nothing once the game is decided.
+  if (draft.status.kind === 'finished') return;
+  draft.pending = toDraft(choice);
+  events.push({
+    type: 'CHOICE_REQUIRED',
+    player: choice.waitingOn,
+    card: choice.source,
+    text: choice.text,
+    count: choice.count,
+  });
+}
+
+/**
+ * Shuffles a player's deck. Rules.md §13 — a deck that has been searched is
+ * shuffled afterwards, or the searcher has learned the order of the rest.
+ */
+function shuffleDeck(draft: Draft<GameState>, player: PlayerId): void {
+  const key = zoneKey(player, 'deck');
+  const deck = draft.zoneOrder[key] ?? [];
+  const shuffled = shuffle(deck as readonly CardInstanceId[], draft.rng as Rng);
+  draft.zoneOrder[key] = toDraft(shuffled.items);
+  draft.rng = toDraft(shuffled.rng);
+}
+
+/**
+ * Answers the outstanding choice with one card. Rules.md §13.
+ *
+ * One card at a time: the choice counts down and asks again, so a player who
+ * owes two discards names them one after the other rather than all at once.
+ * The last answer closes the choice and the deck is shuffled if it was
+ * searched — the search is over at that point, not before.
+ */
+function chooseCard(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  cardId: CardInstanceId,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const pending = draft.pending;
+  if (!pending) return violation('WRONG_PHASE', 'Nothing is waiting on a choice.', '§13');
+  if (actor !== pending.waitingOn) {
+    return violation('NOT_YOUR_PRIORITY', 'That choice is not yours to make.', '§13');
+  }
+
+  const card = draft.cards[cardId];
+  if (!card || card.controller !== actor || card.zone !== pending.kind.zone) {
+    return violation('CARD_NOT_IN_ZONE', `That card is not in your ${pending.kind.zone}.`, '§13');
+  }
+
+  if (pending.kind.action === 'discard') {
+    moveToZone(draft, cardId, { player: actor, zone: 'trash' });
+    events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
+  } else {
+    // The name restriction is re-checked here rather than trusted from the
+    // client: `legalActions` only offers matching cards, and `reduce` never
+    // takes that on faith.
+    const name = definitionOf(ctx, card as CardInstance).name;
+    if (pending.kind.named !== null && name !== pending.kind.named) {
+      return violation('ILLEGAL_TARGET', `That card is not a ${pending.kind.named}.`, '§13');
+    }
+    moveToZone(draft, cardId, { player: actor, zone: 'hand' });
+    events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
+  }
+
+  const left = pending.count - 1;
+  if (left > 0) {
+    pending.count = left;
+    events.push({
+      type: 'CHOICE_REQUIRED',
+      player: pending.waitingOn,
+      card: pending.source,
+      text: pending.text,
+      count: left,
+    });
+    return ok(true);
+  }
+
+  const searched = pending.kind.zone === 'deck';
+  draft.pending = null;
+  if (searched) shuffleDeck(draft, actor);
+  return ok(true);
 }
 
 /** Every face-up card on the field, so turn triggers can sweep the board. */

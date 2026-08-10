@@ -151,6 +151,48 @@ describe('MatchManager', () => {
     }
   });
 
+  describe('finding your way back into a game', () => {
+    it('lists a match a disconnected player still holds a seat in', () => {
+      const { manager, match } = startedMatch();
+      // A dropped connection, not a departure: the seat stays.
+      manager.setConnected(match.id, ALICE, false);
+
+      const mine = manager.matchesFor(ALICE);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]?.id).toBe(match.id);
+      // And rejoining is the ordinary join, which puts them back in the seat.
+      expect(manager.join(match.id, ALICE, 'Alice').ok).toBe(true);
+      expect(match.seats.find((seat) => seat.playerId === ALICE)?.connected).toBe(true);
+    });
+
+    it('keeps the seat when a dealt match is left mid-game', () => {
+      // Leaving a game in progress is not a vacancy — the player may be
+      // reconnecting — so the match is still theirs to come back to.
+      const { manager, match } = startedMatch();
+      expect(manager.leave(match.id, ALICE)).toEqual({ left: true, removed: false });
+      expect(manager.matchesFor(ALICE).map((m) => m.id)).toEqual([match.id]);
+    });
+
+    it('lists nothing for a player who was never seated', () => {
+      const { manager } = startedMatch();
+      expect(manager.matchesFor(CAROL)).toEqual([]);
+    });
+
+    it('does not offer a lobby that has never dealt', () => {
+      // Reachable by its join code and through the browser. Offering
+      // "rejoin" for a game nobody has played a turn of is a different thing.
+      const { manager } = seatedMatch();
+      expect(manager.matchesFor(ALICE)).toEqual([]);
+    });
+
+    it('does not offer a match that is already over', () => {
+      const { manager, match } = startedMatch();
+      manager.submitAction(match.id, ALICE, { type: 'CONCEDE' });
+      expect(manager.matchesFor(ALICE)).toEqual([]);
+      expect(manager.matchesFor(BOB)).toEqual([]);
+    });
+  });
+
   it('sweeps finished matches once everyone has left', () => {
     const { manager, match } = startedMatch();
     manager.submitAction(match.id, ALICE, { type: 'CONCEDE' });

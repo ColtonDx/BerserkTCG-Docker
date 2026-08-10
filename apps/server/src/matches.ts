@@ -112,6 +112,29 @@ export class MatchManager {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  /**
+   * Matches this player holds a seat in that are still being played.
+   *
+   * What a reconnect is for: `leave` keeps the seat once a match has dealt
+   * (see below), and a dropped connection never calls `leave` at all — so the
+   * game is still there, waiting, and the only thing missing was a way to find
+   * it again. Newest first.
+   *
+   * Dealt matches only. A lobby that has not started is reachable by its join
+   * code and through the browser, and listing it here would offer "rejoin" for
+   * a game nobody has played a turn of.
+   */
+  matchesFor(playerId: PlayerId): Match[] {
+    return [...this.matches.values()]
+      .filter(
+        (match) =>
+          match.state !== null &&
+          match.state.status.kind !== 'finished' &&
+          match.seats.some((seat) => seat.playerId === playerId),
+      )
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
   /** Finds a match waiting for an opponent, or creates one. */
   findOrCreateOpen(): Match {
     for (const match of this.matches.values()) {

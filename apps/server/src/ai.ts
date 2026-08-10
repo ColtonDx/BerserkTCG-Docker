@@ -64,6 +64,10 @@ const PAUSE_MS: Partial<Record<GameAction['type'], number>> = {
   MOVE_CHARACTER: 1500,
   OPEN_CARD: 1800,
   DISCARD_CARD: 1100,
+  // A card leaving hand or coming out of the deck, one at a time. Paced like
+  // the discard above, because it looks the same from the other side of the
+  // table: a card moving with no other explanation.
+  CHOOSE_CARD: 1100,
   END_PHASE: 850,
 };
 /** Anything not listed above. */
@@ -153,7 +157,7 @@ function bestCity(state: GameState, player: PlayerId, offered: readonly number[]
 /** The action of `type` whose card scores best under `rank` (lowest wins). */
 function pickCard(
   actions: readonly GameAction[],
-  type: 'SET_CARD' | 'DISCARD_CARD' | 'BOTTOM_CARD',
+  type: 'SET_CARD' | 'DISCARD_CARD' | 'BOTTOM_CARD' | 'CHOOSE_CARD',
   rank: (card: CardInstanceId) => number,
 ): GameAction | null {
   let best: GameAction | null = null;
@@ -184,6 +188,29 @@ export function chooseAction(
   const has = (type: GameAction['type']): boolean => actions.some((a) => a.type === type);
   const worst = (card: CardInstanceId): number => -levelOf(state, card);
   const soonest = (card: CardInstanceId): number => levelOf(state, card);
+
+  // An effect has stopped and is waiting on Femto to name cards (§13). It
+  // outranks everything below, including a Quick window and a running battle,
+  // because until it is answered nothing else is legal at all.
+  //
+  // Which card follows what the question is for. Pitching from hand gives up
+  // what it could open latest, the same judgement it uses at the hand limit;
+  // searching the deck takes the biggest thing it found, since a search is a
+  // free pick and the cheap cards will come round again on their own.
+  if (state.pending?.waitingOn === player) {
+    const picks = actions.filter(
+      (action): action is Extract<GameAction, { type: 'CHOOSE_CARD' }> =>
+        action.type === 'CHOOSE_CARD',
+    );
+    if (picks.length === 0) return null;
+    // Pitching gives up the card it could open latest — `worst`, the same
+    // judgement it uses at the hand limit. Searching wants the opposite end of
+    // that ordering: a search is a free pick, and the cheap cards will come
+    // round on their own, so it takes what it could open soonest and can
+    // therefore actually use.
+    const rank = state.pending.kind.zone === 'hand' ? worst : soonest;
+    return pickCard(picks, 'CHOOSE_CARD', rank);
+  }
 
   // Being asked whether to answer with a Quick (Rules.md §13).
   //
@@ -400,14 +427,19 @@ export async function driveAi(
       const owed =
         state.status.kind === 'setup'
           ? state.mulliganPending.includes(AI_PLAYER_ID)
-          : // A Quick window stops the game and names who it is waiting on,
-            // whoever's turn it is (Rules.md §13). Missing this hangs the
-            // match outright: nobody else may act until it is answered.
-            state.quick
-            ? state.quick.waitingOn === AI_PLAYER_ID
-            : state.battle
-              ? state.battle.waitingOn === AI_PLAYER_ID
-              : state.turn.priorityPlayer === AI_PLAYER_ID;
+          : // An effect that stopped to ask outranks everything, including a
+            // window and a battle (Rules.md §13) — and like them, missing it
+            // hangs the match: nobody else may act until it is answered.
+            state.pending
+            ? state.pending.waitingOn === AI_PLAYER_ID
+            : // A Quick window stops the game and names who it is waiting on,
+              // whoever's turn it is (Rules.md §13). Missing this hangs the
+              // match outright: nobody else may act until it is answered.
+              state.quick
+              ? state.quick.waitingOn === AI_PLAYER_ID
+              : state.battle
+                ? state.battle.waitingOn === AI_PLAYER_ID
+                : state.turn.priorityPlayer === AI_PLAYER_ID;
       if (!owed) return;
 
       if (state.turn.turnNumber !== lastTurn) {

@@ -131,7 +131,10 @@ redacted views.
   opponent), Set Cards (from the opponent — you may always check your own), and
   face-down City cards (from everyone, so the Royal Capital's position stays
   secret). `view.ts` handles all of it; any new hidden zone must be added there
-  or it leaks the day it is introduced.
+  or it leaks the day it is introduced. One thing looks into a deck: a search
+  that has stopped to ask (§13) reveals to the _searcher_ exactly the cards
+  their own card lets them take, and nothing else, so the order of what they
+  are about to shuffle stays secret.
 - **Never trust the client.** `reduce` re-validates every action even though
   the UI only offers legal ones. **Clients never name themselves**: the socket
   is authenticated at handshake against a signed session token, and the seat's
@@ -327,15 +330,46 @@ battle, because that is what an interrupt is; `PASS_PRIORITY` closes it and
 play resumes where it froze. It is _not_ §14: no stack, no interrupting an
 interrupt.
 
-**Not implemented.** The list of what is left lives in `TODO.md`. Green is 26
-of its 38 printed lines; the twelve outstanding wait mostly on a way for an
-effect to stop and ask a question (a deck search), on attachments, and on
-being able to aim an effect at an _area_ rather than a character. The
+**Pending choices** (§13) are for the printed lines an effect cannot finish on
+its own: "discard 2 cards" and "add 1 Serpico from your deck" both name a
+number and leave the player to say _which_. `state.pending` suspends the game
+on the question and `CHOOSE_CARD` answers it one card at a time, counting down
+until it is paid. It outranks a Quick window and a running battle both — a
+window is a question you may decline, this is an effect already half-resolved —
+and it is exempt from the priority gate, because the defender's combat open
+(§11 ②) can be the very card that asked. A deck search reveals exactly the
+cards it may legally take: `rules.ts:searchable` is the one list, read by
+`legalActions` and by `view.ts` alike, so the client can never be offered a
+card it was not shown or shown one it cannot take. The deck is shuffled when
+the last card is named, not before. An asking effect must be the last thing on
+its printed line — `resolveEffect` throws rather than quietly dropping a `then`
+that follows one, because resuming a half-run line would need a continuation no
+card in the set wants.
+
+**Not implemented.** The list of what is left lives in `TODO.md`. Green is 27
+of its 35 printed lines; the eight outstanding wait mostly on attachments, on
+being able to aim an effect at an _area_ rather than a character, and on a
+search that does more than add a card to hand. The
 **priority stack** (§14) is still unbuilt.
 Recovering a _forgotten_ password is not built — that needs a channel the
-server does not have. `DesignNotes` 3 (room passwords and a start-game button)
-is also outstanding:
-a match deals as soon as both seats hold a legal deck.
+server does not have. `DesignNotes` 3's room passwords and start-game button
+are also outstanding: a match deals as soon as both seats hold a legal deck.
+
+**Getting back into a game.** A seat survives both a disconnect and a
+mid-game leave — `matches.ts:leave` keeps it once a match has dealt, because
+walking away is not a vacancy — so the only thing a dropped player ever lacked
+was a way to _find_ the match again. `matches:mine` lists the dealt,
+unfinished matches an account holds a seat in, and the main menu offers them
+above everything else; rejoining is the ordinary `match:join`. The list is
+derived from the authenticated session, never from the payload — a client that
+could name a player id there would be asking whose games somebody else is in.
+
+**The toss.** §9.2 picks the first player randomly, which `setup.ts` does by
+shuffling the seats from the match seed: `seats[0]` goes first. `CoinFlip` is
+the reveal and decides nothing — a coin that decided anything in the browser
+would be a rule living in the client. It fires off the first view arriving,
+which _is_ the deal, and only while the match is still in setup, so a player
+rejoining on turn nine is not told the toss all over again.
 
 `data/placeholder-cards.ts` is invented filler that survives _only_ as a
 fixture for the engine's own tests. Never build against it, and never serve it.

@@ -21,7 +21,7 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    for the first 41 cards and shown in the inspector, which marks a card whose
    behaviour is not built yet.
 
-   **Green is 26 of its 38 printed lines.** What the set gained along the way,
+   **Green is 27 of its 35 printed lines.** What the set gained along the way,
    and now works for any colour: `per` ("for each") scaling on buffs and
    draws, damage reduction both continuous and until-end-of-turn (`SHIELD`),
    selectors that reach face-down Set Cards, targeting by Distance, and
@@ -29,11 +29,22 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    paid from hand, once-per-turn, locking an ally to pay, and Quick timing
    that rides the same windows a Quick card does.
 
-   The twelve green cards left, and what each is waiting on:
-   - **A pending choice.** The engine has to stop mid-effect and wait for an
-     answer, which is a new step in the reducer and a new overlay in the
-     client. BK1-047 (discard 2 of your own choosing), 050, 057, 065, 069 and
-     075 — six cards, all deck searches but one.
+   A **pending choice** is now built: `GameState.pending` suspends the game on
+   a question an effect cannot answer for itself, `CHOOSE_CARD` answers it one
+   card at a time, and it outranks both priority and a running battle the way a
+   Quick window does. It covers "discard N of your own choosing" (BK1-047) and
+   the deck search (BK1-050, 057, 069) — the search reveals only the cards it
+   may legally take (`rules.ts:searchable`, read by `legalActions` and `view.ts`
+   alike) and shuffles once the last card is named. An asking effect must be the
+   last thing on its printed line; `resolveEffect` throws rather than silently
+   dropping a `then` that follows one.
+
+   The eight green cards left, and what each is waiting on:
+   - **A search that does more than take a card.** BK1-065 reveals what it
+     finds and then draws, and BK1-075 sends three cards to the graveyard.
+     `search` only adds to hand, and `count` is exact rather than "up to" —
+     which BK1-025 and BK1-039 also want, along with setting what they find
+     into an area.
    - **Attachments.** BK1-076 Sylph Sword and BK1-077 Sylph Hood attach to a
      character and change its numbers while they remain in play. Needs a card
      to belong to another card, and Range to become modifiable — it is

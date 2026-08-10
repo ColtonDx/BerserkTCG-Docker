@@ -90,6 +90,50 @@ export interface QuickWindow {
 export type QuickTrigger =
   'turnStart' | 'cardOpened' | 'mainPhase' | 'combat' | 'attack' | 'turnEnd';
 
+/**
+ * An effect that has stopped mid-resolution because it owes a player a choice.
+ * Rules.md §13.
+ *
+ * Some printed lines cannot finish on their own: "discard 2 cards" and "add 1
+ * Serpico from your deck to your hand" both name a number and leave the player
+ * to say *which*. The effect resolves as far as it can, writes down what it
+ * still owes, and the game waits — the same shape as a Quick window, and for
+ * the same reason: the alternative is the engine choosing for the player, and
+ * a card that says "discard 2" has not said "discard 2 at random".
+ *
+ * Only one is ever outstanding. These come out of a single effect resolving,
+ * and an effect that owed two questions at once would be §14's stack, which is
+ * not built. `then` chains run *after* the choice is answered, so a card whose
+ * second half depends on the first still reads in printed order.
+ */
+export interface PendingChoice {
+  /** The player being asked. Nothing else may happen until they answer. */
+  readonly waitingOn: PlayerId;
+  /** The card whose printed line asked, so the UI can name and show it. */
+  readonly source: CardInstanceId;
+  /** The printed line, so the prompt quotes the card rather than paraphrasing. */
+  readonly text: string;
+  /** How many cards are still owed. Counts down; the choice ends at zero. */
+  readonly count: number;
+  readonly kind: PendingChoiceKind;
+}
+
+export type PendingChoiceKind =
+  /** Pitch from your own hand, your pick. Answered with `CHOOSE_CARD`. */
+  | { readonly zone: 'hand'; readonly action: 'discard' }
+  /**
+   * Search your deck and take a card, then reshuffle. Rules.md §13.
+   *
+   * `named` is the printed restriction — "1 Serpico" — matched against the
+   * card's *name*, not its id, because several printings share a name and the
+   * line does not care which one is found. `null` is an unrestricted search.
+   *
+   * The deck is hidden from everyone (`view.ts`), so the view reveals exactly
+   * the cards this choice may legally take and nothing else: a search that
+   * showed the whole deck would leak the draw order it is about to reshuffle.
+   */
+  | { readonly zone: 'deck'; readonly action: 'toHand'; readonly named: string | null };
+
 /** The five phases of a turn. Rules.md §10. */
 export type PhaseId = 'refresh' | 'draw' | 'open' | 'main' | 'end';
 
@@ -221,6 +265,12 @@ export interface GameState {
    * that is the whole point of an interrupt. Rules.md §13.
    */
   readonly quick: QuickWindow | null;
+  /**
+   * An effect waiting on a player to say which cards, or null when none is.
+   * Like a Quick window it stops everything else; unlike one it is not
+   * optional, because the effect is already resolving. Rules.md §13.
+   */
+  readonly pending: PendingChoice | null;
   readonly rng: Rng;
   /** Append-only log of everything that happened, for replay and the UI feed. */
   readonly log: readonly GameEvent[];
@@ -259,6 +309,14 @@ export type GameAction =
   | { readonly type: 'MOVE_CHARACTER'; readonly card: CardInstanceId; readonly city: number }
   /** Discard down to the hand limit in the End phase. Rules.md §10 ⑤. */
   | { readonly type: 'DISCARD_CARD'; readonly card: CardInstanceId }
+  /**
+   * Answer the outstanding {@link PendingChoice} with one card. Rules.md §13.
+   *
+   * One card per action even when the effect owes several, so a player who has
+   * picked their first discard is not made to name both at once — the choice
+   * counts down and the game asks again.
+   */
+  | { readonly type: 'CHOOSE_CARD'; readonly card: CardInstanceId }
   /** Shuffle your hand back, redraw, and bottom cards. Rules.md §9, DesignNotes 5. */
   | { readonly type: 'MULLIGAN' }
   /** Put one of the redrawn cards on the bottom of your deck. DesignNotes 5. */
@@ -327,6 +385,31 @@ export type GameEvent =
       readonly trigger: QuickTrigger;
     }
   | { readonly type: 'QUICK_DECLINED'; readonly player: PlayerId }
+  | {
+      /**
+       * An effect stopped to ask a player which cards. Rules.md §13. The
+       * client raises the picker from this; `count` is what is still owed.
+       */
+      readonly type: 'CHOICE_REQUIRED';
+      readonly player: PlayerId;
+      readonly card: CardInstanceId;
+      readonly text: string;
+      readonly count: number;
+    }
+  | {
+      /**
+       * A card was taken out of a deck by a search. Rules.md §13.
+       *
+       * The card id is public — it is in the taker's hand now, and the view
+       * redacts what an opponent may not identify — but the *event* says the
+       * deck was searched, which is why the shuffle that follows is not a
+       * desync. Separate from `CARD_DRAWN` because a draw takes the top card
+       * and this does not.
+       */
+      readonly type: 'DECK_SEARCHED';
+      readonly player: PlayerId;
+      readonly card: CardInstanceId;
+    }
   | {
       /**
        * A player chose to use a cost-bearing ability and paid for it.

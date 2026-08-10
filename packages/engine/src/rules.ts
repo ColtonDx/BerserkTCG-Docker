@@ -16,7 +16,7 @@ import type { Draft } from './draft.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { ok, violation, type Result, type RuleViolation } from './result.js';
 import type { BattleResult, BattleState, CardInstance, GameEvent, GameState } from './types.js';
-import { cardsInCity, cityDistance } from './zones.js';
+import { cardsInCity, cityDistance, zoneKey } from './zones.js';
 
 /**
  * Derived rules — the questions the reducer keeps asking about a position.
@@ -678,5 +678,33 @@ export function canCommit(
       // A character forbidden to attack may still defend: the restriction is
       // on attacking, and the defender is not. Rules.md §11.
       !(player === battle.attacker && cannotAttack(ctx, state, card)),
+  );
+}
+
+/**
+ * The cards in a player's deck a search may legally take. Rules.md §13.
+ *
+ * Lives here rather than beside the effect that uses it because three callers
+ * have to agree on it: the reducer validating a pick, `legalActions` offering
+ * them, and `view.ts` deciding which deck cards to reveal. A deck is hidden
+ * from everyone, so a client offered a card the view had redacted would see a
+ * hole in its own deck, and one shown a card the reducer would refuse would
+ * learn something about the order it is about to have shuffled away. One list,
+ * one place.
+ */
+export function searchable(
+  ctx: EngineContext,
+  state: GameState,
+  player: PlayerId,
+  named: string | null,
+): CardInstance[] {
+  const deck = state.zoneOrder[zoneKey(player, 'deck')] ?? [];
+  return (
+    deck
+      .map((id) => state.cards[id])
+      .filter((card): card is CardInstance => card !== undefined)
+      // By printed name, not by card id: "1 Serpico" does not care which
+      // printing of Serpico the deck happens to be holding.
+      .filter((card) => named === null || definitionOf(ctx, card).name === named)
   );
 }

@@ -65,6 +65,12 @@ export interface ClientToServerEvents {
   'lobbies:browse': (payload: Record<string, never>, ack: (result: OpenMatch[]) => void) => void;
 
   /**
+   * Games this account is still seated in, so a dropped player can get back
+   * to one. The seat survives a disconnect; this is how it is found again.
+   */
+  'matches:mine': (payload: Record<string, never>, ack: (result: OngoingMatch[]) => void) => void;
+
+  /**
    * Choose the deck to play. The match deals once both seats have chosen a
    * legal deck. DesignNotes 4.
    */
@@ -120,6 +126,28 @@ export interface OpenMatch {
   readonly host: string;
   readonly seats: number;
   readonly capacity: number;
+  /** Milliseconds since the match was made. */
+  readonly age: number;
+}
+
+/**
+ * A match in progress that the asking account holds a seat in — what the main
+ * menu offers to rejoin.
+ *
+ * Everything here is already known to this player: they are seated in it. The
+ * opponent's *name* is public, their hand is not, and nothing about the
+ * position travels in this message — rejoining goes through `match:join`,
+ * which answers with a properly redacted view.
+ */
+export interface OngoingMatch {
+  readonly matchId: MatchId;
+  /** The other seat's display name, or null if the seat is empty. */
+  readonly opponent: string | null;
+  /** Whether the opponent is connected right now. */
+  readonly opponentConnected: boolean;
+  /** Whose turn it is, so a player can see whether they are being waited on. */
+  readonly yourTurn: boolean;
+  readonly turnNumber: number;
   /** Milliseconds since the match was made. */
   readonly age: number;
 }
