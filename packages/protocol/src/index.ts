@@ -51,6 +51,29 @@ export const BANNER_HOLD_MS = 4200;
  */
 export const OPENING_CEREMONY_MS = 6300;
 
+/**
+ * How long an exchange takes to draw, in milliseconds.
+ *
+ * A single action can carry a whole battle: the engine answers a strike with
+ * only one legal assignment rather than asking (`settleBattle`), so a 1v1
+ * fight is declared, fought and settled by one click — and `BoardFx` plays
+ * that as a sequence of blows with the deaths held back behind them, which
+ * takes longer than the action did.
+ *
+ * Shared for the same reason as the banner and the ceremony above: the
+ * computer opponent must not take its next move while the last one is still
+ * being drawn. Cards vanishing under a fresh animation is exactly the "combat
+ * went by too fast" this exists to prevent.
+ *
+ * The client's own timings: 340ms to settle, 540ms per extra beat, and a
+ * death at 460 + 900ms of fade — so 1700ms for a single band and 540ms more
+ * for each after it (see `BoardFx`). This covers up to three bands, which is
+ * every battle the deck sizes realistically produce; a larger one overruns by
+ * the odd half-second rather than by enough to lose track of, and holding for
+ * the worst case would leave every ordinary fight sitting idle.
+ */
+export const EXCHANGE_HOLD_MS = 2800;
+
 /* ------------------------------------------------------- client -> server */
 
 export interface ClientToServerEvents {

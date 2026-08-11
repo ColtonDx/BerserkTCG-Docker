@@ -40,6 +40,27 @@ const FADE_MS = 900;
  */
 const SETTLE_MS = 340;
 
+/**
+ * How long a death waits after the blow that caused it.
+ *
+ * A character dies *because* of a strike, and showing both at once reads as
+ * the card simply vanishing — the player never sees what killed it. Long
+ * enough for the burst and the number to register first, so the fade is
+ * plainly the consequence rather than a separate mystery.
+ */
+const DEATH_AFTER_MS = 460;
+
+/**
+ * The gap between one band of strikes and the next.
+ *
+ * Rules.md §11 ④ resolves damage a Range band at a time, and a whole exchange
+ * now arrives in one batch: the engine answers a strike that has only one
+ * legal assignment rather than asking (`settleBattle`), so a 1v1 fight is
+ * declared, fought and settled by a single click. Drawing every blow in that
+ * batch simultaneously is what made combat go by too fast to follow.
+ */
+const BAND_MS = 540;
+
 interface Rect {
   readonly x: number;
   readonly y: number;
@@ -58,6 +79,20 @@ interface Ghost {
   readonly key: string;
   readonly at: Rect;
   readonly defId: string | null;
+}
+
+/**
+ * One moment of an exchange: the blows that land together, the cards that
+ * lunge to deliver them, and whoever dies of them.
+ *
+ * Rules.md §11 ④ strikes a Range band at a time and the damage in a band lands
+ * together, so a beat is the natural unit — and the batch an action returns
+ * can hold several of them.
+ */
+interface Beat {
+  readonly hits: Hit[];
+  readonly ghosts: Ghost[];
+  readonly lunged: { node: HTMLElement; toward: { x: number; y: number } }[];
 }
 
 const centre = (rect: Rect): { x: number; y: number } => ({
@@ -116,15 +151,32 @@ export function BoardFx({
     played.current = events;
 
     const stamp = Date.now();
-    const nextHits: Hit[] = [];
-    const nextGhosts: Ghost[] = [];
-    const lunged: { node: HTMLElement; toward: { x: number; y: number } }[] = [];
+
+    // The batch, cut into beats. One action can now carry a whole exchange —
+    // several strikes and the deaths they cause — and playing all of it in one
+    // frame is what made combat unreadable. Each `DAMAGE_DEALT` opens a beat;
+    // deaths and any further blows join the beat they arrive in, so the order
+    // on screen is the order the engine resolved them in.
+    const beats: Beat[] = [];
+    let beat: Beat | null = null;
+    const open = (): Beat => {
+      if (!beat) {
+        beat = { hits: [], ghosts: [], lunged: [] };
+        beats.push(beat);
+      }
+      return beat;
+    };
 
     events.forEach((event, index) => {
       if (event.type === 'DAMAGE_DEALT') {
+        // A blow that lands while a death is already pending starts a new
+        // beat: two strikes in a row are two moments, not one.
+        if (beat && beat.ghosts.length > 0) beat = null;
+        const current = open();
+
         const target = remembered.current.get(event.target)?.rect ?? null;
         if (target) {
-          nextHits.push({
+          current.hits.push({
             key: `${stamp}:${index}`,
             at: target,
             amount: event.amount,
@@ -140,7 +192,7 @@ export function BoardFx({
           if (at) {
             for (const id of [event.source, event.target]) {
               const node = document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
-              if (node) lunged.push({ node, toward: centre(at) });
+              if (node) current.lunged.push({ node, toward: centre(at) });
             }
           }
         }
@@ -149,7 +201,10 @@ export function BoardFx({
       if (event.type === 'CHARACTER_DESTROYED') {
         const last = remembered.current.get(event.card);
         if (last) {
-          nextGhosts.push({
+          // Joins the beat of the blow that killed it, and is drawn a moment
+          // later — see `DEATH_AFTER_MS`. A death with no strike before it in
+          // this batch (an effect that destroys outright, §13) opens its own.
+          open().ghosts.push({
             key: `${stamp}:${index}`,
             at: last.rect,
             defId: last.defId,
@@ -158,18 +213,19 @@ export function BoardFx({
       }
     });
 
-    if (nextHits.length === 0 && nextGhosts.length === 0 && lunged.length === 0) return;
+    if (beats.length === 0) return;
 
     const timers: number[] = [];
 
     /**
-     * Draw it — a beat after the action that caused it.
+     * Draw one beat — the blows that land together, then the deaths they
+     * caused.
      *
-     * Positions were measured when the events arrived, so the pause does not
-     * make them stale: what moved in the meantime is the dialog going away,
+     * Positions were measured when the events arrived, so the delay does not
+     * make them stale: what moves in the meantime is the dialog going away,
      * which is the whole point of waiting.
      */
-    const play = (): void => {
+    const play = (moment: Beat): void => {
       // Out, then back: two writes against the transform transition the card
       // already has. `--clash-*` is composed into the base transform, so the
       // lunge keeps the fan rotation and the locked tilt instead of a keyframe
@@ -178,7 +234,7 @@ export function BoardFx({
       // Skipped outright when the player has asked for less motion — throwing
       // cards across the table is exactly what that setting is about. The
       // burst and the number still land, so the blow is not silent.
-      for (const { node, toward } of stillness() ? [] : lunged) {
+      for (const { node, toward } of stillness() ? [] : moment.lunged) {
         const box = node.getBoundingClientRect();
         const from = centre({ x: box.left, y: box.top, w: box.width, h: box.height });
 
@@ -206,33 +262,51 @@ export function BoardFx({
         );
       }
 
-      if (nextHits.length > 0) {
-        setHits((current) => [...current, ...nextHits]);
+      const { hits: beatHits, ghosts: beatGhosts } = moment;
+
+      if (beatHits.length > 0) {
+        setHits((current) => [...current, ...beatHits]);
         timers.push(
           window.setTimeout(
             () =>
               setHits((current) =>
-                current.filter((hit) => !nextHits.some((h) => h.key === hit.key)),
+                current.filter((hit) => !beatHits.some((h) => h.key === hit.key)),
               ),
             HIT_MS,
           ),
         );
       }
-      if (nextGhosts.length > 0) {
-        setGhosts((current) => [...current, ...nextGhosts]);
+
+      if (beatGhosts.length > 0) {
+        // Held back behind the blow that caused it. A card that vanishes in
+        // the same frame as the hit reads as having disappeared rather than
+        // having been killed — and with the engine settling forced
+        // assignments itself, that frame is often the only one the player
+        // gets. A death with no blow in front of it plays at once.
+        const after = beatHits.length > 0 ? DEATH_AFTER_MS : 0;
         timers.push(
-          window.setTimeout(
-            () =>
-              setGhosts((current) =>
-                current.filter((ghost) => !nextGhosts.some((g) => g.key === ghost.key)),
+          window.setTimeout(() => {
+            setGhosts((current) => [...current, ...beatGhosts]);
+            timers.push(
+              window.setTimeout(
+                () =>
+                  setGhosts((current) =>
+                    current.filter((ghost) => !beatGhosts.some((g) => g.key === ghost.key)),
+                  ),
+                FADE_MS,
               ),
-            FADE_MS,
-          ),
+            );
+          }, after),
         );
       }
     };
 
-    timers.push(window.setTimeout(play, SETTLE_MS));
+    // One beat after another, so an exchange reads as a sequence of blows
+    // rather than arriving all at once. §11 ④ resolves a band at a time and
+    // the engine can now run several bands inside a single action.
+    beats.forEach((moment, index) => {
+      timers.push(window.setTimeout(() => play(moment), SETTLE_MS + index * BAND_MS));
+    });
     return () => timers.forEach(clearTimeout);
   }, [events, view]);
 

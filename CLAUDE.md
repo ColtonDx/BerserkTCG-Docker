@@ -86,6 +86,16 @@ were updated to match, so don't re-open them from an older reading.
   press before the battle can finish. Two is a genuine decision —
   concentrating kills one, spreading may kill neither — and is always asked.
   The vanguard step is always a real choice.
+
+  This has a consequence outside the engine that is easy to reintroduce: a
+  single action can now carry an entire exchange, so its event batch holds
+  every strike, every death, the city changing hands and the draws that go
+  with it. `BoardFx` cuts that batch into **beats** and plays them in sequence,
+  holding each death behind the blow that caused it — drawing the batch in one
+  frame is what made cards appear to vanish for no reason. `EXCHANGE_HOLD_MS`
+  in the protocol keeps Femto from moving again underneath the animation, the
+  same way `BANNER_HOLD_MS` keeps it from playing under the turn banner.
+
 - **Only the first player skips their draw**, and only on their first turn; the
   second player draws normally on theirs (`Rules.md` §10 ②, `DesignNotes` 6).
 - **A card that cannot be legally opened is never offered.** `Rules.md` §7 says

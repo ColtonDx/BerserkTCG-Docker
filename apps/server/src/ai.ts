@@ -8,7 +8,7 @@ import {
   type MatchId,
   type PlayerId,
 } from '@berserk/engine';
-import { BANNER_HOLD_MS, OPENING_CEREMONY_MS } from '@berserk/protocol';
+import { BANNER_HOLD_MS, EXCHANGE_HOLD_MS, OPENING_CEREMONY_MS } from '@berserk/protocol';
 import type { MatchManager } from './matches.js';
 
 /**
@@ -669,7 +669,21 @@ export async function driveAi(
       if (action.type === 'SET_CARD') setsThisTurn++;
 
       onChange(result.events);
-      await pause(PAUSE_MS[action.type] ?? DEFAULT_PAUSE_MS);
+
+      // Paced off what *happened*, not off what was asked for. One action can
+      // carry a whole exchange — the engine settles a strike with a single
+      // legal assignment itself — and the client draws that as a sequence of
+      // blows with the deaths held behind them, which outlasts any of the
+      // per-action pauses. Moving again underneath it is what makes cards
+      // appear to vanish for no reason.
+      const fought = result.events.some(
+        (event) => event.type === 'DAMAGE_DEALT' || event.type === 'CHARACTER_DESTROYED',
+      );
+      await pause(
+        fought
+          ? Math.max(EXCHANGE_HOLD_MS, PAUSE_MS[action.type] ?? DEFAULT_PAUSE_MS)
+          : (PAUSE_MS[action.type] ?? DEFAULT_PAUSE_MS),
+      );
     }
   } finally {
     running.delete(matchId);
