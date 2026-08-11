@@ -38,6 +38,7 @@ import {
   presenceIn,
   refreshBoard,
   searchable,
+  stillFighting,
   legalTargets,
   targetingAbilities,
   turnOrdinal,
@@ -323,7 +324,16 @@ function applyAction(
         ctx,
         draft,
         events,
-        openCard(ctx, draft, actor, action.card, action.pay, action.targets ?? [], events),
+        openCard(
+          ctx,
+          draft,
+          actor,
+          action.card,
+          action.pay,
+          action.targets ?? [],
+          action.areas ?? [],
+          events,
+        ),
       );
 
     case 'MOVE_CHARACTER':
@@ -530,10 +540,9 @@ function damageTargets(draft: Draft<GameState>, battle: BattleState): CardInstan
   const owner = striker ? draft.cards[striker]?.controller : undefined;
   if (owner === undefined) return [];
 
-  return battle.participants.filter((id) => {
-    const card = draft.cards[id];
-    return card !== undefined && card.zone === 'city' && card.controller !== owner;
-  });
+  return stillFighting(draft as GameState, battle, opponentOf(draft, owner)).map(
+    (card) => card.instanceId,
+  );
 }
 
 /**
@@ -787,10 +796,7 @@ function beginDamage(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
   // §11 ④ — with one side wiped out there is nothing left to strike at, so
   // the exchange stops and the result is read off who is still standing.
   const standing = (player: PlayerId): number =>
-    battle.participants.filter((id) => {
-      const card = draft.cards[id];
-      return card && card.zone === 'city' && card.controller === player;
-    }).length;
+    stillFighting(draft as GameState, battle as BattleState, player).length;
 
   const band = nextRangeBand(ctx, draft, battle);
   if (band.length === 0 || standing(battle.attacker) === 0 || standing(battle.defender) === 0) {
@@ -835,13 +841,13 @@ function assignDamage(
     return violation('ILLEGAL_TARGET', `All ${power} Power must be assigned; ${total} was.`, '§11');
   }
 
-  // Targets must be enemy participants still standing. A character destroyed
-  // by an earlier band has left the field and cannot be hit again.
+  // Targets must be enemy participants still in the fight. A character
+  // destroyed by an earlier band has left the field, and one an effect moved
+  // out has left the area — neither can be hit here.
   const enemies = new Set(
-    battle.participants.filter((id) => {
-      const card = draft.cards[id];
-      return card && card.zone === 'city' && card.controller !== actor;
-    }),
+    stillFighting(draft as GameState, battle as BattleState, opponentOf(draft, actor)).map(
+      (card) => card.instanceId,
+    ),
   );
   for (const hit of hits) {
     if (hit.amount <= 0) {
@@ -1017,6 +1023,7 @@ function openCard(
   cardId: CardInstanceId,
   pay: readonly CardInstanceId[],
   targets: readonly CardInstanceId[],
+  areas: readonly number[],
   events: GameEvent[],
 ): Result<true, RuleViolation> {
   const card = draft.cards[cardId];
@@ -1108,7 +1115,7 @@ function openCard(
 
   // Rules.md §13 — an ability that goes off on opening does so now, while
   // the card is still on the field. A Normal Effect leaves straight after.
-  const chosen = checkTargets(ctx, draft, card as CardInstance, targets);
+  const chosen = checkTargets(ctx, draft, card as CardInstance, targets, areas);
   if (!chosen.ok) return chosen;
   fireAbilities(ctx, draft, card as CardInstance, 'open', events, chosen.value);
 
@@ -1551,28 +1558,80 @@ function checkTargets(
   draft: Draft<GameState>,
   source: CardInstance,
   targets: readonly CardInstanceId[],
-): Result<readonly (CardInstanceId | undefined)[], RuleViolation> {
+  areas: readonly number[] = [],
+): Result<Choices, RuleViolation> {
   const asking = targetingAbilities(ctx, source, 'open');
   if (targets.length > asking.length) {
     return violation('ILLEGAL_TARGET', 'That card does not ask for that many targets.', '§13');
   }
+  if (areas.length > asking.length) {
+    return violation('ILLEGAL_TARGET', 'That card does not ask for that many areas.', '§13');
+  }
 
-  const chosen: (CardInstanceId | undefined)[] = [];
+  const cards: (CardInstanceId | undefined)[] = [];
+  const chosenAreas: (number | undefined)[] = [];
+
   for (const [index, ability] of asking.entries()) {
     const picked = targets[index];
     if (picked === undefined) {
       // Nothing chosen is a real outcome, not an error: the ability resolves
       // and finds nobody.
-      chosen.push(undefined);
+      cards.push(undefined);
+      chosenAreas.push(undefined);
       continue;
     }
     const allowed = legalTargets(ctx, draft, source, ability.target);
     if (!allowed.some((card) => card.instanceId === picked)) {
       return violation('ILLEGAL_TARGET', 'That character cannot be targeted.', '§13');
     }
-    chosen.push(picked);
+    cards.push(picked);
+
+    // The area, where the ability asks for one. Validated against the chosen
+    // character, because "adjacent" is adjacent to *them* — see `areasFor`.
+    if (ability.target.area === undefined) {
+      chosenAreas.push(undefined);
+      continue;
+    }
+    const options = areasFor(draft, ability.target.area, picked);
+    const area = areas[index] ?? options[0];
+    if (area === undefined) {
+      // Nowhere to send them — an area at the end of the row with the only
+      // neighbour somehow gone. The move finds nowhere and does nothing.
+      chosenAreas.push(undefined);
+      continue;
+    }
+    if (!options.includes(area)) {
+      return violation('ILLEGAL_TARGET', 'That is not a legal area for this card.', '§13');
+    }
+    chosenAreas.push(area);
   }
-  return ok(chosen);
+
+  return ok({ cards, areas: chosenAreas });
+}
+
+/** One ability's worth of chosen character and chosen area, in printed order. */
+interface Choices {
+  readonly cards: readonly (CardInstanceId | undefined)[];
+  readonly areas: readonly (number | undefined)[];
+}
+
+/**
+ * The areas an ability may send its chosen character to. Rules.md §13.
+ *
+ * `adjacent` is the row's neighbours of wherever that character is standing —
+ * the cities are a line, so it is index ±1, and the ends of the row have one
+ * neighbour rather than two. The single implementation, so `legalActions` and
+ * `reduce` cannot disagree about what "adjacent" means.
+ */
+export function areasFor(
+  state: Pick<GameState, 'cards' | 'cities'>,
+  kind: 'adjacent',
+  target: CardInstanceId,
+): number[] {
+  void kind;
+  const from = state.cards[target]?.cityIndex;
+  if (from === undefined) return [];
+  return [from - 1, from + 1].filter((index) => index >= 0 && index < state.cities.length);
 }
 
 /**
@@ -1652,6 +1711,17 @@ function useAbility(
   if (choices.length > 0) {
     return violation('ILLEGAL_TARGET', 'That ability does not ask for that many choices.', '§13');
   }
+  // No cost-bearing ability in the set asks for an area, and one that did
+  // would need the same (character, area) plumbing the on-open path has.
+  // Refusing is better than accepting the field and quietly ignoring it —
+  // silently dropping a choice the player made is the worse failure.
+  if (entry.ability.target?.area !== undefined) {
+    return violation(
+      'NOT_IMPLEMENTED',
+      'Choosing an area for a cost-bearing ability is not built yet.',
+      '§13',
+    );
+  }
 
   /* ------------------------------------------------------------ pay for it */
 
@@ -1693,16 +1763,18 @@ function fireAbilities(
   source: CardInstance,
   trigger: Trigger,
   events: GameEvent[],
-  targets: readonly (CardInstanceId | undefined)[] = [],
+  choices: Choices = { cards: [], areas: [] },
 ): void {
   let asked = 0;
   for (const ability of definitionOf(ctx, source).abilities ?? []) {
     if (ability.trigger !== trigger) continue;
-    const chosen = ability.target ? targets[asked++] : undefined;
+    const index = ability.target ? asked++ : -1;
+    const chosen = index >= 0 ? choices.cards[index] : undefined;
+    const area = index >= 0 ? choices.areas[index] : undefined;
     if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) continue;
     // An ability that asked for a target and got nobody has nothing to do.
     if (ability.target && chosen === undefined) continue;
-    resolveEffect(ctx, draft, source, ability, events, chosen);
+    resolveEffect(ctx, draft, source, ability, events, chosen, area);
   }
 }
 
@@ -1719,6 +1791,7 @@ function resolveEffect(
   ability: Ability,
   events: GameEvent[],
   chosen?: CardInstanceId | undefined,
+  area?: number | undefined,
 ): void {
   events.push({
     type: 'ABILITY_RESOLVED',
@@ -1727,7 +1800,7 @@ function resolveEffect(
     text: ability.text,
   });
 
-  runEffect(ctx, draft, source, ability.effect, events, chosen, ability.text);
+  runEffect(ctx, draft, source, ability.effect, events, chosen, ability.text, area);
   for (const next of ability.then ?? []) {
     // An effect that stopped to ask has suspended the ability (§13), and what
     // follows it on the printed line has not happened yet. No card in the set
@@ -1740,7 +1813,7 @@ function resolveEffect(
           'a resumable effect chain would be needed to finish it.',
       );
     }
-    runEffect(ctx, draft, source, next, events, chosen, ability.text);
+    runEffect(ctx, draft, source, next, events, chosen, ability.text, area);
   }
 }
 
@@ -1754,6 +1827,8 @@ function runEffect(
   chosen?: CardInstanceId | undefined,
   /** The printed line, quoted back at the player if this effect has to ask. */
   text = '',
+  /** The area the player chose, for an effect that asked for one. §13. */
+  area?: number | undefined,
 ): void {
   const controller = source.controller;
 
@@ -1875,9 +1950,11 @@ function runEffect(
     }
 
     case 'moveTo': {
-      // Where the card doing this is standing. An ability whose own card has
-      // left the field has nowhere to send anybody.
-      const to = source.cityIndex;
+      // Where they end up. "This area" is wherever the card doing the moving
+      // stands — an ability whose own card has left the field has nowhere to
+      // send anybody — and "an adjacent area" is the one the player picked,
+      // already checked against the chosen character by `checkTargets`.
+      const to = effect.where === 'adjacentArea' ? area : source.cityIndex;
       if (to === undefined) return;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         const from = card.cityIndex;

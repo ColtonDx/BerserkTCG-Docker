@@ -304,6 +304,13 @@ export type GameAction =
        * choice is the player's.
        */
       readonly targets?: readonly CardInstanceId[];
+      /**
+       * One chosen *area* per ability that asks for one, in the same printed
+       * order. Rules.md §13 — separate from `targets` because an area is not
+       * a card: BK1-032 moves an enemy character (a target) to an adjacent
+       * area (an area), and an ability can want either, both or neither.
+       */
+      readonly areas?: readonly number[];
     }
   /** Lock an unlocked character and move it within its Move range. Rules.md §10 ④(1). */
   | { readonly type: 'MOVE_CHARACTER'; readonly card: CardInstanceId; readonly city: number }
@@ -349,6 +356,8 @@ export type GameAction =
       readonly card: CardInstanceId;
       readonly ability: string;
       readonly targets?: readonly CardInstanceId[];
+      /** Chosen areas, for an ability that asks for one. See `OPEN_CARD`. */
+      readonly areas?: readonly number[];
       readonly pay?: readonly CardInstanceId[];
     }
   /** Decline to interrupt a pending effect. Rules.md §14. */

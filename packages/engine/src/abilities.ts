@@ -69,6 +69,18 @@ export interface TargetSpec {
   readonly side?: 'yours' | 'theirs' | 'any';
   readonly where?: 'thisArea' | 'anywhere';
   readonly subtype?: string;
+  /**
+   * The ability also asks for an **area**, chosen after the character.
+   *
+   * `adjacent` is the only kind so far: "move it to an adjacent area"
+   * (BK1-032), meaning a city next to the chosen character's own, which is
+   * index ±1 along the row. It is a real choice anywhere but the two ends,
+   * where only one neighbour exists and the engine takes it without asking.
+   *
+   * The choice travels in `OPEN_CARD.areas` / `USE_ABILITY.areas`, not in
+   * `targets`: an area is not a card, and an ability may want either or both.
+   */
+  readonly area?: 'adjacent';
   /** Rules.md §7 — some effects only reach small characters. */
   readonly maxLevel?: number;
   /** Rules.md §3 — some effects only reach one colour. */
@@ -208,12 +220,22 @@ export type Effect =
    * the effect may reach is the ability's own business, expressed as
    * `TargetSpec.maxDistance`.
    *
-   * `sourceArea` is the only destination in the set so far — every printed
-   * line of this kind says "to this area". It is named rather than assumed so
-   * that a card which picks an area can be added beside it without the two
-   * being confused.
+   * Two destinations so far, both named rather than assumed so a card that
+   * picks an arbitrary area can be added beside them without confusion:
+   *
+   * - `sourceArea` — "move that character to this area", where "this" is the
+   *   card doing the moving.
+   * - `adjacentArea` — "move it to an adjacent area" (BK1-032). Which one is
+   *   the player's choice, and it is a real one at any city but the two ends
+   *   of the row, so it is asked as a second target: `TargetSpec.area` marks
+   *   the ability as wanting an area, and the destination rides in the
+   *   action's `areas` alongside its chosen characters.
    */
-  | { readonly do: 'moveTo'; readonly who: Selector; readonly where: 'sourceArea' }
+  | {
+      readonly do: 'moveTo';
+      readonly who: Selector;
+      readonly where: 'sourceArea' | 'adjacentArea';
+    }
   /** Rules.md §11 — may not lead or join an attack. */
   | { readonly do: 'cannotAttack'; readonly who: Selector };
 
@@ -491,6 +513,19 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       target: { where: 'thisArea' },
       effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 1, hp: 1 } },
       text: 'Target character in this area gains +1/+1 until end of turn',
+    },
+  ],
+  'BK1-032': [
+    {
+      trigger: 'open',
+      // "an enemy character that is level 2 or less in this area" — three
+      // narrowings, all printed, plus the area the effect sends it to.
+      target: { side: 'theirs', where: 'thisArea', maxLevel: 2, area: 'adjacent' },
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'adjacentArea' },
+      // One printed line, one ability: the draw rides in `then` so it cannot
+      // be taken without the move.
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'When this card is opened, target an enemy character that is level 2 or less in this area. Move it to an adjacent area, then draw 1 card.',
     },
   ],
   'BK1-040': [

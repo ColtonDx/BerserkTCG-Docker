@@ -50,6 +50,15 @@ were updated to match, so don't re-open them from an older reading.
   commits nobody loses the city, however many of their characters are standing
   in it — declining to fight is a choice, not a way to deny an attack.
   `rules.ts:battleResult` is the single implementation.
+- **"Remains in the battle" is three things, and the third is easy to lose.**
+  §12 counts a character that is a _participant_, still on the field, **and
+  still in the contested area**. Destruction is the usual way to leave a
+  fight, so the area check reads as redundant until a card effect walks
+  somebody out (§13; §14 lets an effect override the rule it contradicts) —
+  and then a character standing one city away goes on fighting from there.
+  `rules.ts:stillFighting` is the single implementation, and `battleResult`,
+  the damage step's "is anyone left to strike" and its "who may be hit" all
+  read it. They disagreed once, which is exactly how the bug survived.
 - **A city wakes when it is attacked, not when it is settled.** Declaring a
   battle over a city turns it face-up and it stays face-up (`Rules.md` §5);
   opening a character there does nothing to it. City Level therefore only

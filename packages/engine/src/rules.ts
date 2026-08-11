@@ -628,19 +628,44 @@ export function nextRangeBand(
  * uncommitted characters stay where they are; they simply took no part, and
  * a battle is decided by the people in it.
  */
+/**
+ * A player's characters still in the fight. Rules.md §12.
+ *
+ * "Remain in the battle" is three things, and dropping any of them has been a
+ * bug: still a *participant* (§12 counts only who was committed, never the
+ * bystanders), still on the field rather than in the Trash, and **still in the
+ * contested area**. That last one is easy to miss, because destruction is the
+ * usual way to leave a battle — but a card effect can move a character out
+ * (§13, §14 lets an effect override the rule it contradicts), and a character
+ * standing one area away is not fighting here whatever it agreed to earlier.
+ *
+ * The single implementation, because `battleResult`, the damage step's "is
+ * there anyone left to strike" and its "who may be hit" all have to agree. They
+ * disagreed once and a moved character kept fighting from the next city.
+ */
+export function stillFighting(
+  state: Pick<GameState, 'cards'>,
+  battle: BattleState,
+  player: PlayerId,
+): CardInstance[] {
+  return battle.participants
+    .map((id) => state.cards[id])
+    .filter(
+      (card): card is CardInstance =>
+        card !== undefined &&
+        card.zone === 'city' &&
+        card.cityIndex === battle.city &&
+        card.controller === player,
+    );
+}
+
 export function battleResult(
   ctx: EngineContext,
   state: Pick<GameState, 'cards'>,
   battle: BattleState,
 ): BattleResult {
-  const standing = (player: PlayerId): number =>
-    battle.participants.filter((id) => {
-      const card = state.cards[id];
-      return card !== undefined && card.zone === 'city' && card.controller === player;
-    }).length;
-
-  const attackers = standing(battle.attacker);
-  const defenders = standing(battle.defender);
+  const attackers = stillFighting(state, battle, battle.attacker).length;
+  const defenders = stillFighting(state, battle, battle.defender).length;
 
   if (attackers > 0 && defenders === 0) return 'occupation';
   if (defenders > 0 && attackers === 0) return 'repel';

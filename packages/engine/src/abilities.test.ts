@@ -5,6 +5,7 @@ import { asCardDefId, asMatchId, asPlayerId, type CardInstanceId, type PlayerId 
 import { SHIELD } from './abilities.js';
 import {
   boostSources,
+  stillFighting,
   cannotAttack,
   damageAfterReduction,
   hpOf,
@@ -1661,6 +1662,102 @@ describe('effects that stop and ask (Rules.md §13)', () => {
     state = apply(state, player, openOf(state, player, farnese.card) as GameAction);
     expect(state.pending).toBeNull();
     expect(cardOf(state, farnese.card).faceUp).toBe(true);
+  });
+
+  it('BK1-032 moves an enemy to an area the player picks, and draws', () => {
+    // "Move it to an adjacent area" — a real choice at a middle city, so the
+    // engine offers one open per (character, area) pair and accepts either.
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // A Level 0 Mercenary, which is "level 2 or less".
+    const victim = place(state, other, 'BK1-001', 2);
+    state = victim.state;
+    const sentries = place(state, player, 'BK1-032', 2, { faceUp: false });
+    state = openable(sentries.state, player, sentries.card);
+
+    // Both neighbours of city 2 are offered, and nothing else.
+    const offers = engine
+      .legalActions(state, player)
+      .filter(
+        (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          action.type === 'OPEN_CARD' && action.card === sentries.card,
+      );
+    expect(offers.map((o) => o.areas?.[0]).sort()).toEqual([1, 3]);
+    for (const offer of offers) expect(offer.targets).toEqual([victim.card]);
+
+    const before = zoneSize(state, player, 'hand');
+    const toThree = offers.find((o) => o.areas?.[0] === 3) as GameAction;
+    state = apply(state, player, toThree);
+
+    // Moved where asked, and the draw rode along on the same printed line.
+    expect(cardOf(state, victim.card).cityIndex).toBe(3);
+    const paid = (toThree as Extract<GameAction, { type: 'OPEN_CARD' }>).pay.length;
+    expect(zoneSize(state, player, 'hand')).toBe(before + 1 - paid);
+  });
+
+  it('BK1-032 offers one area at the end of the row, not two', () => {
+    // City 0 has a single neighbour, so there is nothing to choose between.
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const victim = place(state, other, 'BK1-001', 0);
+    state = victim.state;
+    const sentries = place(state, player, 'BK1-032', 0, { faceUp: false });
+    state = openable(sentries.state, player, sentries.card);
+
+    const offers = engine
+      .legalActions(state, player)
+      .filter(
+        (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          action.type === 'OPEN_CARD' && action.card === sentries.card,
+      );
+    expect(offers.map((o) => o.areas?.[0])).toEqual([1]);
+  });
+
+  it('a character moved out of a battle stops fighting in it', () => {
+    // Rules.md §12 reads the result off who *remains in the battle*. A
+    // character an effect walked into the next city has left it, however it
+    // was committed — the engine used to count it from wherever it stood,
+    // which made moving a defender out change nothing.
+    let state = started();
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const lead = place(state, attacker, 'BK1-001', 2);
+    state = lead.state;
+    const garrison = place(state, defender, 'BK1-001', 2);
+    state = atMain(garrison.state);
+
+    state = apply(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    // Taken at the vanguard step, while the battle is still running: a 1v1
+    // exchange settles itself the moment the defender commits, because
+    // neither strike is a choice.
+    const battle = state.battle as NonNullable<GameState['battle']>;
+    expect(battle).not.toBeNull();
+
+    // Both are in the contested city and both are participants, so both are
+    // fighting. `participants` is set from the vanguard onward.
+    const fighting = { ...battle, participants: [lead.card, garrison.card] };
+    expect(stillFighting(state, fighting, attacker)).toHaveLength(1);
+    expect(stillFighting(state, fighting, defender)).toHaveLength(1);
+
+    // Walk the defender out of the contested city, as a card effect would.
+    const moved = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [garrison.card]: { ...cardOf(state, garrison.card), cityIndex: 3 },
+      },
+    } as GameState;
+
+    // Still on the field, still a participant — and no longer in the fight.
+    expect(cardOf(moved, garrison.card).zone).toBe('city');
+    expect(stillFighting(moved, fighting, defender)).toEqual([]);
+    expect(stillFighting(moved, fighting, attacker)).toHaveLength(1);
   });
 
   it('fires an on-open ability from the combat open too', () => {

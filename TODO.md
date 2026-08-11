@@ -49,8 +49,11 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
      character and change its numbers while they remain in play. Needs a card
      to belong to another card, and Range to become modifiable — it is
      printed-only today (`rules.ts:rangeOf`).
-   - **An area as a target.** BK1-062 moves a character to a chosen area, and
-     BK1-068 moves your Set Cards to one. `TargetSpec` names characters only.
+   - **An area as a target, chosen freely.** BK1-062 moves a character to any
+     area an opponent holds a Level 3+ character in, and BK1-068 moves your
+     Set Cards to one. `TargetSpec.area` exists now but offers only
+     `adjacent` (BK1-032) — a shortlist read off the chosen character, not an
+     arbitrary area with its own conditions.
    - **Two one-offs.** BK1-061 needs "did an opponent move a character here
      this turn", which nothing records yet, and then a set-and-immediately-open.
      BK1-066 needs an optional skip of your own Draw phase, remembered across

@@ -1,7 +1,7 @@
 import { abilityKey } from './abilities.js';
 import { costTotal } from './cards.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
-import { currentPhase } from './reducer.js';
+import { areasFor, currentPhase } from './reducer.js';
 import {
   activatedAbilities,
   activationCost,
@@ -393,12 +393,23 @@ function openActions(
         actions.push({ type: 'OPEN_CARD', card: card.instanceId, pay: payment });
       } else {
         for (const option of options) {
-          actions.push({
-            type: 'OPEN_CARD',
-            card: card.instanceId,
-            pay: payment,
-            targets: [option.instanceId],
-          });
+          // An ability that also asks for an area gets one offer per legal
+          // (character, area) pair — "move it to an adjacent area" is two
+          // different plays at a middle city, and the client cannot work out
+          // which areas count without knowing what "adjacent" means.
+          const areas =
+            ability.target.area === undefined
+              ? [undefined]
+              : areasFor(state, ability.target.area, option.instanceId);
+          for (const area of areas.length > 0 ? areas : [undefined]) {
+            actions.push({
+              type: 'OPEN_CARD',
+              card: card.instanceId,
+              pay: payment,
+              targets: [option.instanceId],
+              ...(area === undefined ? {} : { areas: [area] }),
+            });
+          }
         }
       }
       continue;

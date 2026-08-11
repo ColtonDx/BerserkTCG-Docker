@@ -19,9 +19,11 @@ interface Props {
   readonly player: string;
   readonly onClose: () => void;
   readonly onPeek: (defId: string | null) => void;
+  /** Read a card properly — art, rules text and stats. */
+  readonly onInspect: (defId: string) => void;
 }
 
-export function PileViewer({ view, player, onClose, onPeek }: Props): JSX.Element {
+export function PileViewer({ view, player, onClose, onPeek, onInspect }: Props): JSX.Element {
   const peek = usePeek(onPeek);
 
   useEffect(() => {
@@ -56,19 +58,30 @@ export function PileViewer({ view, player, onClose, onPeek }: Props): JSX.Elemen
         ) : (
           <div className="viewer__grid">
             {cards.map((card) => (
-              <div
+              // A button, not a div: clicking a card here reads it, the same
+              // as everywhere else. The cursor already promised `zoom-in` and
+              // the only way to see one was a two-second press — long enough
+              // with a mouse that the pile looked as though it did nothing.
+              <button
+                type="button"
                 key={card.instanceId}
                 className="viewer__card"
-                title={nameOf(card.defId)}
+                title={`Read ${nameOf(card.defId)}`}
+                onClick={() => {
+                  // A hold ends in a click too; that one is not a request to
+                  // open the reader on top of the card already held up.
+                  if (peek.consumed()) return;
+                  onInspect(card.defId);
+                }}
                 {...peek.bind(card.defId)}
               >
                 <CardImage defId={card.defId} className="viewer__art" />
-              </div>
+              </button>
             ))}
           </div>
         )}
 
-        <p className="viewer__hint">Hold a card to see it up close.</p>
+        <p className="viewer__hint">Click a card to read it, or hold to see it up close.</p>
       </div>
       <button type="button" className="viewer__scrim" aria-label="Close" onClick={onClose} />
     </div>

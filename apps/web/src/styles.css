@@ -2562,12 +2562,17 @@ button.card:hover {
   padding-right: 4px;
 }
 
+/* A button, because clicking a card in a pile reads it — so the default
+   button chrome has to go, leaving the card itself as the whole control. */
 .viewer__card {
   cursor: zoom-in;
   border-radius: 3px;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   transition: border-color 120ms ease;
+  padding: 0;
+  background: none;
+  line-height: 0;
 }
 
 .viewer__card:hover {

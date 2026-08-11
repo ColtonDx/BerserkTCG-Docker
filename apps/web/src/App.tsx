@@ -21,6 +21,7 @@ import { Inspect } from './components/Inspect.js';
 import { CARD_BACK } from './components/CardImage.js';
 import { abilityOf, staysOnTable, statsOf } from './state/useCardNames.js';
 import { PayFor, type PayableAction } from './components/PayFor.js';
+import { PickArea } from './components/PickArea.js';
 import { Peek } from './components/Peek.js';
 import { Revealed, type Reveal } from './components/Revealed.js';
 import { PileViewer } from './components/PileViewer.js';
@@ -126,6 +127,13 @@ export function App(): JSX.Element {
   const [aiming, setAiming] = useState<Aiming | null>(null);
   // Which target the pointer is over, so the arrow can snap to it.
   const [hovered, setHovered] = useState<string | null>(null);
+  /**
+   * A play whose character is settled and whose *area* is not. Rules.md §13 —
+   * BK1-032 moves an enemy "to an adjacent area", and which one is a real
+   * choice anywhere but the ends of the row. Asked after the target, because
+   * the legal areas are the neighbours of wherever that character stands.
+   */
+  const [sending, setSending] = useState<Sending | null>(null);
   const dealt = useRef(false);
 
   // A target picker is abandoned as soon as the server moves: whoever it was
@@ -138,6 +146,9 @@ export function App(): JSX.Element {
     aimedAt.current = version;
     setAiming(null);
     setHovered(null);
+    // Same reasoning: the character it was going to move may not be there any
+    // more, so the areas on offer would be describing a board that has moved.
+    setSending(null);
   }, [match.view?.version]);
 
   useEffect(() => {
@@ -398,9 +409,23 @@ export function App(): JSX.Element {
           if (!choice) return;
           setAiming(null);
           setHovered(null);
+
+          // Some abilities want an area as well as a character — "move it to
+          // an adjacent area" (Rules.md §13). Which areas are legal depends on
+          // where the chosen character stands, so it is asked second, once
+          // that is settled. One option is not a question: the engine offered
+          // exactly one, so it is taken.
+          if (choice.areas.length > 1) {
+            setSending({ action: aiming.action, targets: choice.targets, areas: choice.areas });
+            return;
+          }
           // The payment the player settled on, aimed at who they picked — and
           // the rest of the engine's choices (a cost's ally) carried through.
-          match.submit({ ...aiming.action, targets: choice.targets as never });
+          match.submit({
+            ...aiming.action,
+            targets: choice.targets as never,
+            ...(choice.areas.length === 1 ? { areas: choice.areas as never } : {}),
+          });
         }}
         dimmed={
           step !== null || opening !== null || assigning !== null || match.view.quick !== null
@@ -446,6 +471,7 @@ export function App(): JSX.Element {
           player={grave}
           onClose={() => setGrave(null)}
           onPeek={setPeeking}
+          onInspect={setInspecting}
         />
       )}
       {assigning && match.view.battle && (
@@ -480,6 +506,21 @@ export function App(): JSX.Element {
           }}
           onPeek={setPeeking}
           onInspect={setInspecting}
+        />
+      )}
+      {sending && (
+        <PickArea
+          view={match.view}
+          areas={sending.areas}
+          onCancel={() => setSending(null)}
+          onPick={(area) => {
+            setSending(null);
+            match.submit({
+              ...sending.action,
+              targets: sending.targets as never,
+              areas: [area] as never,
+            });
+          }}
         />
       )}
       {aiming && (
@@ -544,6 +585,19 @@ export function App(): JSX.Element {
  */
 type Ceremony = 'burn' | 'toss' | 'playing';
 
+/**
+ * A play whose character is chosen and whose area is not. Rules.md §13.
+ *
+ * The second half of an ability that names both — see `PickArea`. Everything
+ * needed to send it is already here; only the area is outstanding.
+ */
+interface Sending {
+  readonly action: PayableAction;
+  readonly targets: readonly string[];
+  /** The legal areas, as the engine offered them. */
+  readonly areas: readonly number[];
+}
+
 /** A paid-for play still waiting to be pointed at somebody. Rules.md §13. */
 interface Aiming {
   /** The card doing the pointing — where the arrow starts. */
@@ -566,7 +620,20 @@ interface Choice {
    * offered is kept whole.
    */
   readonly targets: readonly string[];
+  /**
+   * The areas this target may be sent to, if the ability asks for one — one
+   * entry per offer the engine made for this character (Rules.md §13, e.g.
+   * BK1-032's "move it to an adjacent area"). Empty when no area is wanted,
+   * which is every other card in the set.
+   *
+   * Kept per-target rather than flattened, because "adjacent" is adjacent to
+   * *that* character: two different targets can offer different areas.
+   */
+  readonly areas: readonly number[];
 }
+
+/** `Choice` while it is still gathering its areas. */
+type Mutable = Omit<Choice, 'areas'> & { areas: number[] };
 
 /**
  * Everybody this play may legally be pointed at, with the action that does it.
@@ -577,8 +644,10 @@ interface Choice {
  * those are rules that live in the engine.
  */
 function targetChoices(view: PlayerView, action: PayableAction): Choice[] {
-  const choices: Choice[] = [];
-  const seen = new Set<string>();
+  // Built mutably: an ability that wants an area is offered once per pair, so
+  // the same target arrives repeatedly and gathers its areas as it goes.
+  const choices: Mutable[] = [];
+  const seen = new Map<string, Mutable>();
 
   for (const offered of view.legalActions) {
     if (offered.type !== action.type || offered.card !== action.card) continue;
@@ -592,9 +661,20 @@ function targetChoices(view: PlayerView, action: PayableAction): Choice[] {
     const targets = (offered as { targets?: readonly string[] }).targets ?? [];
     // The effect's own choice is the last one: a cost's ally comes first.
     const target = targets[targets.length - 1];
-    if (target === undefined || seen.has(target)) continue;
-    seen.add(target);
-    choices.push({ target, targets });
+    if (target === undefined) continue;
+
+    // An ability wanting an area is offered once per (character, area) pair,
+    // so the same target arrives several times. The arrow still points at one
+    // character — the areas are gathered onto it and asked for afterwards.
+    const area = (offered as { areas?: readonly number[] }).areas?.[0];
+    const already = seen.get(target);
+    if (already) {
+      if (area !== undefined && !already.areas.includes(area)) already.areas.push(area);
+      continue;
+    }
+    const choice = { target, targets, areas: area === undefined ? [] : [area] };
+    seen.set(target, choice);
+    choices.push(choice);
   }
 
   return choices;
