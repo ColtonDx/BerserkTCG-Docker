@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { CardImage } from './CardImage.js';
 import { isMuted, setMuted, setVolume, volume } from '../net/sound.js';
+import { quickStops, setQuickStops, type QuickStops } from '../state/quickStops.js';
 import { nameOf, useCardNames } from '../state/useCardNames.js';
 import { authHeaders, type Auth } from '../state/useAuth.js';
 
@@ -18,6 +19,21 @@ import { authHeaders, type Auth } from '../state/useAuth.js';
 
 const API = import.meta.env['VITE_SERVER_URL'] ?? '';
 
+/** The three ways to be asked about a Quick. See `state/quickStops.ts`. */
+const STOPS: readonly { value: QuickStops; label: string; hint: string }[] = [
+  {
+    value: 'battles',
+    label: 'Stop for battles',
+    hint: 'Ask during a battle; pass for me at the turn’s edges.',
+  },
+  {
+    value: 'always',
+    label: 'Always ask',
+    hint: 'Ask at every moment a Quick could be played, with a countdown.',
+  },
+  { value: 'never', label: 'Never ask', hint: 'Pass for me every time.' },
+];
+
 interface Props {
   readonly auth: Auth;
   readonly onClose: () => void;
@@ -27,6 +43,7 @@ export function Settings({ auth, onClose }: Props): JSX.Element {
   useCardNames();
   const [muted, setMutedState] = useState(isMuted);
   const [level, setLevel] = useState(volume);
+  const [stops, setStops] = useState<QuickStops>(quickStops);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -71,6 +88,32 @@ export function Settings({ auth, onClose }: Props): JSX.Element {
             />
             <span className="settings__value">{Math.round(level * 100)}%</span>
           </label>
+        </section>
+
+        {/* Rules.md §13 lets a Quick interject almost anywhere, and the engine
+         * only ever asks when there is a real decision in it. This is how
+         * often the player wants to be *stopped* for one — the game still
+         * pauses either way; the client answers "not now" on their behalf. */}
+        <section className="settings__group">
+          <h3 className="settings__heading">Quick prompts</h3>
+          {STOPS.map(({ value, label, hint }) => (
+            <label key={value} className="settings__row settings__row--choice">
+              <input
+                type="radio"
+                name="quickStops"
+                value={value}
+                checked={stops === value}
+                onChange={() => {
+                  setQuickStops(value);
+                  setStops(value);
+                }}
+              />
+              <span>
+                {label}
+                <span className="settings__hint">{hint}</span>
+              </span>
+            </label>
+          ))}
         </section>
 
         <IconPicker auth={auth} />

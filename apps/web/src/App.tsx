@@ -2,7 +2,6 @@ import {
   isCityHidden,
   type CardInstanceId,
   type GameAction,
-  type GameEvent,
   type PlayerView,
 } from '@berserk/engine';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
@@ -25,7 +24,7 @@ import { PickArea } from './components/PickArea.js';
 import { Peek } from './components/Peek.js';
 import { Revealed, type Reveal } from './components/Revealed.js';
 import { PileViewer } from './components/PileViewer.js';
-import { QuickWindow } from './components/QuickWindow.js';
+import { QuickPrompt } from './components/QuickPrompt.js';
 import { BurnAway } from './components/BurnAway.js';
 import { DeckBuilder } from './components/DeckBuilder.js';
 import { DeckSelect } from './components/DeckSelect.js';
@@ -34,9 +33,10 @@ import { LobbyBrowser } from './components/LobbyBrowser.js';
 import { Settings } from './components/Settings.js';
 import { SignIn } from './components/SignIn.js';
 import { turnPage } from './net/pageTurn.js';
-import { playDraw, playSchwing, playShuffle } from './net/sound.js';
+import { playDraw, playShuffle } from './net/sound.js';
 import { useAuth } from './state/useAuth.js';
 import { useMatch } from './state/useMatch.js';
+import { usePresentation, type Stage } from './state/usePresentation.js';
 
 /**
  * Screen flow: sign in, then the lobby, then choosing a deck, then the board.
@@ -53,6 +53,9 @@ export function App(): JSX.Element {
     document.documentElement.style.setProperty('--card-back', `url(${CARD_BACK})`);
   }, []);
   const match = useMatch(auth.user !== null);
+  // What is being shown right now, and whether it is holding the stage
+  // against a prompt. One queue for every overlay — see `usePresentation`.
+  const { stage, busy } = usePresentation(match.recentEvents, match.view?.viewer);
   // The table is a fixed viewport-sized surface, so nothing on it should ever
   // put the *document* on a scrollbar — a board you can scroll away from is a
   // board whose halves stop lining up. Flagged on the root rather than fixed
@@ -87,11 +90,6 @@ export function App(): JSX.Element {
   // Both are pure display: nothing about looking at a card leaves this tab.
   const [peeking, setPeeking] = useState<string | null>(null);
   const [grave, setGrave] = useState<string | null>(null);
-  // The card being opened, held up in the middle of the board for a moment.
-  const [reveal, setReveal] = useState<Reveal | null>(null);
-  // A city changing hands, which is the biggest single swing on the board and
-  // pays two cards for it. Rules.md §12.
-  const [taken, setTaken] = useState<Taken | null>(null);
   // The toss for first player, shown once when a match deals. Rules.md §9.2 —
   // the engine has already decided it; this only says so.
   const [toss, setToss] = useState<Toss | null>(null);
@@ -135,6 +133,9 @@ export function App(): JSX.Element {
    */
   const [sending, setSending] = useState<Sending | null>(null);
   const dealt = useRef(false);
+  // Stable, because the Quick prompt's countdown is keyed on it: a fresh
+  // arrow every render would restart the clock and it would never run out.
+  const passQuick = useCallback(() => match.submit({ type: 'PASS_PRIORITY' }), [match.submit]);
 
   // A target picker is abandoned as soon as the server moves: whoever it was
   // pointing at may not be a legal choice any more, and the arrow would be
@@ -201,87 +202,9 @@ export function App(): JSX.Element {
       return;
     }
 
-    // Steel drawn. Declaring a battle (Rules.md §11) is the loudest thing a
-    // player does, and it outranks anything else in the same batch: a city
-    // flipping face up is part of the declaration, not a separate event worth
-    // its own sound.
-    if (events.some((e) => e.type === 'BATTLE_DECLARED')) {
-      playSchwing();
-      return;
-    }
-
+    // Steel drawn is heard on the beat that shows it — see `BoardFx`.
     const drawn = events.filter((e) => e.type === 'CARD_DRAWN').length;
     if (drawn > 0) playDraw(drawn);
-  }, [match.recentEvents]);
-
-  // Opening is the moment a card starts mattering, and on the board it happens
-  // at thumbnail size. Hold it up so both players can actually read it.
-  //
-  // Keyed to the event batch, not the view: `recentEvents` sits there until
-  // the next action, so watching the view as well would re-raise the same
-  // open on every update and the card would never come down.
-  const shown = useRef<readonly GameEvent[] | null>(null);
-  useEffect(() => {
-    const events = match.recentEvents;
-    if (events.length === 0 || shown.current === events) return;
-    shown.current = events;
-
-    const view = viewRef.current;
-    if (!view) return;
-
-    // Taking a city outranks everything else in the batch: it is the win
-    // condition moving (Rules.md §1) and it hands somebody two cards. A
-    // `player` of null is a city falling vacant, which pays nobody and is not
-    // announced — only a seizure is.
-    const seized = events.find(
-      (event): event is Extract<GameEvent, { type: 'CITY_OCCUPIED' }> =>
-        event.type === 'CITY_OCCUPIED' && event.player !== null,
-    );
-    if (seized) {
-      // A city is face up by the time it can be held (Rules.md §5), so its
-      // name and whether it is the Royal Capital have arrived — but the view
-      // types do not know that, and a hidden city must never be read for
-      // either or the Capital's position leaks.
-      const found = view.cities[seized.city];
-      const city = found && !isCityHidden(found) ? found : null;
-      setTaken({
-        key: Date.now(),
-        city: seized.city,
-        name: city ? city.name : null,
-        royalCapital: city?.royalCapital === true,
-        mine: seized.player === view.viewer,
-      });
-      return;
-    }
-
-    // An ability going off is the other moment a card matters enough to come
-    // forward (Rules.md §13). It wins over an open in the same batch, because
-    // an open that triggers something is really about the something.
-    const fired = events.find((event) => event.type === 'ABILITY_RESOLVED');
-    if (fired) {
-      const card = view.cards[fired.card];
-      if (card && 'defId' in card) {
-        setReveal({
-          key: Date.now(),
-          defId: card.defId,
-          stays: staysOnTable(card.defId),
-          mine: fired.player === view.viewer,
-          ability: fired.text,
-        });
-        return;
-      }
-    }
-
-    const opened = events.find((event) => event.type === 'CARD_OPENED');
-    if (!opened) return;
-    const card = view.cards[opened.card];
-    if (!card || !('defId' in card)) return;
-    setReveal({
-      key: Date.now(),
-      defId: card.defId,
-      stays: staysOnTable(card.defId),
-      mine: opened.player === view.viewer,
-    });
   }, [match.recentEvents]);
 
   if (auth.checking) {
@@ -357,6 +280,36 @@ export function App(): JSX.Element {
         action.type === 'ASSIGN_DAMAGE',
     ) ?? null;
 
+  // The card on stage, if the current beat is holding one up, and the city
+  // on stage if one has just changed hands. Both read off the queue rather
+  // than off the batch, so they come in turn — and off the *current* view,
+  // which has long caught up with the event by the time its beat plays.
+  const reveal = revealFrom(stage, match.view);
+  const taken = takenFrom(stage, match.view);
+
+  /**
+   * Reaching for a cost-bearing ability (Rules.md §13), from the card's menu
+   * or from a Quick prompt. An ability that costs nothing out of hand has
+   * nothing to settle, so it skips the payment dialog and goes straight to
+   * the board — a "Tap:" ability (§6) would otherwise open a panel asking
+   * for none of the seven cards in your hand.
+   */
+  const useAbility = (action: Extract<GameAction, { type: 'USE_ABILITY' }>): void => {
+    const view = match.view as PlayerView;
+    const wants = (action.pay?.length ?? 0) > 0;
+    if (wants) {
+      setOpening(action);
+      return;
+    }
+    const choices = targetChoices(view, action);
+    if (choices.length === 0 || !asksForATarget(view, action)) {
+      match.submit(action);
+      return;
+    }
+    setHovered(null);
+    setAiming({ source: action.card, action, choices });
+  };
+
   return (
     <div className="app app--match">
       <header className="app__header">
@@ -381,24 +334,7 @@ export function App(): JSX.Element {
         onPeek={setPeeking}
         onOpenGrave={setGrave}
         onConsiderOpen={setOpening}
-        onUseAbility={(action) => {
-          // An ability that costs nothing out of hand has nothing to settle,
-          // so it skips the payment dialog and goes straight to the board —
-          // a "Tap:" ability (Rules.md §6) would otherwise open a panel
-          // asking for none of the seven cards in your hand.
-          const wants = (action.pay?.length ?? 0) > 0;
-          if (wants) {
-            setOpening(action);
-            return;
-          }
-          const choices = targetChoices(match.view as PlayerView, action);
-          if (choices.length === 0 || !asksForATarget(match.view as PlayerView, action)) {
-            match.submit(action);
-            return;
-          }
-          setHovered(null);
-          setAiming({ source: action.card, action, choices });
-        }}
+        onUseAbility={useAbility}
         aiming={
           aiming ? { source: aiming.source, options: aiming.choices.map((c) => c.target) } : null
         }
@@ -427,20 +363,24 @@ export function App(): JSX.Element {
             ...(choice.areas.length === 1 ? { areas: choice.areas as never } : {}),
           });
         }}
-        dimmed={
-          step !== null || opening !== null || assigning !== null || match.view.quick !== null
-        }
+        // A Quick window no longer dims the table: a Quick is a decision
+        // about the board, and it was being asked blind.
+        dimmed={step !== null || opening !== null || assigning !== null}
+        busy={busy}
       />
       <TurnButton
         view={match.view}
         onAction={match.submit}
-        disabled={match.status !== 'connected'}
+        disabled={match.status !== 'connected' || busy}
       />
 
       {/* Last of the three. The opening hand is a decision (Rules.md §9.4),
        * and asking for one while the board is still burning in and the coin
-       * is still in the air is asking someone to choose during the fanfare. */}
-      {step && ceremony === 'playing' && (
+       * is still in the air is asking someone to choose during the fanfare.
+       * And a question about the hand waits for whatever is on stage — with
+       * one exception: setup, where nothing is ever on stage and the fan must
+       * not blink between one bottomed card and the next. */}
+      {step && ceremony === 'playing' && (!busy || match.view.status.kind === 'setup') && (
         <HandFocus
           view={match.view}
           step={step}
@@ -449,11 +389,12 @@ export function App(): JSX.Element {
           onPeek={setPeeking}
         />
       )}
-      <Banner view={match.view} />
-      {/* Blows and deaths, drawn over the table from the events that caused
-       * them. Purely presentational — it reads events, never sends any. */}
-      <BoardFx view={match.view} events={match.recentEvents} />
+      <Banner stage={stage} viewer={match.view.viewer} />
+      {/* Blows, deaths and a city waking, drawn over the table from the beat
+       * on stage. Purely presentational — it reads beats, never sends. */}
+      <BoardFx view={match.view} stage={stage} />
       <MatchOver
+        busy={busy}
         view={match.view}
         onLeave={match.leaveMatch}
         solo={match.solo}
@@ -474,7 +415,9 @@ export function App(): JSX.Element {
           onInspect={setInspecting}
         />
       )}
-      {assigning && match.view.battle && (
+      {/* Not while the last band is still landing: the dialog for the next
+       * striker was opening over the blows of the one before. */}
+      {assigning && match.view.battle && !busy && (
         <AssignDamage
           view={match.view}
           action={assigning}
@@ -535,23 +478,27 @@ export function App(): JSX.Element {
           }}
         />
       )}
-      {/* A Quick window freezes the game behind it (Rules.md §13), so it sits
-       * over the board — but under the payment overlay it opens, and out of
-       * the way while a card it opened is being pointed at somebody, which is
-       * why it stands down for both. */}
-      {match.view.quick?.waitingOn === match.view.viewer && opening === null && aiming === null && (
-        <QuickWindow
-          view={match.view}
-          trigger={match.view.quick.trigger}
-          onConsiderOpen={setOpening}
-          onPass={() => match.submit({ type: 'PASS_PRIORITY' })}
-          onPeek={setPeeking}
-          onInspect={setInspecting}
-        />
-      )}
+      {/* A Quick window freezes the game (Rules.md §13). The prompt waits for
+       * whatever is on stage — it used to land in the same frame as the
+       * reveal of the very card it was answering — and stands down under the
+       * payment overlay it opens and while a card is being pointed. */}
+      {match.view.quick?.waitingOn === match.view.viewer &&
+        !busy &&
+        opening === null &&
+        aiming === null && (
+          <QuickPrompt
+            view={match.view}
+            trigger={match.view.quick.trigger}
+            onConsiderOpen={setOpening}
+            onUseAbility={useAbility}
+            onPass={passQuick}
+            onPeek={setPeeking}
+            onInspect={setInspecting}
+          />
+        )}
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
-      {reveal && <Revealed reveal={reveal} onDone={() => setReveal(null)} />}
-      {taken && <CityTaken taken={taken} onDone={() => setTaken(null)} />}
+      {reveal && <Revealed reveal={reveal} />}
+      {taken && <CityTaken taken={taken} />}
       {/* After the burn and before the mulligan: the toss settles who acts
        * first (Rules.md §9.2), which is worth reading before deciding whether
        * to keep a hand. It takes no pointer events, so the deal animates
@@ -570,6 +517,53 @@ export function App(): JSX.Element {
       {ceremony === 'burn' && <BurnAway onDone={burnDone} />}
     </div>
   );
+}
+
+/**
+ * The card the current beat holds up, if any. Rules.md §7, §13.
+ *
+ * Read off the view as it stands when the beat plays: a Normal Effect is in
+ * the Trash by then and a Trash is public (§15), so an opponent's card is
+ * always readable here — which it was not when this read the batch against
+ * the view *before* it.
+ */
+function revealFrom(stage: Stage | null, view: PlayerView): Reveal | null {
+  if (!stage) return null;
+  const { beat, key } = stage;
+  if (beat.kind !== 'open' && beat.kind !== 'ability') return null;
+  const card = view.cards[beat.card];
+  if (!card || !('defId' in card)) return null;
+  const ability = beat.kind === 'open' ? beat.ability : beat.text;
+  return {
+    key,
+    defId: card.defId,
+    stays: staysOnTable(card.defId),
+    mine: beat.player === view.viewer,
+    opened: beat.kind === 'open',
+    ...(ability !== undefined ? { ability } : {}),
+    fizzled: beat.fizzled === true,
+    ms: beat.ms,
+  };
+}
+
+/** The city the current beat announces as taken, if any. Rules.md §12. */
+function takenFrom(stage: Stage | null, view: PlayerView): Taken | null {
+  if (!stage || stage.beat.kind !== 'cityTaken') return null;
+  const { beat, key } = stage;
+  // A city is face up by the time it can be held (Rules.md §5), so its name
+  // and whether it is the Royal Capital have arrived — but the view types do
+  // not know that, and a hidden city must never be read for either or the
+  // Capital's position leaks.
+  const found = view.cities[beat.city];
+  const city = found && !isCityHidden(found) ? found : null;
+  return {
+    key,
+    city: beat.city,
+    name: city ? city.name : null,
+    royalCapital: city?.royalCapital === true,
+    mine: beat.player === view.viewer,
+    ms: beat.ms,
+  };
 }
 
 /**

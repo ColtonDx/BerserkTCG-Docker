@@ -34,8 +34,9 @@ import {
   moveOf,
   nextRangeBand,
   powerOf,
-  factsOf,
   presenceIn,
+  quickCardRelevant,
+  reachedBy,
   refreshBoard,
   searchable,
   stillFighting,
@@ -59,6 +60,7 @@ import type {
   PendingChoice,
   PhaseDef,
   QuickTrigger,
+  QuickWindow,
 } from './types.js';
 import { cityDistance, moveToCity, moveToZone, zoneKey } from './zones.js';
 
@@ -384,7 +386,10 @@ function applyAction(
         return violation('WRONG_PHASE', 'Nothing is waiting on you.', '§14');
       }
       events.push({ type: 'QUICK_DECLINED', player: actor });
+      const { trigger, then: next } = draft.quick;
       draft.quick = null;
+      // Rules.md §13 — the turn player was asked first; now the other one.
+      if (next !== undefined) offerQuickTo(ctx, draft, next, trigger, events);
       // Play was frozen where the window opened; let it carry on.
       settleBattle(ctx, draft, events);
       settle(ctx, draft, events);
@@ -806,6 +811,15 @@ function beginDamage(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
   battle.assigning = toDraft(band);
   battle.pending = toDraft([]);
 
+  // The last moment to act before the blows land. DesignNotes "When to offer
+  // a Quick" — the one window that is not about the opponent doing
+  // something, and the one every combat Quick is written for. Once only,
+  // before the first band: §13's "turn player goes first" has the attacker
+  // asked and then the defender.
+  if (battle.struck.length === 0) {
+    offerQuickTo(ctx, draft, battle.attacker, 'beforeDamage', events, battle.defender);
+  }
+
   const first = band[0];
   const card = first ? draft.cards[first] : undefined;
   battleStep(draft, 'damage', card ? card.controller : battle.attacker, events);
@@ -1048,6 +1062,12 @@ function openCard(
   if (inWindow) {
     if (!definitionOf(ctx, card as CardInstance).quick) {
       return violation('WRONG_PHASE', 'Only a Quick card can be opened right now.', '§13');
+    }
+    // A window offers what is worth opening now (`rules.ts:quickRelevant`),
+    // and the reducer has to agree with the offer — a card that would do
+    // nothing is refused rather than spent for nothing.
+    if (!quickCardRelevant(ctx, draft as GameState, card as CardInstance)) {
+      return violation('WRONG_PHASE', 'That card would do nothing right now.', '§13');
     }
   } else if (inBattle) {
     const allowed = battleOpenAllowed(draft, actor, card as CardInstance);
@@ -1519,20 +1539,37 @@ function offerQuick(
   trigger: QuickTrigger,
   events: GameEvent[],
 ): void {
+  const responder = draft.seats.find((seat) => seat !== actedBy);
+  if (responder !== undefined) offerQuickTo(ctx, draft, responder, trigger, events);
+}
+
+/**
+ * Offers a Quick window to a named player, and — if they have nothing to
+ * open — to `then` instead, so a two-sided moment falls through to whoever
+ * can actually act in it. Rules.md §13.
+ */
+function offerQuickTo(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  responder: PlayerId,
+  trigger: QuickTrigger,
+  events: GameEvent[],
+  then?: PlayerId,
+): void {
   // An unfinished effect comes first: the window is offered once the card that
   // opened it has finished resolving, not in the middle of its own line.
   if (draft.quick || draft.pending || draft.status.kind !== 'playing') return;
-
-  const responder = draft.seats.find((seat) => seat !== actedBy);
-  if (!responder) return;
 
   // Asked of the window we are about to open, not of the one that is not
   // there yet: a Quick *ability* is only usable inside a window, so probing
   // the current state would answer "nothing to do" every time and no window
   // would ever open for one.
-  const candidate = { waitingOn: responder, trigger };
+  const candidate: QuickWindow = { waitingOn: responder, trigger, ...(then ? { then } : {}) };
   const probe = { ...(draft as GameState), quick: candidate };
-  if (quickOpens(ctx, probe, responder).length === 0) return;
+  if (quickOpens(ctx, probe, responder).length === 0) {
+    if (then !== undefined) offerQuickTo(ctx, draft, then, trigger, events);
+    return;
+  }
 
   draft.quick = toDraft(candidate);
   events.push({ type: 'QUICK_OFFERED', player: responder, trigger });
@@ -1800,7 +1837,7 @@ function resolveEffect(
     text: ability.text,
   });
 
-  runEffect(ctx, draft, source, ability.effect, events, chosen, ability.text, area);
+  let did = runEffect(ctx, draft, source, ability.effect, events, chosen, ability.text, area);
   for (const next of ability.then ?? []) {
     // An effect that stopped to ask has suspended the ability (§13), and what
     // follows it on the printed line has not happened yet. No card in the set
@@ -1813,11 +1850,27 @@ function resolveEffect(
           'a resumable effect chain would be needed to finish it.',
       );
     }
-    runEffect(ctx, draft, source, next, events, chosen, ability.text, area);
+    did = runEffect(ctx, draft, source, next, events, chosen, ability.text, area) || did;
+  }
+
+  // Rules.md §13 resolves what it can, and sometimes that is nothing. Said
+  // out loud, because a card that came forward and changed nothing otherwise
+  // looks like a card that does not work.
+  if (!did) {
+    events.push({
+      type: 'ABILITY_FIZZLED',
+      card: source.instanceId,
+      player: source.controller,
+      text: ability.text,
+    });
   }
 }
 
-/** One effect of one ability. */
+/**
+ * One effect of one ability. Returns whether it changed anything — a boost
+ * of nothing, a draw of nothing, a strike at nobody all answer no, so the
+ * ability can say it found nothing to do.
+ */
 function runEffect(
   ctx: EngineContext,
   draft: Draft<GameState>,
@@ -1829,17 +1882,24 @@ function runEffect(
   text = '',
   /** The area the player chose, for an effect that asked for one. §13. */
   area?: number | undefined,
-): void {
+): boolean {
   const controller = source.controller;
+  // Most effects say what they did by pushing events; "anything new since
+  // we started" is the honest answer for those.
+  const before = events.length;
+  const pushed = (): boolean => events.length > before;
 
   switch (effect.do) {
     case 'buff': {
       // Counted before anything is written, so a "for each" reads the board
       // as it was when the ability resolved rather than as it becomes.
       const scale = scaleOf(ctx, draft, source, effect.per);
+      const moved = Object.values(effect.stats).some((change) => change !== 0);
       // Under a trigger this is "until end of turn", so it is written onto
       // the card and cleared with damage in the End phase (Rules.md §10 ⑤).
+      let touched = 0;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        touched++;
         for (const stat of ['power', 'hp', 'move'] as const) {
           const change = effect.stats[stat];
           if (change === undefined) continue;
@@ -1847,24 +1907,24 @@ function runEffect(
           card.counters[key] = (card.counters[key] ?? 0) + change * scale;
         }
       }
-      return;
+      return touched > 0 && scale > 0 && moved;
     }
 
     case 'draw': {
       const player = targetPlayer(draft, controller, effect.player);
       const count = effect.count * scaleOf(ctx, draft, source, effect.per);
       if (player && count > 0) drawInto(draft, player, count, events);
-      return;
+      return pushed();
     }
 
     case 'discard': {
       const player = targetPlayer(draft, controller, effect.player);
-      if (!player) return;
+      if (!player) return false;
       // Your opponent's cards go at random; your own are your choice. See the
       // note on the effect in `abilities.ts`, and `forcedDiscard` below.
       if (effect.player === 'opponent') {
         forcedDiscard(draft, player, effect.count, events);
-        return;
+        return pushed();
       }
       askFor(draft, events, {
         waitingOn: player,
@@ -1875,19 +1935,19 @@ function runEffect(
         count: Math.min(effect.count, handSize(draft, player)),
         kind: { zone: 'hand', action: 'discard' },
       });
-      return;
+      return pushed();
     }
 
     case 'search': {
       const player = targetPlayer(draft, controller, effect.player);
-      if (!player) return;
+      if (!player) return false;
       // A search that can find nothing does not stop to ask — the effect
       // resolves, finds nobody, and play carries on (Rules.md §13). The deck
       // is still shuffled, because the player has looked through it.
       const found = searchable(ctx, draft, player, effect.named);
       if (found.length === 0) {
         shuffleDeck(draft, player);
-        return;
+        return false;
       }
       askFor(draft, events, {
         waitingOn: player,
@@ -1896,12 +1956,16 @@ function runEffect(
         count: Math.min(effect.count, found.length),
         kind: { zone: 'deck', action: 'toHand', named: effect.named },
       });
-      return;
+      return pushed();
     }
 
     case 'unlock': {
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) card.locked = false;
-      return;
+      let freed = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        if (card.locked) freed++;
+        card.locked = false;
+      }
+      return freed > 0;
     }
 
     case 'returnToHand': {
@@ -1909,7 +1973,7 @@ function runEffect(
         moveToZone(draft, card.instanceId, { player: card.owner, zone: 'hand' });
         events.push({ type: 'CARD_RETURNED', player: card.owner, card: card.instanceId });
       }
-      return;
+      return pushed();
     }
 
     case 'damage': {
@@ -1939,14 +2003,14 @@ function runEffect(
           destroy(ctx, draft, card, events);
         }
       }
-      return;
+      return pushed();
     }
 
     case 'destroy': {
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         destroy(ctx, draft, card, events);
       }
-      return;
+      return pushed();
     }
 
     case 'moveTo': {
@@ -1955,7 +2019,7 @@ function runEffect(
       // send anybody — and "an adjacent area" is the one the player picked,
       // already checked against the chosen character by `checkTargets`.
       const to = effect.where === 'adjacentArea' ? area : source.cityIndex;
-      if (to === undefined) return;
+      if (to === undefined) return false;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         const from = card.cityIndex;
         if (from === undefined || from === to) continue;
@@ -1966,22 +2030,24 @@ function runEffect(
       }
       // A city whose occupier has just walked away is no longer theirs
       // (Rules.md §12); `refreshBoard` runs after the action and settles it.
-      return;
+      return pushed();
     }
 
     case 'reduceDamage': {
       // Under a trigger this is a shield for the turn, written onto the card
       // and swept with the boosts. The continuous kind never reaches here —
       // it is read off the board by `damageReduction` as each blow lands.
+      let shielded = 0;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        shielded++;
         card.counters[SHIELD] = (card.counters[SHIELD] ?? 0) + effect.amount;
       }
-      return;
+      return shielded > 0;
     }
 
     // Continuous by nature: asked of the board by `cannotAttack`, never run.
     case 'cannotAttack':
-      return;
+      return true;
   }
 }
 
@@ -2003,7 +2069,7 @@ function destroy(
   events.push({ type: 'CHARACTER_DESTROYED', card: card.instanceId });
 }
 
-/** The cards on the field an effect's selector reaches. */
+/** The cards on the field an effect's selector reaches, as drafts to write to. */
 function selected(
   ctx: EngineContext,
   draft: Draft<GameState>,
@@ -2011,20 +2077,9 @@ function selected(
   selector: Selector,
   chosen?: CardInstanceId | undefined,
 ): Draft<CardInstance>[] {
-  return Object.values(draft.cards).filter((card) => {
-    if (card.zone !== 'city') return false;
-    // A selector reaches one population or the other, never both — `selects`
-    // enforces which. Face-down Set Cards are whatever they are, so the
-    // character test would be wrong to ask; face-up cards must be *people*,
-    // because every effect in the set that reaches across the board reaches
-    // characters, and an Eternal standing in the area is not one of them.
-    if (!card.faceUp) {
-      if (selector.faceDown !== true) return false;
-    } else if (!isCharacter(ctx, card as CardInstance)) {
-      return false;
-    }
-    return selects(selector, source, card as CardInstance, (c) => factsOf(ctx, c), chosen);
-  });
+  return reachedBy(ctx, draft as GameState, source, selector, chosen)
+    .map((card) => draft.cards[card.instanceId])
+    .filter((card): card is Draft<CardInstance> => card !== undefined);
 }
 
 /**

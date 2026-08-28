@@ -1,6 +1,7 @@
-import { asPlayerId, type MatchId, type PlayerId } from '@berserk/engine';
+import { asPlayerId, type GameEvent, type MatchId, type PlayerId } from '@berserk/engine';
 import {
   GAME_NAMESPACE,
+  OPENING_CEREMONY_MS,
   type ClientToServerEvents,
   type MatchLobby,
   type OngoingMatch,
@@ -9,7 +10,7 @@ import {
 } from '@berserk/protocol';
 import type { FastifyInstance } from 'fastify';
 import { Server, type Socket } from 'socket.io';
-import { AI_NAME, AI_PLAYER_ID, driveAi } from './ai.js';
+import { AI_NAME, AI_PLAYER_ID, driveAi, holdFor, holdMatch } from './ai.js';
 import { findProfile, readToken } from './auth.js';
 import { config } from './config.js';
 import { getDeck, listPrecons } from './decks.js';
@@ -73,8 +74,12 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
     }
     app.log.info({ socketId: socket.id, player: session.playerId }, 'client connected');
 
-    /** Sends every seated player their own view of the match. */
-    const broadcastState = (matchId: MatchId): void => {
+    /**
+     * Sends every seated player their own view of the match, with the events
+     * that produced it. The two travel together so the client is never
+     * drawing an event against a view that has not caught up with it.
+     */
+    const broadcastState = (matchId: MatchId, events: readonly GameEvent[] = []): void => {
       const match = matches.get(matchId);
       if (!match) return;
 
@@ -84,6 +89,7 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
           io.of(GAME_NAMESPACE).to(seatRoom(matchId, seat.playerId)).emit('state:update', {
             matchId,
             view,
+            events,
           });
         }
       }
@@ -200,10 +206,10 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       }
 
       ack({ ok: true, version: result.state.version });
-      io.of(GAME_NAMESPACE)
-        .to(matchRoom(matchId))
-        .emit('events:applied', { matchId, events: result.events });
-      broadcastState(matchId);
+      broadcastState(matchId, result.events);
+      // The human's own move is being drawn on their screen now; the
+      // computer waits for that before it answers.
+      holdFor(matchId, result.events, session.playerId);
 
       if (result.state.status.kind === 'finished') {
         io.of(GAME_NAMESPACE).to(matchRoom(matchId)).emit('match:ended', {
@@ -216,12 +222,7 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       // The computer opponent takes its turn once the human has had theirs.
       // Its events go out too, or the client only ever hears about its own
       // moves and every event-driven cue is one-sided.
-      void driveAi(matches, matchId, (aiEvents) => {
-        io.of(GAME_NAMESPACE)
-          .to(matchRoom(matchId))
-          .emit('events:applied', { matchId, events: aiEvents });
-        broadcastState(matchId);
-      });
+      void driveAi(matches, matchId, (aiEvents) => broadcastState(matchId, aiEvents));
     });
 
     socket.on('lobbies:browse', (_payload, ack) => {
@@ -303,12 +304,10 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
 
       ack({ ok: true, deckName: deck.name });
       broadcastState(matchId);
-      void driveAi(matches, matchId, (aiEvents) => {
-        io.of(GAME_NAMESPACE)
-          .to(matchRoom(matchId))
-          .emit('events:applied', { matchId, events: aiEvents });
-        broadcastState(matchId);
-      });
+      // Dealt: the human is watching the opening ceremony, and Femto settles
+      // its hand only once that is over.
+      if (match?.state) holdMatch(matchId, OPENING_CEREMONY_MS);
+      void driveAi(matches, matchId, (aiEvents) => broadcastState(matchId, aiEvents));
     });
 
     socket.on('state:resync', ({ matchId }, ack) => {

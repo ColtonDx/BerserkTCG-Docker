@@ -90,11 +90,27 @@ were updated to match, so don't re-open them from an older reading.
   This has a consequence outside the engine that is easy to reintroduce: a
   single action can now carry an entire exchange, so its event batch holds
   every strike, every death, the city changing hands and the draws that go
-  with it. `BoardFx` cuts that batch into **beats** and plays them in sequence,
-  holding each death behind the blow that caused it — drawing the batch in one
-  frame is what made cards appear to vanish for no reason. `EXCHANGE_HOLD_MS`
-  in the protocol keeps Femto from moving again underneath the animation, the
-  same way `BANNER_HOLD_MS` keeps it from playing under the turn banner.
+  with it. The **presentation queue** (below) cuts that batch into beats and
+  plays them one at a time, holding each death behind the blow that caused
+  it — drawing the batch in one frame is what made cards appear to vanish for
+  no reason.
+
+- **What is shown is a queue, not a set of overlays.** `planBeats` in the
+  protocol cuts an event batch into **beats** — a turn banner, a card held up,
+  a band of blows, a city taken — in the order the engine resolved them, and
+  `usePresentation` on the client plays them one at a time. Every overlay
+  (`Banner`, `Revealed`, `CityTaken`, `BoardFx`) renders the beat on stage
+  rather than watching the batch for itself; the prompts (`AssignDamage`,
+  `HandFocus`, `QuickPrompt`, `MatchOver`, the battle bar's button) wait until
+  nothing is on stage. They each used to start their own timers in the same
+  frame, which put the city-taken card over the deaths that took it and a
+  Quick prompt over the reveal it was answering. `presentationMs` is the sum,
+  and it is the **only** pacing the computer opponent has: `driveAi` holds
+  until the human's screen is quiet, then thinks, then moves. There is no
+  table of per-action pauses to keep in step with the CSS any more — a new
+  beat is a new entry in `planBeats` and Femto waits for it for free. The
+  board itself still renders the new view the instant it arrives; only the
+  _telling_ is sequenced.
 
 - **Only the first player skips their draw**, and only on their first turn; the
   second player draws normally on theirs (`Rules.md` §10 ②, `DesignNotes` 6).
@@ -176,6 +192,12 @@ redacted views.
 
 - **No optimistic application of moves.** The round trip is milliseconds; local
   simulation is a desync waiting to happen. The next `state:update` is truth.
+- **Events ride with the view.** `state:update` carries the batch that
+  produced it, so the two land in one render. They were separate messages
+  once, and an overlay reading the batch against the view _before_ it looked
+  up an opponent's just-opened card in a view that still had it face down — so
+  the reveal never showed. Anything drawn from an event should look the card
+  up when its beat plays, not when the batch arrives.
 - **`isHidden` is not `faceUp`.** The first says what the server redacted, the
   second says what is face up on the table. Your own Set Cards are not
   redacted — Rules.md §7 lets you check them — so a card in a city must be
@@ -420,12 +442,27 @@ table shows both — a marker on the card for the shift, a line on hover to the
 card causing it.
 
 **Quick windows** (§13) let a Quick Set Card be opened out of turn. The game
-stops at six moments — `DesignNotes` "When to offer a Quick" — and only when
-the other player actually has one set and can pay for it, so silence means
-there was nothing to ask. `state.quick` outranks both priority and a running
-battle, because that is what an interrupt is; `PASS_PRIORITY` closes it and
-play resumes where it froze. It is _not_ §14: no stack, no interrupting an
+stops at seven moments — `DesignNotes` "When to offer a Quick" — and only when
+the other player actually has one set, can pay for it, and it would **do
+something now** (`rules.ts:quickRelevant`: card advantage anywhere, a
+continuous ability anywhere, anything "until end of turn" only inside a
+battle, and always reaching somebody), so silence means there was nothing to
+ask. A window offers exactly what `quickOpens` lists and `openCard` /
+`canActivate` refuse anything else, so the two stay in agreement. The moment
+**before damage** is the one every combat Quick is written for; it asks the
+attacker and then the defender (`QuickWindow.then`), once, before the first
+band. `state.quick` outranks both priority and a running battle, because that
+is what an interrupt is; `PASS_PRIORITY` closes it — or hands it to `then` —
+and play resumes where it froze. It is _not_ §14: no stack, no interrupting an
 interrupt.
+
+How the question is _put_ is the client's: `QuickPrompt` sits along the bottom
+edge over an undimmed board, a hard stop inside a battle and a countdown
+outside one, and `state/quickStops.ts` holds the player's own setting for how
+often to be stopped. The engine pauses either way; the client passes for them.
+An ability that resolves and changes nothing says so — `ABILITY_FIZZLED`
+follows its `ABILITY_RESOLVED`, and the reveal reads "nothing for it to
+affect" — because a card that came forward and did nothing looked broken.
 
 **Pending choices** (§13) are for the printed lines an effect cannot finish on
 its own: "discard 2 cards" and "add 1 Serpico from your deck" both name a

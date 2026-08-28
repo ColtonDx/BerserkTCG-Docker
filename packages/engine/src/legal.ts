@@ -11,6 +11,8 @@ import {
   legalTargets,
   moveOf,
   powerOf,
+  quickCardRelevant,
+  quickRelevant,
   targetingAbilities,
   cityLevel,
   definitionOf,
@@ -167,7 +169,15 @@ function battleDeclarations(ctx: EngineContext, state: GameState, player: Player
 export function quickOpens(ctx: EngineContext, state: GameState, player: PlayerId): GameAction[] {
   const hand = cardsInZone(state, player, 'hand');
   return [
-    ...openActions(ctx, state, player, hand, { ignoreTurnLimit: true, quickOnly: true }),
+    // Only the cards worth opening *now* — see `rules.ts:quickRelevant`. A
+    // Quick set on the table that could do nothing at this moment is not
+    // offered, so a window opening means there is a real decision in it.
+    ...openActions(ctx, state, player, hand, { ignoreTurnLimit: true, quickOnly: true }).filter(
+      (action) => {
+        const card = action.type === 'OPEN_CARD' ? state.cards[action.card] : undefined;
+        return card !== undefined && quickCardRelevant(ctx, state, card);
+      },
+    ),
     // Rules.md §13 puts Quick abilities on the same footing as Quick cards:
     // both are usable at any time, so a window is worth offering for either.
     ...abilityActions(ctx, state, player, { quickOnly: true }),
@@ -195,6 +205,7 @@ function abilityActions(
 
     for (const entry of activatedAbilities(ctx, card)) {
       if (scope.quickOnly === true && entry.ability.quick !== true) continue;
+      if (scope.quickOnly === true && !quickRelevant(ctx, state, card, entry.ability)) continue;
       if (!canActivate(ctx, state, card, entry, player)) continue;
 
       const payment = choosePayment(ctx, activationCost(entry.ability), hand);

@@ -13,10 +13,15 @@ import { nameOf } from '../state/useCardNames.js';
  * Shown to **both** players: an open is public, and the thing an opponent most
  * needs to know is what just came down. It takes no pointer events, so play
  * carries on underneath it.
+ *
+ * One beat of the presentation queue: it lasts exactly as long as the beat
+ * does (`ms`) and leaves with it. An open that fired an ability is shown once,
+ * with the printed line — the same card held up twice in a row was reading
+ * as two things happening.
  */
 
-/** Long enough to read a card's text; short enough not to be in the way. */
-const HOLD_MS = 1700;
+/** How long the exit takes, at the end of the beat. */
+const LEAVE_MS = 400;
 
 export interface Reveal {
   readonly key: number;
@@ -24,29 +29,38 @@ export interface Reveal {
   /** False for a Normal effect, which resolves and leaves. Rules.md §3. */
   readonly stays: boolean;
   readonly mine: boolean;
+  /** True when the card was opened; false when an ability on it went off. */
+  readonly opened: boolean;
   /**
-   * Set when the card is coming forward because its printed ability went off
-   * rather than because it was opened (Rules.md §13). Carries the line, so
-   * the player can see what just happened to their numbers.
+   * The printed line, when an ability went off (Rules.md §13). Carried so the
+   * player can see what just happened to their numbers.
    */
   readonly ability?: string;
+  /** The ability resolved and found nothing to act on. */
+  readonly fizzled: boolean;
+  /** How long the beat holds the stage. */
+  readonly ms: number;
 }
 
-export function Revealed({ reveal, onDone }: { reveal: Reveal; onDone: () => void }): JSX.Element {
+export function Revealed({ reveal }: { reveal: Reveal }): JSX.Element {
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     setLeaving(false);
-    const fade = window.setTimeout(() => setLeaving(true), HOLD_MS - 400);
-    const done = window.setTimeout(onDone, HOLD_MS);
-    return () => {
-      clearTimeout(fade);
-      clearTimeout(done);
-    };
-  }, [reveal.key, onDone]);
+    const fade = window.setTimeout(() => setLeaving(true), Math.max(0, reveal.ms - LEAVE_MS));
+    return () => clearTimeout(fade);
+  }, [reveal.key, reveal.ms]);
 
   const classes = ['reveal'];
   if (leaving) classes.push(reveal.stays ? 'reveal--settling' : 'reveal--spent');
+
+  const who = reveal.opened
+    ? reveal.mine
+      ? 'You open'
+      : 'They open'
+    : reveal.mine
+      ? 'Your ability'
+      : 'Their ability';
 
   return (
     <div className={classes.join(' ')} aria-hidden="true">
@@ -54,21 +68,16 @@ export function Revealed({ reveal, onDone }: { reveal: Reveal; onDone: () => voi
         <CardImage defId={reveal.defId} className="reveal__art" />
       </div>
       <p className="reveal__label">
-        <span className="reveal__who">
-          {reveal.ability
-            ? reveal.mine
-              ? 'Your ability'
-              : 'Their ability'
-            : reveal.mine
-              ? 'You open'
-              : 'They open'}
-        </span>
+        <span className="reveal__who">{who}</span>
         <span className="reveal__name">{nameOf(reveal.defId)}</span>
         {/* The printed line, so a change to the numbers is explained by the
          * card that caused it rather than appearing out of nowhere. */}
         {reveal.ability !== undefined && <span className="reveal__ability">{reveal.ability}</span>}
+        {/* Rules.md §13 resolves what it can; saying so is what keeps a card
+         * that changed nothing from looking like a card that does not work. */}
+        {reveal.fizzled && <span className="reveal__fizzle">nothing for it to affect</span>}
         {/* A Normal effect never reaches the table, so say where it went. */}
-        {reveal.ability === undefined && !reveal.stays && (
+        {reveal.opened && !reveal.stays && (
           <span className="reveal__fate">resolves, then to the graveyard</span>
         )}
       </p>

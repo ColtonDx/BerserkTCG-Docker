@@ -81,8 +81,9 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    phase sweep are done and synthesised rather than recorded
    (`net/sound.ts`). A blow landing, a character dying and a city changing
    hands all have their moment on screen now but none of them make a noise —
-   the events are already in the client (`BoardFx`, `CityTaken`), so these are
-   only waiting to be written.
+   each is a beat of the presentation queue (`BoardFx`, `CityTaken`), so a
+   sound has an exact moment to land on and these are only waiting to be
+   written.
 2. **Character voices.** Sounds from the show for unique characters.
 
 ## Notes
@@ -92,7 +93,16 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
   the first 41 cards of BK1.
 - A Quick window (`state.quick`) freezes the game and names one player. It
   outranks a battle and priority both, because that is what an interrupt is.
-  Femto answers one in `ai.ts`; missing that hangs the match.
+  Femto answers one in `ai.ts`; missing that hangs the match. A window only
+  opens for a Quick that would do something at that moment
+  (`rules.ts:quickRelevant`), and the moment before damage asks the attacker
+  and then the defender (`QuickWindow.then`).
+- Everything the client _shows_ goes through one queue: `planBeats` in the
+  protocol cuts a batch into beats and `usePresentation` plays them one at a
+  time; overlays render the beat on stage and prompts wait for the stage to
+  clear. `presentationMs` is the sum, and it is the only pacing Femto has —
+  there is no per-action pause table to keep in step with the CSS. A new
+  kind of moment is a new beat there, and both sides pick it up.
 - Card behaviour lives in `packages/engine/src/abilities.ts` as data, keyed by
   card id, with the printed line beside each entry. Nothing parses the text.
   A card with no entry does nothing at all, which is why the inspector says so.
@@ -128,9 +138,9 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
 - The banner walks every phase an advance passed through, one at a time, with
   a sweep of air each (`sound.ts:playPhase`). Refresh and Draw resolve with no
   input and an empty phase is skipped (`Rules.md` §10), so one click can cross
-  three of them; without the walk the turn appears to jump. `BANNER_HOLD_MS`
-  is shared with the server so the computer opponent never plays underneath a
-  banner — raise the two together.
+  three of them; without the walk the turn appears to jump. Its length is
+  `BEAT_MS.TURN_BANNER` in the protocol, beside the `TURN` beat the server
+  waits for — the banner drifts out over the difference.
 - A step whose click cannot be taken back offers a way to read the card first.
   Bottoming and discarding both commit on a single click, so each card carries
   a magnifier; a right click and a press-and-hold do the same thing, but a

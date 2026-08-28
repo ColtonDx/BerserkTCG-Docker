@@ -1,7 +1,8 @@
-import type { PhaseId, PlayerView } from '@berserk/engine';
-import { BANNER_HOLD_MS } from '@berserk/protocol';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import type { PhaseId, PlayerId } from '@berserk/engine';
+import { BEAT_MS } from '@berserk/protocol';
+import { useEffect, useState, type JSX } from 'react';
 import { playPhase } from '../net/sound.js';
+import type { Stage } from '../state/usePresentation.js';
 
 /**
  * The banner that calls the turn and the phase.
@@ -11,26 +12,19 @@ import { playPhase } from '../net/sound.js';
  * from the right — and once they meet in the middle they keep drifting the
  * way they came, slowly, until the whole thing fades.
  *
- * Read off the view rather than the event feed: a single action can advance
- * through several phases at once — Refresh and Draw resolve without input
- * (Rules.md §10), and a phase with nothing in it is skipped — so the events
- * arrive in a burst. Three banners flickering past is unreadable, but simply
- * naming where play came to rest hides the fact that anything happened at
- * all. So it is one banner whose subheading walks the phases it went
- * through: Refresh, Draw, Open, Main, resting on the last.
+ * Driven by the presentation queue rather than by watching the view: a turn
+ * starting is a beat (`planBeats`), and it comes in the order the engine
+ * resolved it — after the ability that fired at the end of the last turn,
+ * before the one that fires at the start of this. A single action can
+ * advance through several phases at once (Refresh and Draw resolve without
+ * input, Rules.md §10), so the beat carries every phase it went through and
+ * the subheading walks them, resting on the last.
  *
  * Phase banners are for **your** turn. The opponent's turn is announced once,
  * when it starts; narrating each of their phases as well would put a banner
  * over the board almost continuously, and the rail on the left already shows
  * the phase at all times.
  */
-
-/**
- * How long the whole thing lasts, arrival and drift together. Matches the CSS,
- * and is shared with the server so the computer opponent does not play a card
- * underneath a banner.
- */
-const HOLD_MS = BANNER_HOLD_MS;
 
 /**
  * What each phase is called on the banner.
@@ -51,8 +45,8 @@ const PHASE_LABEL: Record<string, string> = {
 
 /**
  * How long each phase name shows while the subheading walks the ones just
- * passed. The last one holds for whatever is left of {@link HOLD_MS}, so the
- * banner never outlives the pacing the server plays to.
+ * passed. The last one holds for whatever is left of the banner, so the walk
+ * never outlives it.
  *
  * Deliberately unhurried. Refresh and Draw resolve with no input at all and a
  * phase with nothing in it is skipped (Rules.md §10), so a single click can
@@ -69,57 +63,40 @@ interface Announcement {
   /** Every phase this advance went through, in order. At least one. */
   readonly phases: readonly string[];
   readonly yours: boolean;
+  /** How long it stays on screen. */
+  readonly hold: number;
 }
 
-export function Banner({ view }: { readonly view: PlayerView }): JSX.Element | null {
+export function Banner({
+  stage,
+  viewer,
+}: {
+  readonly stage: Stage | null;
+  readonly viewer: PlayerId;
+}): JSX.Element | null {
   const [shown, setShown] = useState<Announcement | null>(null);
-  const previous = useRef<{ turn: number; actor: string; phase: number } | null>(null);
-
-  const { turnNumber, activePlayer, phaseIndex } = view.turn;
-  const playing = view.status.kind === 'playing';
 
   useEffect(() => {
-    if (!playing) {
-      previous.current = null;
-      return;
-    }
+    if (!stage) return;
+    const { beat, key } = stage;
+    if (beat.kind !== 'turn' && beat.kind !== 'phase') return;
 
-    const now = { turn: turnNumber, actor: String(activePlayer), phase: phaseIndex };
-    const before = previous.current;
-    previous.current = now;
-
-    // Nothing to announce on the very first render: the player has just
-    // watched the board deal, and does not need telling that it is turn one.
-    if (!before) return;
-
-    const yours = activePlayer === view.viewer;
-    const turnChanged = before.turn !== now.turn || before.actor !== now.actor;
-    const phaseChanged = before.phase !== now.phase;
-    if (!turnChanged && !(phaseChanged && yours)) return;
-
-    // Which phases this advance actually went through. A new turn starts at
-    // the first one however far it then ran on; within a turn it is
-    // everything after where we were. Either way the player sees the whole
-    // journey rather than just its destination.
-    const from = turnChanged ? 0 : before.phase + 1;
-    const walked: string[] = [];
-    for (let index = Math.max(0, from); index <= phaseIndex; index++) {
-      const phase = view.phases[index];
-      if (!phase) continue;
-      walked.push(PHASE_LABEL[phase.id as PhaseId] ?? phase.name);
-    }
-
+    const yours = beat.player === viewer;
+    const walked = beat.phases.map((id: PhaseId) => PHASE_LABEL[id] ?? id);
     setShown({
-      key: `${turnNumber}-${String(activePlayer)}-${phaseIndex}`,
+      key: String(key),
       title: yours ? 'Your Turn' : 'Opponent’s Turn',
       phases: walked.length > 0 ? walked : [''],
       yours,
+      // The turn beat blocks for less than the banner shows: it drifts out
+      // over its last stretch, and play may resume under that.
+      hold: beat.kind === 'turn' ? BEAT_MS.TURN_BANNER : BEAT_MS.PHASE_BANNER,
     });
-  }, [playing, turnNumber, activePlayer, phaseIndex, view.viewer, view.phases]);
+  }, [stage, viewer]);
 
   useEffect(() => {
     if (!shown) return;
-    const timer = window.setTimeout(() => setShown(null), HOLD_MS);
+    const timer = window.setTimeout(() => setShown(null), shown.hold);
     return () => clearTimeout(timer);
   }, [shown]);
 
@@ -134,7 +111,7 @@ export function Banner({ view }: { readonly view: PlayerView }): JSX.Element | n
     // their own sweep as the subheading reaches them.
     playPhase();
     if (shown.phases.length < 2) return;
-    const gap = Math.min(STEP_MS, (HOLD_MS * 0.7) / (shown.phases.length - 1));
+    const gap = Math.min(STEP_MS, (shown.hold * 0.7) / (shown.phases.length - 1));
     const timers = shown.phases.slice(1).map((_, index) =>
       window.setTimeout(
         () => {

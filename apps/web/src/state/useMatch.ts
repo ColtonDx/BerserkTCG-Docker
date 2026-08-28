@@ -1,5 +1,5 @@
 import type { GameAction, GameEvent, MatchId, PlayerView } from '@berserk/engine';
-import type { MatchLobby } from '@berserk/protocol';
+import type { MatchLobby, StateUpdate } from '@berserk/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSocket } from '../net/socket.js';
 
@@ -77,13 +77,13 @@ export function useMatch(enabled: boolean): MatchClient {
       setLastError(error.message);
     };
 
-    const onState = ({ view: next }: { view: PlayerView }): void => {
+    const onState = ({ view: next, events }: StateUpdate): void => {
       // Ignore out-of-order updates; the server's version only moves forward.
       setView((prev) => (prev && prev.version > next.version ? prev : next));
-    };
-
-    const onEvents = ({ events }: { events: readonly GameEvent[] }): void => {
-      setRecentEvents(events);
+      // In the same handler as the view, so the two land in one render: an
+      // event drawn against the view *before* it looked up a card the old
+      // view still had face down, and the reveal never showed.
+      if (events.length > 0) setRecentEvents(events);
     };
 
     const onServerError = ({ message }: { message: string }): void => setLastError(message);
@@ -93,7 +93,6 @@ export function useMatch(enabled: boolean): MatchClient {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('state:update', onState);
-    socket.on('events:applied', onEvents);
     socket.on('error:server', onServerError);
     socket.on('connect_error', onConnectError);
 
@@ -109,7 +108,6 @@ export function useMatch(enabled: boolean): MatchClient {
       socket.off('connect_error', onConnectError);
       socket.off('disconnect', onDisconnect);
       socket.off('state:update', onState);
-      socket.off('events:applied', onEvents);
       socket.off('error:server', onServerError);
       socket.off('match:lobby', onLobby);
     };
@@ -119,6 +117,8 @@ export function useMatch(enabled: boolean): MatchClient {
     matchIdRef.current = id;
     setMatchId(id);
     setView(next);
+    // The last match's final batch must not play over this one's first view.
+    setRecentEvents([]);
     setLastError(null);
   }, []);
 
@@ -194,6 +194,7 @@ export function useMatch(enabled: boolean): MatchClient {
     matchIdRef.current = null;
     setMatchId(null);
     setView(null);
+    setRecentEvents([]);
     setLobby(null);
     setChosenDeck(null);
     setLastError(null);

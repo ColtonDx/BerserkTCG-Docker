@@ -8,6 +8,8 @@ import {
   type Ability,
   type CardFacts,
   type Condition,
+  type Effect,
+  type Selector,
   type StatLine,
   type TargetSpec,
   type Trigger,
@@ -423,6 +425,168 @@ export function legalTargets(
   });
 }
 
+/**
+ * The cards on the field a selector reaches from `source`. Rules.md §13.
+ *
+ * One population or the other, never both — `selects` enforces which. A
+ * face-down Set Card is whatever it is, so the character test would be wrong
+ * to ask; a face-up card must be a *character*, because every effect in the
+ * set that reaches across the board reaches characters, and an Eternal
+ * standing in the area is not one of them.
+ */
+export function reachedBy(
+  ctx: EngineContext,
+  state: BoardView,
+  source: CardInstance,
+  selector: Selector,
+  chosen?: CardInstanceId | undefined,
+): CardInstance[] {
+  return Object.values(state.cards).filter((card) => {
+    if (card.zone !== 'city') return false;
+    if (!card.faceUp) {
+      if (selector.faceDown !== true) return false;
+    } else if (!isCharacter(ctx, card)) {
+      return false;
+    }
+    return selects(selector, source, card, (c) => factsOf(ctx, c), chosen);
+  });
+}
+
+/* --------------------------------------------------------- Quick relevance
+ *
+ * Rules.md §13 lets a Quick interject at any time, and DesignNotes narrows
+ * *when* the game stops to ask. This narrows *which* cards it asks about:
+ * a window whose only answer is a card that would do nothing — "+2/+2 until
+ * end of turn" with no battle on, "deal 3 damage to a character in combat"
+ * with nobody in combat — is a click with no decision in it, and asking six
+ * times a turn is how a Quick becomes a nuisance rather than a threat.
+ */
+
+/**
+ * Would this ability be worth using right now, if it were Quick?
+ *
+ * The judgement is by *kind* of effect, not by card, so it needs no data and
+ * cannot drift from the registry:
+ *
+ * - card advantage — draw, search, discard, return to hand — is worth taking
+ *   at any moment, since the window costs nothing but the card's own price;
+ * - a continuous ability is a card that will sit on the table doing its
+ *   work, and opening it out of turn saves the turn's one open (§10 ③);
+ * - anything that lasts "until end of turn" — a buff, a shield, a lock —
+ *   is only worth anything while a battle is running to spend it in;
+ * - damage matters in a battle, or when it would kill something outright;
+ * - destroying or moving a character changes the board whenever it can
+ *   reach one.
+ *
+ * And in every case the effect has to reach *somebody*: Rules.md §13 lets an
+ * ability resolve and find nobody, but that is a thing to allow, not a thing
+ * to stop the game and offer.
+ */
+export function quickRelevant(
+  ctx: EngineContext,
+  state: GameState,
+  source: CardInstance,
+  ability: Ability,
+): boolean {
+  // An ability that asks for a target has to have one, or it does nothing.
+  if (
+    ability.target &&
+    legalTargets(ctx, state, source, ability.target, state.battle).length === 0
+  ) {
+    return false;
+  }
+  if (!conditionHolds(ctx, state, source, ability.condition, state.battle)) return false;
+
+  const inBattle = state.battle !== null;
+  const effects = [ability.effect, ...(ability.then ?? [])];
+  return effects.some((effect) => effectRelevant(ctx, state, source, ability, effect, inBattle));
+}
+
+/**
+ * Is this Set Card worth offering in a Quick window? Rules.md §13.
+ *
+ * What opening it does is its on-open abilities, plus any continuous one it
+ * will sit there with. A card with neither does nothing at all — the
+ * registry has no entry for it — and is not offered, because a window whose
+ * only answer is a card that does nothing is not a question.
+ */
+export function quickCardRelevant(
+  ctx: EngineContext,
+  state: GameState,
+  card: CardInstance,
+): boolean {
+  return (definitionOf(ctx, card).abilities ?? []).some(
+    (ability) =>
+      (ability.trigger === 'open' || ability.trigger === 'always') &&
+      quickRelevant(ctx, state, card, ability),
+  );
+}
+
+function effectRelevant(
+  ctx: EngineContext,
+  state: GameState,
+  source: CardInstance,
+  ability: Ability,
+  effect: Effect,
+  inBattle: boolean,
+): boolean {
+  // A chosen target is the whole selection, and `quickRelevant` has already
+  // checked one exists — so a `target` selector reaches exactly one card.
+  const reaches = (who: Selector): boolean =>
+    (who.scope ?? 'self') === 'target'
+      ? ability.target !== undefined
+      : reachedBy(ctx, state, source, who).length > 0;
+
+  switch (effect.do) {
+    case 'draw':
+      // "For each" of nothing draws nothing.
+      return effect.per === undefined || reachedBy(ctx, state, source, effect.per).length > 0;
+    case 'search':
+      return searchable(ctx, state, source.controller, effect.named).length > 0;
+    case 'discard': {
+      const player =
+        effect.player === 'you'
+          ? source.controller
+          : state.seats.find((seat) => seat !== source.controller);
+      return player !== undefined && (state.zoneOrder[zoneKey(player, 'hand')]?.length ?? 0) > 0;
+    }
+    case 'returnToHand':
+      return reaches(effect.who);
+    case 'buff':
+      // Continuous, or fighting: a boost that lasts the turn is spent in a
+      // battle or not at all. And a scaled boost across nothing is nothing.
+      if (ability.trigger !== 'always' && !inBattle) return false;
+      if (effect.per !== undefined && reachedBy(ctx, state, source, effect.per).length === 0) {
+        return false;
+      }
+      return reaches(effect.who);
+    case 'reduceDamage':
+    case 'cannotAttack':
+    case 'unlock':
+      return (ability.trigger === 'always' || inBattle) && reaches(effect.who);
+    case 'damage': {
+      const victims =
+        (effect.who.scope ?? 'self') === 'target'
+          ? ability.target
+            ? legalTargets(ctx, state, source, ability.target, state.battle)
+            : []
+          : reachedBy(ctx, state, source, effect.who);
+      if (victims.length === 0) return false;
+      if (inBattle) return true;
+      // Outside a battle, damage clears at end of turn (§10 ⑤): it is only
+      // worth dealing if it kills.
+      return victims.some(
+        (card) =>
+          card.damage + damageAfterReduction(ctx, state, card, effect.amount, { combat: false }) >=
+          hpOf(ctx, state, card),
+      );
+    }
+    case 'destroy':
+    case 'moveTo':
+      return reaches(effect.who);
+  }
+}
+
 /* ------------------------------------------------------- activated abilities
  *
  * Rules.md §13: a cost-bearing ability is used by choice and paid for. The
@@ -491,7 +655,13 @@ export function canActivate(
   // moments the engine never offers, and `legalActions` would stop matching
   // what `reduce` accepts.
   if (state.quick !== null) {
-    return entry.ability.quick === true && state.quick.waitingOn === player;
+    return (
+      entry.ability.quick === true &&
+      state.quick.waitingOn === player &&
+      // A window offers what is worth using now, and `reduce` must agree
+      // with `legalActions` about it — see `quickRelevant`.
+      quickRelevant(ctx, state, card, entry.ability)
+    );
   }
   if (state.battle !== null) return false;
 

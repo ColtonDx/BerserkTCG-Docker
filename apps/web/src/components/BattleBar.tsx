@@ -59,10 +59,16 @@ interface Props {
   readonly view: PlayerView;
   readonly battle: BattleState;
   readonly onAction: (action: GameAction) => void;
+  /** Something is still being shown; the question waits for it. */
+  readonly busy?: boolean;
 }
 
-export function BattleBar({ view, battle, onAction }: Props): JSX.Element {
+export function BattleBar({ view, battle, onAction, busy = false }: Props): JSX.Element {
   const yours = battle.waitingOn === view.viewer;
+  // A window outranks the battle (Rules.md §13): while one is open the step
+  // is frozen, and the bar should not be asking for an answer to it. Nor
+  // while the last exchange is still being drawn.
+  const asking = yours && view.quick === null && !busy;
   const attacking = battle.attacker === view.viewer;
   const ask = ASKS[battle.step];
   const canPass = view.legalActions.some((action) => action.type === 'BATTLE_PASS');
@@ -82,10 +88,10 @@ export function BattleBar({ view, battle, onAction }: Props): JSX.Element {
         </span>
         {/* Only to the player being asked: the other one is watching, and has
          * nothing to click. */}
-        {yours && ask.how !== undefined && <span className="battlebar__how">{ask.how}</span>}
+        {asking && ask.how !== undefined && <span className="battlebar__how">{ask.how}</span>}
       </span>
 
-      {yours && canPass && (
+      {asking && canPass && (
         <button type="button" className="btn" onClick={() => onAction({ type: 'BATTLE_PASS' })}>
           {DECLINE[battle.step]}
         </button>

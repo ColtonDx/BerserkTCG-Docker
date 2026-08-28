@@ -499,11 +499,9 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
     {
       trigger: 'open',
       effect: { do: 'draw', player: 'you', count: 1 },
-      text: 'When this card is opened, draw 1 card and your opponent discards 1 card.',
-    },
-    {
-      trigger: 'open',
-      effect: { do: 'discard', player: 'opponent', count: 1 },
+      // One printed line, one ability: the discard rides in `then`, so the
+      // card is announced once and the two halves resolve in printed order.
+      then: [{ do: 'discard', player: 'opponent', count: 1 }],
       text: 'When this card is opened, draw 1 card and your opponent discards 1 card.',
     },
   ],
@@ -758,14 +756,13 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         count: 1,
         per: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
       },
-      text: 'When this card is opened, destroy all set cards you control in all areas. Draw that many cards.',
-    },
-    {
-      trigger: 'open',
-      effect: {
-        do: 'destroy',
-        who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
-      },
+      // One printed line, one ability: the destruction rides in `then`.
+      then: [
+        {
+          do: 'destroy',
+          who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+        },
+      ],
       text: 'When this card is opened, destroy all set cards you control in all areas. Draw that many cards.',
     },
   ],

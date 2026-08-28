@@ -28,10 +28,18 @@ interface Props {
   readonly onAgain: () => void;
   /** True when the opponent was the computer, which can always play again. */
   readonly solo: boolean;
+  /** The last exchange is still being drawn; the result waits for it. */
+  readonly busy?: boolean;
 }
 
-export function MatchOver({ view, onLeave, onAgain, solo }: Props): JSX.Element | null {
-  if (view.status.kind !== 'finished') return null;
+export function MatchOver({
+  view,
+  onLeave,
+  onAgain,
+  solo,
+  busy = false,
+}: Props): JSX.Element | null {
+  if (view.status.kind !== 'finished' || busy) return null;
 
   const { winner, reason } = view.status;
   const outcome = winner === null ? 'Draw' : winner === view.viewer ? 'Victory' : 'Defeat';

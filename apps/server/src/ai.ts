@@ -8,7 +8,7 @@ import {
   type MatchId,
   type PlayerId,
 } from '@berserk/engine';
-import { BANNER_HOLD_MS, EXCHANGE_HOLD_MS, OPENING_CEREMONY_MS } from '@berserk/protocol';
+import { presentationMs } from '@berserk/protocol';
 import type { MatchManager } from './matches.js';
 
 /**
@@ -41,46 +41,42 @@ export const AI_PLAYER_ID: PlayerId = asPlayerId('ai-femto');
 export const AI_NAME = 'Femto';
 
 /**
- * How long Femto waits after each kind of move, so a human can follow what it
- * did rather than watch a turn happen at once.
+ * How long Femto "thinks" before each move, once the screen has settled.
  *
- * These are per-*action*, because the moves are not equally worth watching. A
- * card being set has to fly from a hand and land somewhere specific, and the
- * player needs a moment on it afterwards to see *where*. Ending a phase is
- * just the marker moving. Anything that redraws the board gets the longest
- * pause of all.
- *
- * The card slide is 620ms (`useCardFlip`), so nothing here should be shorter
- * than that or the next move starts while the last one is still moving.
+ * The screen settling is not guessed at here: the client plays a batch of
+ * events as a sequence of beats, and `presentationMs` in the protocol says
+ * how long that takes from the human's seat. The AI holds for that, then for
+ * this, then moves — so a move is never made under the last one, and never
+ * lands the instant the board stops either.
  */
-const PAUSE_MS: Partial<Record<GameAction['type'], number>> = {
-  SET_CARD: 1500,
-  DECLARE_BATTLE: 1400,
-  DESIGNATE_VANGUARD: 1400,
-  COMMIT_CHARACTER: 1300,
-  ASSIGN_DAMAGE: 1600,
-  BATTLE_PASS: 1000,
-  PASS_PRIORITY: 900,
-  MOVE_CHARACTER: 1500,
-  OPEN_CARD: 1800,
-  DISCARD_CARD: 1100,
-  // A card leaving hand or coming out of the deck, one at a time. Paced like
-  // the discard above, because it looks the same from the other side of the
-  // table: a card moving with no other explanation.
-  CHOOSE_CARD: 1100,
-  END_PHASE: 850,
-};
-/** Anything not listed above. */
-const DEFAULT_PAUSE_MS = 900;
+const THINK_MS = 900;
+
 /**
- * The wait before the first move of a turn.
+ * When each match's screen will be quiet again, by the human's clock.
  *
- * Long enough to outlast the banner announcing the turn, because a card
- * sliding out from under an overlay is a move the player never sees. The
- * banner's own length is shared through the protocol, so raising it there
- * moves this too rather than leaving Femto playing early.
+ * Written by the gateway when the human's own move goes out (that move is
+ * being drawn too), and by `driveAi` after each of its own — and read before
+ * every move. Kept outside the loop because the human can act while Femto is
+ * between moves, and that action's drawing time has to count as well.
  */
-const LEAD_IN_MS = BANNER_HOLD_MS + 200;
+const holdUntil = new Map<MatchId, number>();
+
+/** Hold Femto until these events have finished playing on `viewer`'s screen. */
+export function holdFor(matchId: MatchId, events: readonly GameEvent[], viewer: PlayerId): void {
+  holdMatch(matchId, presentationMs(events, viewer));
+}
+
+/** Hold Femto for a stretch of time — the opening ceremony, say. */
+export function holdMatch(matchId: MatchId, ms: number): void {
+  const until = Date.now() + ms;
+  holdUntil.set(matchId, Math.max(holdUntil.get(matchId) ?? 0, until));
+}
+
+const untilQuiet = async (matchId: MatchId): Promise<void> => {
+  const wait = (holdUntil.get(matchId) ?? 0) - Date.now();
+  if (wait > 0) await pause(wait);
+};
+
 /** Stops a rules bug from spinning the AI forever. */
 const MAX_ACTIONS = 200;
 
@@ -600,10 +596,13 @@ export async function driveAi(
 
   let setsThisTurn = 0;
   let lastTurn = -1;
-  let waited = false;
 
   try {
     for (let step = 0; step < MAX_ACTIONS; step++) {
+      // Whatever is still being drawn on the human's screen — their own
+      // move, or Femto's last — plays out before anything else happens. Read
+      // the position *after* waiting: the human may have acted meanwhile.
+      await untilQuiet(matchId);
       const match = matches.get(matchId);
       const state = match?.state;
       if (!state || state.status.kind === 'finished') return;
@@ -636,22 +635,6 @@ export async function driveAi(
         setsThisTurn = 0;
       }
 
-      // Once per turn, before doing anything: this call *is* the AI's turn,
-      // so the wait belongs on its first pass. Keying it off the turn number
-      // does not work — the number only advances when play comes back round
-      // to the starting player, so it never changes when the turn passes from
-      // the human to the AI.
-      //
-      // During setup the wait is the opening ceremony instead: the human is
-      // watching the menu burn away and the coin land, and Femto settling its
-      // hand under that puts a shuffle behind an animation nobody has
-      // finished watching. Both waits are shared through the protocol so
-      // lengthening either in the UI cannot leave it moving early.
-      if (!waited) {
-        waited = true;
-        await pause(state.status.kind === 'playing' ? LEAD_IN_MS : OPENING_CEREMONY_MS);
-      }
-
       // Wider early, when spreading cheap bodies over a face-down row is what
       // buys uncontested opens later; narrower after that, when the hand is
       // the bottleneck and a card set is a cost that cannot be paid.
@@ -664,26 +647,22 @@ export async function driveAi(
       const action = chooseAction(state, legal);
       if (!action) return;
 
+      // A beat of thought once the board is still, so a move never lands the
+      // same instant the last one finished drawing.
+      await pause(THINK_MS);
+
       const result = matches.submitAction(matchId, AI_PLAYER_ID, action);
       if (!result.ok) return;
       if (action.type === 'SET_CARD') setsThisTurn++;
 
       onChange(result.events);
 
-      // Paced off what *happened*, not off what was asked for. One action can
-      // carry a whole exchange — the engine settles a strike with a single
-      // legal assignment itself — and the client draws that as a sequence of
-      // blows with the deaths held behind them, which outlasts any of the
-      // per-action pauses. Moving again underneath it is what makes cards
-      // appear to vanish for no reason.
-      const fought = result.events.some(
-        (event) => event.type === 'DAMAGE_DEALT' || event.type === 'CHARACTER_DESTROYED',
-      );
-      await pause(
-        fought
-          ? Math.max(EXCHANGE_HOLD_MS, PAUSE_MS[action.type] ?? DEFAULT_PAUSE_MS)
-          : (PAUSE_MS[action.type] ?? DEFAULT_PAUSE_MS),
-      );
+      // Paced off what *happened*, not off what was asked for: one action can
+      // carry a whole exchange, and the client draws it as a sequence of
+      // beats that outlasts the action by seconds. The human's seat is the
+      // one watching, so the hold is measured from there.
+      const human = state.seats.find((seat) => seat !== AI_PLAYER_ID);
+      if (human !== undefined) holdFor(matchId, result.events, human);
     }
   } finally {
     running.delete(matchId);

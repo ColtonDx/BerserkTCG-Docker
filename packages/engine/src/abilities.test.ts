@@ -790,6 +790,49 @@ describe('effects that scale with the board — "for each" (Rules.md §13)', () 
   });
 });
 
+describe('an ability that finds nothing to do (Rules.md §13)', () => {
+  it('says so, rather than coming forward and changing nothing', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    // BK1-060: "+2/+2 for each character your opponent controls in this
+    // area" — and the opponent controls nobody here.
+    const mine = place(state, player, 'BK1-041', 2);
+    state = mine.state;
+    const card = place(state, player, 'BK1-060', 2, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const open = openOf(state, player, card.card);
+    expect(open, 'Forced Breakthrough should be openable').toBeDefined();
+    const before = power(state, mine.card);
+
+    const result = engine.reduce(state, player, open as GameAction);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const types = result.value.events.map((event) => event.type);
+    expect(types).toContain('ABILITY_RESOLVED');
+    expect(types).toContain('ABILITY_FIZZLED');
+    // The numbers did not move, and the card says why.
+    expect(power(result.value.state, mine.card)).toBe(before);
+  });
+
+  it('stays silent when the ability did its work', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const mine = place(state, player, 'BK1-041', 2);
+    state = mine.state;
+    const card = place(state, player, 'BK1-063', 2, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const open = openOf(state, player, card.card);
+    expect(open).toBeDefined();
+
+    const result = engine.reduce(state, player, open as GameAction);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const types = result.value.events.map((event) => event.type);
+    expect(types).toContain('ABILITY_RESOLVED');
+    expect(types).not.toContain('ABILITY_FIZZLED');
+  });
+});
+
 describe('damage reduction (Rules.md §13)', () => {
   it('BK1-052 Serpico shrugs off the first 3 of any blow struck in combat', () => {
     let state = started(GREEN);

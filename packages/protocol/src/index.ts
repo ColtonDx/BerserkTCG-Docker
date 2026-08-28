@@ -22,17 +22,9 @@ import type {
  *    breaking change so old tabs are told to reload instead of silently
  *    desyncing.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
-/**
- * How long the turn/phase banner stays on screen, in milliseconds.
- *
- * Shared because both sides have to agree on it: the client shows the banner
- * for this long, and the computer opponent must not start playing underneath
- * one. Written down once so raising it in the UI cannot silently leave the
- * AI moving too early.
- */
-export const BANNER_HOLD_MS = 4200;
+export * from './presentation.js';
 
 /**
  * How long the opening ceremony runs before a player is asked anything, in
@@ -40,9 +32,10 @@ export const BANNER_HOLD_MS = 4200;
  *
  * The client burns the menu off the board, then tosses for first player
  * (Rules.md §9.2), and only then asks about the opening hand (§9.4). Shared
- * for the same reason as the banner above: the computer opponent settles its
+ * for the same reason `presentationMs` is: the computer opponent settles its
  * own hand during setup, and doing that underneath the ceremony puts shuffle
  * sounds and a redealt hand behind an animation the human is still watching.
+ * The deal has no events to plan beats from, so this one is a constant.
  *
  * The sum of the client's own timings, with a little slack: the burn is
  * 1875ms (`BurnAway.DURATION`) and the toss 1700 + 2400ms (`CoinFlip`'s
@@ -50,29 +43,6 @@ export const BANNER_HOLD_MS = 4200;
  * any of those should raise this, or Femto starts moving early again.
  */
 export const OPENING_CEREMONY_MS = 6300;
-
-/**
- * How long an exchange takes to draw, in milliseconds.
- *
- * A single action can carry a whole battle: the engine answers a strike with
- * only one legal assignment rather than asking (`settleBattle`), so a 1v1
- * fight is declared, fought and settled by one click — and `BoardFx` plays
- * that as a sequence of blows with the deaths held back behind them, which
- * takes longer than the action did.
- *
- * Shared for the same reason as the banner and the ceremony above: the
- * computer opponent must not take its next move while the last one is still
- * being drawn. Cards vanishing under a fresh animation is exactly the "combat
- * went by too fast" this exists to prevent.
- *
- * The client's own timings: 340ms to settle, 540ms per extra beat, and a
- * death at 460 + 900ms of fade — so 1700ms for a single band and 540ms more
- * for each after it (see `BoardFx`). This covers up to three bands, which is
- * every battle the deck sizes realistically produce; a larger one overruns by
- * the odd half-second rather than by enough to lose track of, and holding for
- * the worst case would leave every ordinary fight sitting idle.
- */
-export const EXCHANGE_HOLD_MS = 2800;
 
 /* ------------------------------------------------------- client -> server */
 
@@ -123,11 +93,14 @@ export interface ClientToServerEvents {
 /* ------------------------------------------------------- server -> client */
 
 export interface ServerToClientEvents {
-  /** Authoritative state after any change. Always replaces local state. */
+  /**
+   * Authoritative state after any change, with what happened to get there.
+   * Always replaces local state. The events ride with the view rather than
+   * in a message of their own so the client can never be drawing an event
+   * against a view that has not caught up with it — they arrive together,
+   * or not at all.
+   */
   'state:update': (payload: StateUpdate) => void;
-
-  /** What just happened, for animation and the log feed. */
-  'events:applied': (payload: { matchId: MatchId; events: readonly GameEvent[] }) => void;
 
   /** A seat connected, disconnected, or was filled. */
   'match:presence': (payload: {
@@ -148,6 +121,12 @@ export interface ServerToClientEvents {
 export interface StateUpdate {
   readonly matchId: MatchId;
   readonly view: PlayerView;
+  /**
+   * What just happened, for animation and the log feed. Empty when the
+   * view changed for a reason that is not an action — a seat reconnecting,
+   * say — so nothing is replayed.
+   */
+  readonly events: readonly GameEvent[];
 }
 
 export type JoinResult =

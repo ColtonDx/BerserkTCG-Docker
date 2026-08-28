@@ -110,6 +110,8 @@ interface BoardProps {
   readonly onAimAt?: (card: string) => void;
   /** Dim the table while a hand step is in front of it. */
   readonly dimmed?: boolean;
+  /** Something is still being shown; the battle bar holds its question. */
+  readonly busy?: boolean;
 }
 
 /** Areas this card could be sent to by the given action type. */
@@ -132,6 +134,7 @@ export function Board({
   onAimHover,
   onAimAt,
   dimmed = false,
+  busy = false,
 }: BoardProps): JSX.Element {
   const [targeting, setTargeting] = useState<Targeting | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -385,7 +388,9 @@ export function Board({
 
   return (
     <div className={classes.join(' ')}>
-      {view.battle && <BattleBar view={view} battle={view.battle} onAction={onAction} />}
+      {view.battle && (
+        <BattleBar view={view} battle={view.battle} onAction={onAction} busy={busy} />
+      )}
       <Nameplate view={view} player={opponentId} side="top" stats={stats} />
       <OpponentHand view={view} player={opponentId} stats={stats} />
 

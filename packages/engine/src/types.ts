@@ -85,10 +85,25 @@ export interface QuickWindow {
   /** The player being asked — whoever did *not* do the thing that opened it. */
   readonly waitingOn: PlayerId;
   readonly trigger: QuickTrigger;
+  /**
+   * Who is asked next, once this player has passed. Rules.md §13 — "when two
+   * players want to use Quick simultaneously, the turn player goes first",
+   * which is what happens before damage: the attacker is asked, and then the
+   * defender. Absent for every window that asks one player only.
+   */
+  readonly then?: PlayerId;
 }
 
+/**
+ * The moments a window can open at. DesignNotes "When to offer a Quick".
+ *
+ * `beforeDamage` is the one that is not about the opponent doing something:
+ * it is the last chance to act before the Range bands resolve (Rules.md
+ * §11 ④), and every combat Quick in the set — "+2/+2 until end of turn",
+ * "deal 3 damage to a character in combat" — is written for it.
+ */
 export type QuickTrigger =
-  'turnStart' | 'cardOpened' | 'mainPhase' | 'combat' | 'attack' | 'turnEnd';
+  'turnStart' | 'cardOpened' | 'mainPhase' | 'combat' | 'attack' | 'beforeDamage' | 'turnEnd';
 
 /**
  * An effect that has stopped mid-resolution because it owes a player a choice.
@@ -437,6 +452,19 @@ export type GameEvent =
        * words rather than in the engine's.
        */
       readonly type: 'ABILITY_RESOLVED';
+      readonly player: PlayerId;
+      readonly card: CardInstanceId;
+      readonly text: string;
+    }
+  | {
+      /**
+       * The ability went off and found nothing to act on. Rules.md §13
+       * resolves what it can, and "+2/+2 for each enemy here" across an
+       * empty area is nothing — but a card that comes forward, is read out,
+       * and changes nothing looks broken unless the game says so. Follows
+       * the `ABILITY_RESOLVED` it qualifies.
+       */
+      readonly type: 'ABILITY_FIZZLED';
       readonly player: PlayerId;
       readonly card: CardInstanceId;
       readonly text: string;

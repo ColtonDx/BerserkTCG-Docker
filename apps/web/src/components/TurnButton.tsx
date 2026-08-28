@@ -57,5 +57,14 @@ function waitingLine(view: PlayerView): string | null {
       ? null // the hand overlay is already saying so, far more loudly
       : 'Waiting for your opponent to settle their hand…';
   }
+  // The game can be stopped on the opponent in the middle of *your* turn:
+  // a Quick window (Rules.md §13) or an effect that asked them something.
+  // Without a word here the board simply goes quiet for no visible reason.
+  if (view.quick && view.quick.waitingOn !== view.viewer) {
+    return 'Opponent may respond with a Quick…';
+  }
+  if (view.pending && view.pending.waitingOn !== view.viewer) {
+    return 'Opponent is choosing cards…';
+  }
   return view.turn.activePlayer === view.viewer ? null : 'Waiting for opponent…';
 }

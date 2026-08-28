@@ -67,16 +67,40 @@ could plausibly matter, and only when it could actually be played:
 
 1. the Quick is already **set** on the table, and
 2. its cost **can be paid** from hand, and
-3. the opponent does one of:
-   - starts their turn
-   - opens a card
-   - moves to their Main phase
-   - moves to combat
-   - declares an attack
-   - ends their turn
+3. it would **do something now** (see below), and
+4. one of these moments arrives:
+   - the opponent starts their turn
+   - the opponent opens a card
+   - the opponent moves to their Main phase
+   - the opponent declares a battle
+   - the opponent names a vanguard
+   - **damage is about to be dealt** — asked of the attacker first and then
+     the defender (§13: the turn player goes first), once, before the first
+     Range band resolves
+   - the opponent ends their turn
 
 "The opponent" means whoever did not do the thing, so a defender's combat open
-(§11 ②) offers the window to the attacker.
+(§11 ②) offers the window to the attacker. The moment before damage is the one
+that is not about the opponent doing something: it is the last chance to act
+before the blows land, and every combat Quick in the set — "+2/+2 until end of
+turn", "deal 3 damage to a character in combat" — is written for it.
+
+**Doing something now** is judged by the kind of effect, not by the card
+(`rules.ts:quickRelevant`): card advantage — a draw, a search, a discard —
+is worth taking at any moment; a continuous ability is a card that will sit
+on the table working, and opening it out of turn saves the turn's one open;
+anything that lasts "until end of turn" is only worth anything while a battle
+is running to spend it in; and in every case the effect has to reach
+somebody. A Quick that would do nothing is not offered, so a window opening
+means there is a real decision in it — and a card the window did not offer
+cannot be opened in it.
+
+The client then decides how to _put_ the question (`state/quickStops.ts`).
+Inside a battle it is a hard stop. At the turn's edges and the Main phase it
+counts down to a pass, or passes at once, according to the player's own
+setting — the engine still stops either way; the client answers for them. The
+prompt sits along the bottom edge over an undimmed board, with each card's
+printed line beside it, because a Quick is a decision about the board.
 
 Anything outside that list resolves without asking. This is a deliberate
 narrowing of §13 for the sake of the game being playable, not a reading of the

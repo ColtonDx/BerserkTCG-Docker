@@ -13,10 +13,14 @@ import { CITY_CAPITAL, CITY_FACE } from './CardImage.js';
  * Shown to **both** players, because who holds what is public and the thing an
  * opponent most needs to know is that the board just moved. It takes no
  * pointer events, so play carries on underneath.
+ *
+ * One beat of the presentation queue, after the blows that won it: it used
+ * to appear in the same frame as the last strike, before the deaths that
+ * took the city had faded.
  */
 
-/** Long enough to register, short enough to stay out of the way. */
-const HOLD_MS = 2200;
+/** How long the exit takes, at the end of the beat. */
+const LEAVE_MS = 450;
 
 export interface Taken {
   readonly key: number;
@@ -25,20 +29,18 @@ export interface Taken {
   readonly royalCapital: boolean;
   /** Whether the viewer is the one who took it. */
   readonly mine: boolean;
+  /** How long the beat holds the stage. */
+  readonly ms: number;
 }
 
-export function CityTaken({ taken, onDone }: { taken: Taken; onDone: () => void }): JSX.Element {
+export function CityTaken({ taken }: { taken: Taken }): JSX.Element {
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     setLeaving(false);
-    const fade = window.setTimeout(() => setLeaving(true), HOLD_MS - 450);
-    const done = window.setTimeout(onDone, HOLD_MS);
-    return () => {
-      clearTimeout(fade);
-      clearTimeout(done);
-    };
-  }, [taken.key, onDone]);
+    const fade = window.setTimeout(() => setLeaving(true), Math.max(0, taken.ms - LEAVE_MS));
+    return () => clearTimeout(fade);
+  }, [taken.key, taken.ms]);
 
   const classes = ['taken'];
   if (leaving) classes.push('taken--leaving');
