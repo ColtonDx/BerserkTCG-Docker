@@ -50,6 +50,8 @@ export interface DeckBuilder {
   canAdd: (cardId: string) => boolean;
 
   newDeck: () => void;
+  /** A fresh, unsaved copy of what is being built, to fork from. */
+  duplicate: () => void;
   load: (deckId: string) => void;
   save: () => Promise<void>;
   destroy: (deckId: string) => Promise<void>;
@@ -158,6 +160,12 @@ export function useDeckBuilder(): DeckBuilder {
     setDirty(false);
   }, []);
 
+  const duplicate = useCallback(() => {
+    setDeckId(null);
+    setName((current) => `${current.replace(/ \(copy\)$/, '')} (copy)`);
+    setDirty(true);
+  }, []);
+
   const load = useCallback(
     (id: string) => {
       const deck = decks.find((candidate) => candidate.id === id);
@@ -203,6 +211,7 @@ export function useDeckBuilder(): DeckBuilder {
       try {
         const response = await fetch(`${API}/api/decks/${id}`, {
           method: 'DELETE',
+          headers: authHeaders(),
         });
         if (!response.ok && response.status !== 204) throw new Error(`delete: ${response.status}`);
         if (id === deckId) newDeck();
@@ -235,6 +244,7 @@ export function useDeckBuilder(): DeckBuilder {
     quantityOf,
     canAdd,
     newDeck,
+    duplicate,
     load,
     save,
     destroy,
