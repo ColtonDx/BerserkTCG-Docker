@@ -59,18 +59,19 @@ were updated to match, so don't re-open them from an older reading.
   `rules.ts:stillFighting` is the single implementation, and `battleResult`,
   the damage step's "is anyone left to strike" and its "who may be hit" all
   read it. They disagreed once, which is exactly how the bug survived.
-- **A city wakes when it is attacked, not when it is settled.** Declaring a
-  battle over a city turns it face-up and it stays face-up (`Rules.md` §5);
-  opening a character there does nothing to it. City Level therefore only
-  climbs, and the board shows it: `Board.tsx` lays a city on its side until
-  somebody holds it, and stands it upright when they do.
-- **A city is spent by the vanguard, not by the declaration.** §10 ④(4) allows
-  one battle per city per turn, and §11 ① lets the attacker name nobody, which
-  ends the phase before anything is locked, opened or struck. The allowance is
-  charged when a vanguard steps forward, so calling an attack off costs
-  nothing — `designateVanguard` in `reducer.ts` is where `battledCities` grows.
-  There is no loop worth exploiting: the city turns face up on the _first_
-  declaration and stays that way (§5).
+- **A city wakes when it is attacked, not when it is settled.** A battle
+  commencing over a city turns it face-up and it stays face-up (`Rules.md`
+  §5); opening a character there does nothing to it. City Level therefore
+  only climbs, and the board shows it: `Board.tsx` lays a city on its side
+  until somebody holds it, and stands it upright when they do.
+- **A city is spent — and woken — by the vanguard, not by the declaration.**
+  §10 ④(4) allows one battle per city per turn, and §11 ① lets the attacker
+  name nobody, which ends the phase before anything is locked, opened or
+  struck. Both the allowance and the flip happen when a vanguard steps
+  forward, so calling an attack off costs nothing and shows nobody the city —
+  `designateVanguard` in `reducer.ts` is where `battledCities` grows and
+  where `CITY_FLIPPED` is pushed. A declaration called off leaves the board
+  exactly as it found it.
 - **The vanguard is the character that started the attack.** It was on the
   field before the battle was declared and is named in §11 ① — before the
   combat open in ② — so a character opened during the battle may join it but
@@ -109,8 +110,13 @@ were updated to match, so don't re-open them from an older reading.
   until the human's screen is quiet, then thinks, then moves. There is no
   table of per-action pauses to keep in step with the CSS any more — a new
   beat is a new entry in `planBeats` and Femto waits for it for free. The
-  board itself still renders the new view the instant it arrives; only the
-  _telling_ is sequenced.
+  board is part of the telling: each beat says what it **reveals**, and
+  `usePresentation` draws the view from _before_ the batch with those cards
+  and cities held back until their beat starts (`compose`) — a character
+  stays standing until its blow lands, the two cards a city pays arrive as
+  the city-taken card says so. The authoritative view is untouched;
+  `shown` is a picture of it. The result screen waits for the whole queue,
+  so a win is never interrupted by the last of the telling.
 
 - **Only the first player skips their draw**, and only on their first turn; the
   second player draws normally on theirs (`Rules.md` §10 ②, `DesignNotes` 6).

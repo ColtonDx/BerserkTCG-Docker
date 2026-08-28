@@ -1358,14 +1358,33 @@ describe('the Battle phase (Rules.md §11-12)', () => {
     expect(engine.reduce(state, attacker, { type: 'DECLARE_BATTLE', city: 2 }).ok).toBe(true);
   });
 
-  it('keeps the city awake even though the attack was called off', () => {
-    // §5 — being attacked is what turns a city face up, and it stays that way.
-    // So declaring and backing out changes nothing a second declaration would
-    // find: there is no loop here worth exploiting.
-    const { state: start, attacker } = withGarrison(['dev-001', 'dev-003'], ['dev-001']);
+  it('leaves the city face down when the attack is called off, and wakes it at the vanguard', () => {
+    // §5 — the battle commencing is what turns a city face up, and §11 ① lets
+    // the attacker back out before that. A declaration called off must show
+    // nobody the city, or declaring and passing would be a free peek.
+    const { state: dealt, attacker } = withGarrison(['dev-001', 'dev-003'], ['dev-001']);
+    // The fixture deals every city face up; this one has to start asleep.
+    const start: GameState = {
+      ...dealt,
+      cities: dealt.cities.map((city, index) => (index === 2 ? { ...city, faceUp: false } : city)),
+    };
     let state = apply(start, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    expect(state.cities[2]?.faceUp).toBe(false);
     state = apply(state, attacker, { type: 'BATTLE_PASS' });
-    expect(state.cities[2]?.faceUp).toBe(true);
+    expect(state.cities[2]?.faceUp).toBe(false);
+
+    state = apply(state, attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    const lead = Object.values(state.cards).find(
+      (card) => card.controller === attacker && card.zone === 'city' && card.faceUp,
+    );
+    const result = engine.reduce(state, attacker, {
+      type: 'DESIGNATE_VANGUARD',
+      card: lead?.instanceId as CardInstanceId,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.cities[2]?.faceUp).toBe(true);
+    expect(result.value.events.some((event) => event.type === 'CITY_FLIPPED')).toBe(true);
   });
 
   it('will not let the same city be battled twice in a turn', () => {

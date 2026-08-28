@@ -70,7 +70,7 @@ Character card fields: ① Card Name · ② Cost · ③ Level · ④ Color · �
 Cities are the battleground. **City Level (都市Lv.)** is a single, shared value = the number of face-up City cards showing anywhere on the table. It is **not** tracked per city — flipping any city raises the level for opening cards in every city.
 
 - At game start every city is **face-down**, so all cities are **City Lv. 0**.
-- A city is turned face-up (raising the Level) **when a battle is declared over it** (§11 ①). Being fought over is what wakes a city; merely opening a character there does not.
+- A city is turned face-up (raising the Level) **when a battle commences over it** — the moment the attacker names a vanguard (§11 ①), not the declaration before it, which can still be called off. Being fought over is what wakes a city; merely opening a character there does not.
 - Once face-up a city **stays** face-up for the rest of the match, whoever ends up holding it. City Level therefore only ever climbs.
 
 City Level is the gate that controls which cards you can open (see §7).
@@ -171,7 +171,7 @@ Declared during the Main phase against a city you don't occupy. Five steps in fi
 
 The attacker designates one friendly character in that city and **locks** it — it becomes the lead battle participant. **If no vanguard is designated, the Battle phase ends** and you return to Main.
 
-Naming the vanguard is what **commits** the attack, and it is what spends that city's one battle for the turn (§10 ④(4)). Backing out here costs nothing and the city may be attacked again this turn: nothing has been locked, opened or struck yet, and this step exists precisely to offer the way out. The city does **stay face up** either way (§5), so a declaration that is called off leaves the board exactly as a second one would find it.
+Naming the vanguard is what **commits** the attack: it spends that city's one battle for the turn (§10 ④(4)) and turns the city face up (§5). Backing out before it costs nothing and reveals nothing — the city stays face down and may be attacked again this turn: nothing has been locked, opened, struck or shown yet, and this step exists precisely to offer the way out.
 
 The **vanguard** is the character that started the attack: it was already on the field when the battle was declared, and it is chosen before ② — so a character opened _during_ the combat step can join the battle (③) but can never be the vanguard. Card abilities that read "if it is the vanguard" mean exactly this one character.
 

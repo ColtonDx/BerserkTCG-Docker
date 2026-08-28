@@ -457,28 +457,15 @@ function declareBattle(
     pending: [],
     struck: [],
   });
-  // The city is *not* spent here. Rules.md §10 ④(4) allows one battle per city
-  // per turn, and §11 ① lets the attacker name no vanguard, which "ends the
-  // Battle phase" before anything has been locked, opened or struck. Charging
-  // the city for a fight that never happened made calling one off cost a turn
-  // of that area — so the allowance is spent when the battle actually
-  // commences, which is the vanguard stepping forward. See `designateVanguard`.
-  //
-  // Nothing is gained by declaring and calling off repeatedly: the city turns
-  // face up on the first declaration and stays that way (§5), so a second
-  // declaration finds the board exactly as the first one left it.
-
-  // Being attacked is what wakes a city up. Rules.md §5 — until then it lies
-  // face-down and neutral, and contributes nothing to City Level.
-  if (!city.faceUp) {
-    city.faceUp = true;
-    events.push({
-      type: 'CITY_FLIPPED',
-      city: cityIndex,
-      faceUp: true,
-      cityLevel: cityLevel(draft),
-    });
-  }
+  // Nothing is spent here, and nothing is revealed. Rules.md §10 ④(4) allows
+  // one battle per city per turn, and §11 ① lets the attacker name no
+  // vanguard, which "ends the Battle phase" before anything has been locked,
+  // opened or struck. Charging the city for a fight that never happened made
+  // calling one off cost a turn of that area, and turning the city face up
+  // here made calling off a way to peek at it — so both wait for the battle
+  // to actually commence, which is the vanguard stepping forward. See
+  // `designateVanguard`. A declaration called off leaves the board exactly as
+  // it found it.
 
   events.push({ type: 'BATTLE_DECLARED', city: cityIndex, attacker: actor });
   events.push({ type: 'BATTLE_STEP', step: 'vanguard', waitingOn: actor });
@@ -656,6 +643,21 @@ function designateVanguard(
   }
 
   events.push({ type: 'VANGUARD_DESIGNATED', card: cardId });
+
+  // And being attacked is what wakes a city up. Rules.md §5 — until now it
+  // lay face-down and neutral, contributing nothing to City Level. Here and
+  // not at the declaration, for the same reason the allowance is: an attack
+  // that can still be called off must not have shown anybody the city.
+  const city = draft.cities[battle.city];
+  if (city && !city.faceUp) {
+    city.faceUp = true;
+    events.push({
+      type: 'CITY_FLIPPED',
+      city: battle.city,
+      faceUp: true,
+      cityLevel: cityLevel(draft),
+    });
+  }
   // §13 — "when this character attacks". The vanguard is in the fight the
   // moment it is named, and its own conditions can now see the battle.
   fireAbilities(ctx, draft, card as CardInstance, 'attack', events);

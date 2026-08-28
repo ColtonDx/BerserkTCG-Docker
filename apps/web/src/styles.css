@@ -3976,7 +3976,9 @@ button {
   border-radius: 3px;
   overflow: hidden;
   transform-origin: 50% 60%;
-  animation: fx-fade 900ms cubic-bezier(0.3, 0, 0.7, 1) both;
+  /* Holds in place for the blow to register, then fades. The delay is
+   * `BEAT_MS.DEATH_AFTER`; the fade is `DEATH_FADE`. */
+  animation: fx-fade 900ms 460ms cubic-bezier(0.3, 0, 0.7, 1) both;
 }
 
 .fx__ghost img,
@@ -4117,7 +4119,7 @@ button {
  * than leaving a transition-less jump out and back. */
 @media (prefers-reduced-motion: reduce) {
   .fx__ghost {
-    animation: fx-fade-still 700ms ease-out both;
+    animation: fx-fade-still 700ms 460ms ease-out both;
   }
 
   .fx__burst {

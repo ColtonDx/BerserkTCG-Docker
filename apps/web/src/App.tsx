@@ -55,7 +55,7 @@ export function App(): JSX.Element {
   const match = useMatch(auth.user !== null);
   // What is being shown right now, and whether it is holding the stage
   // against a prompt. One queue for every overlay — see `usePresentation`.
-  const { stage, busy } = usePresentation(match.recentEvents, match.view?.viewer);
+  const { stage, busy, speaking, shown } = usePresentation(match.recentEvents, match.view);
   // The table is a fixed viewport-sized surface, so nothing on it should ever
   // put the *document* on a scrollbar — a board you can scroll away from is a
   // board whose halves stop lining up. Flagged on the root rather than fixed
@@ -202,8 +202,12 @@ export function App(): JSX.Element {
       return;
     }
 
-    // Steel drawn is heard on the beat that shows it — see `BoardFx`.
-    const drawn = events.filter((e) => e.type === 'CARD_DRAWN').length;
+    // Steel drawn, and the two cards a city pays (Rules.md §12), are heard on
+    // the beats that show them — see `BoardFx`. The draws counted here are
+    // the ones before any seizure in the batch: the turn's draw, an ability's.
+    const seized = events.findIndex((e) => e.type === 'CITY_OCCUPIED' && e.player !== null);
+    const before = seized < 0 ? events : events.slice(0, seized);
+    const drawn = before.filter((e) => e.type === 'CARD_DRAWN').length;
     if (drawn > 0) playDraw(drawn);
   }, [match.recentEvents]);
 
@@ -267,15 +271,19 @@ export function App(): JSX.Element {
     );
   }
 
+  // The board as the beats have told it so far — see `usePresentation`. The
+  // authoritative view is `match.view`; this is the picture of it to draw.
+  const table = shown ?? match.view;
+
   // Mulligan, bottoming and discarding are only about the hand, so the hand
   // comes forward and the table dims behind it.
-  const step = handStep(match.view);
+  const step = handStep(table);
 
   // Rules.md §11 ④ — the striker has to spend all of its Power, so the split
   // is asked for rather than assumed. The engine offers one legal assignment;
   // this turns it into a choice.
   const assigning =
-    match.view.legalActions.find(
+    table.legalActions.find(
       (action): action is Extract<GameAction, { type: 'ASSIGN_DAMAGE' }> =>
         action.type === 'ASSIGN_DAMAGE',
     ) ?? null;
@@ -284,8 +292,8 @@ export function App(): JSX.Element {
   // on stage if one has just changed hands. Both read off the queue rather
   // than off the batch, so they come in turn — and off the *current* view,
   // which has long caught up with the event by the time its beat plays.
-  const reveal = revealFrom(stage, match.view);
-  const taken = takenFrom(stage, match.view);
+  const reveal = revealFrom(stage, table);
+  const taken = takenFrom(stage, table);
 
   /**
    * Reaching for a cost-bearing ability (Rules.md §13), from the card's menu
@@ -295,7 +303,7 @@ export function App(): JSX.Element {
    * for none of the seven cards in your hand.
    */
   const useAbility = (action: Extract<GameAction, { type: 'USE_ABILITY' }>): void => {
-    const view = match.view as PlayerView;
+    const view = table as PlayerView;
     const wants = (action.pay?.length ?? 0) > 0;
     if (wants) {
       setOpening(action);
@@ -317,7 +325,7 @@ export function App(): JSX.Element {
         <span className={`status status--${match.status}`}>{match.status}</span>
         {auth.user && <span className="status">{auth.user.username}</span>}
         <GameMenu
-          view={match.view}
+          view={table}
           onAction={match.submit}
           onLeave={match.leaveMatch}
           onSettings={() => setSettings(true)}
@@ -328,7 +336,7 @@ export function App(): JSX.Element {
       {match.lastError && <p className="error">{match.lastError}</p>}
 
       <Board
-        view={match.view}
+        view={table}
         onAction={match.submit}
         onInspect={setInspecting}
         onPeek={setPeeking}
@@ -369,7 +377,7 @@ export function App(): JSX.Element {
         busy={busy}
       />
       <TurnButton
-        view={match.view}
+        view={table}
         onAction={match.submit}
         disabled={match.status !== 'connected' || busy}
       />
@@ -380,22 +388,22 @@ export function App(): JSX.Element {
        * And a question about the hand waits for whatever is on stage — with
        * one exception: setup, where nothing is ever on stage and the fan must
        * not blink between one bottomed card and the next. */}
-      {step && ceremony === 'playing' && (!busy || match.view.status.kind === 'setup') && (
+      {step && ceremony === 'playing' && (!speaking || table.status.kind === 'setup') && (
         <HandFocus
-          view={match.view}
+          view={table}
           step={step}
           onAction={match.submit}
           onInspect={setInspecting}
           onPeek={setPeeking}
         />
       )}
-      <Banner stage={stage} viewer={match.view.viewer} />
+      <Banner stage={stage} viewer={table.viewer} />
       {/* Blows, deaths and a city waking, drawn over the table from the beat
        * on stage. Purely presentational — it reads beats, never sends. */}
-      <BoardFx view={match.view} stage={stage} />
+      <BoardFx view={table} stage={stage} />
       <MatchOver
         busy={busy}
-        view={match.view}
+        view={table}
         onLeave={match.leaveMatch}
         solo={match.solo}
         onAgain={() =>
@@ -408,7 +416,7 @@ export function App(): JSX.Element {
       />
       {grave && (
         <PileViewer
-          view={match.view}
+          view={table}
           player={grave}
           onClose={() => setGrave(null)}
           onPeek={setPeeking}
@@ -417,19 +425,19 @@ export function App(): JSX.Element {
       )}
       {/* Not while the last band is still landing: the dialog for the next
        * striker was opening over the blows of the one before. */}
-      {assigning && match.view.battle && !busy && (
+      {assigning && table.battle && !busy && (
         <AssignDamage
-          view={match.view}
+          view={table}
           action={assigning}
-          power={strikerPower(match.view, assigning.card)}
-          targets={battleTargets(match.view, assigning.card)}
+          power={strikerPower(table, assigning.card)}
+          targets={battleTargets(table, assigning.card)}
           onConfirm={match.submit}
           onInspect={setInspecting}
         />
       )}
       {opening && (
         <PayFor
-          view={match.view}
+          view={table}
           action={opening}
           onCancel={() => setOpening(null)}
           onConfirm={(action) => {
@@ -439,8 +447,8 @@ export function App(): JSX.Element {
             // engine offers one action per legal target, so the choices are
             // read off what it sent rather than worked out here.
             const paid = action as PayableAction;
-            const choices = targetChoices(match.view as PlayerView, paid);
-            if (choices.length === 0 || !asksForATarget(match.view as PlayerView, paid)) {
+            const choices = targetChoices(table as PlayerView, paid);
+            if (choices.length === 0 || !asksForATarget(table as PlayerView, paid)) {
               match.submit(paid);
               return;
             }
@@ -453,7 +461,7 @@ export function App(): JSX.Element {
       )}
       {sending && (
         <PickArea
-          view={match.view}
+          view={table}
           areas={sending.areas}
           onCancel={() => setSending(null)}
           onPick={(area) => {
@@ -469,7 +477,7 @@ export function App(): JSX.Element {
       {aiming && (
         <Aim
           source={aiming.source}
-          defId={defIdOf(match.view, aiming.source)}
+          defId={defIdOf(table, aiming.source)}
           options={aiming.choices.map((choice) => choice.target)}
           hovered={hovered}
           onCancel={() => {
@@ -482,20 +490,17 @@ export function App(): JSX.Element {
        * whatever is on stage — it used to land in the same frame as the
        * reveal of the very card it was answering — and stands down under the
        * payment overlay it opens and while a card is being pointed. */}
-      {match.view.quick?.waitingOn === match.view.viewer &&
-        !busy &&
-        opening === null &&
-        aiming === null && (
-          <QuickPrompt
-            view={match.view}
-            trigger={match.view.quick.trigger}
-            onConsiderOpen={setOpening}
-            onUseAbility={useAbility}
-            onPass={passQuick}
-            onPeek={setPeeking}
-            onInspect={setInspecting}
-          />
-        )}
+      {table.quick?.waitingOn === table.viewer && !busy && opening === null && aiming === null && (
+        <QuickPrompt
+          view={table}
+          trigger={table.quick.trigger}
+          onConsiderOpen={setOpening}
+          onUseAbility={useAbility}
+          onPass={passQuick}
+          onPeek={setPeeking}
+          onInspect={setInspecting}
+        />
+      )}
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} />}
       {taken && <CityTaken taken={taken} />}

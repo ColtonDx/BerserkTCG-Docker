@@ -1,7 +1,7 @@
 import type { PlayerView } from '@berserk/engine';
 import { BEAT_MS } from '@berserk/protocol';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
-import { playSchwing } from '../net/sound.js';
+import { playDraw, playSchwing } from '../net/sound.js';
 import type { Stage } from '../state/usePresentation.js';
 import { CardImage } from './CardImage.js';
 
@@ -14,8 +14,9 @@ import { CardImage } from './CardImage.js';
  * is the whole point that is the wrong thing to be silent about.
  *
  * Driven by the presentation queue: a `strike` beat is one band of blows
- * (Rules.md §11 ④) and whoever died of them, and a `battle` beat is a city
- * waking up to be fought over (§5). The queue plays them in the order the
+ * (Rules.md §11 ④) and whoever died of them, a `battle` beat is steel being
+ * drawn (§11 ①), and `cityWakes` is a city turning face up to be fought over
+ * (§5). The queue plays them in the order the
  * engine resolved them and one at a time, so this only has to draw the beat
  * on stage — the cutting of a batch into beats lives in `planBeats`, which
  * the server shares so the computer opponent waits for it.
@@ -119,7 +120,19 @@ export function BoardFx({ view, stage }: { view: PlayerView; stage: Stage | null
     };
 
     if (beat.kind === 'battle') {
+      playSchwing();
+      return;
+    }
+    if (beat.kind === 'cityWakes') {
       wake(beat.city, later);
+      return;
+    }
+    if (beat.kind === 'cityTaken') {
+      // Rules.md §12 — the city pays two cards, and the label says so as it
+      // arrives; the two draws are heard as it does, one after the other,
+      // rather than at the top of the batch before the fight was even shown.
+      later(() => playDraw(1), 320);
+      later(() => playDraw(1), 620);
       return;
     }
     if (beat.kind !== 'strike') return;
@@ -202,19 +215,16 @@ export function BoardFx({ view, stage }: { view: PlayerView; stage: Stage | null
     }
 
     if (beatGhosts.length > 0) {
-      // Held back behind the blow that caused it. A card that vanishes in
-      // the same frame as the hit reads as having disappeared rather than
-      // having been killed. A death with no blow in front of it plays at
-      // once.
-      const after = beatHits.length > 0 ? BEAT_MS.DEATH_AFTER : 0;
-      later(() => {
-        setGhosts((now) => [...now, ...beatGhosts]);
-        later(
-          () =>
-            setGhosts((now) => now.filter((ghost) => !beatGhosts.some((g) => g.key === ghost.key))),
-          BEAT_MS.DEATH_FADE,
-        );
-      }, after);
+      // At once, where the card stood: the board has just stopped drawing it
+      // (its death is this beat's to reveal), and the ghost holds its place
+      // for a moment before fading — the CSS delays the fade by
+      // `DEATH_AFTER`, so the blow registers first.
+      setGhosts((now) => [...now, ...beatGhosts]);
+      later(
+        () =>
+          setGhosts((now) => now.filter((ghost) => !beatGhosts.some((g) => g.key === ghost.key))),
+        BEAT_MS.DEATH_AFTER + BEAT_MS.DEATH_FADE,
+      );
     }
   }, [stage]);
 
@@ -257,12 +267,11 @@ export function BoardFx({ view, stage }: { view: PlayerView; stage: Stage | null
 }
 
 /**
- * A city waking up to be attacked. Rules.md §5 — being declared against is
- * what turns it face up, and the board used to cut straight to its face
- * under the sound of steel. It stands up and catches the light instead.
+ * A city waking up to be attacked. Rules.md §5 — the vanguard stepping
+ * forward is what turns it face up, and the board used to cut straight to
+ * its face. It stands up and catches the light instead.
  */
 function wake(city: number, later: (fn: () => void, ms: number) => void): void {
-  playSchwing();
   const node = document.querySelector<HTMLElement>(`[data-city="${city}"] .city__card`);
   if (!node) return;
   node.classList.add('city__card--waking');

@@ -28,7 +28,27 @@ export interface Hit {
   readonly combat: boolean;
 }
 
-export type Beat =
+/**
+ * The board changes a beat accounts for. Until the beat plays, the client
+ * draws these cards and cities as they were before the batch — a character
+ * stays standing until its blow lands, the two cards a city pays arrive as
+ * the city-taken card says so. A board that has already moved on makes the
+ * telling a replay of something the player saw happen in one frame.
+ */
+export interface Reveals {
+  readonly cards: readonly CardInstanceId[];
+  readonly cities: readonly number[];
+}
+
+const NOTHING: Reveals = { cards: [], cities: [] };
+
+interface Told {
+  readonly reveals: Reveals;
+}
+
+export type Beat = Told & Moment;
+
+type Moment =
   /**
    * A turn beginning, announced with a banner that walks the phases the turn
    * ran through before stopping. Rules.md §10.
@@ -57,13 +77,18 @@ export type Beat =
    * held up over a board that is still moving.
    */
   | { readonly kind: 'settle'; readonly ms: number }
-  /** A battle declared: the city wakes. Rules.md §5, §11. */
+  /** A battle declared: steel drawn. Rules.md §11 ①. */
   | {
       readonly kind: 'battle';
       readonly city: number;
       readonly attacker: PlayerId;
       readonly ms: number;
     }
+  /**
+   * A city turning face up. Rules.md §5 — it happens as the vanguard steps
+   * forward, once the attack can no longer be called off.
+   */
+  | { readonly kind: 'cityWakes'; readonly city: number; readonly ms: number }
   /**
    * A card opened, held up to be read. Rules.md §7. Carries the printed line
    * of any ability the open fired, so one card is shown once with what it
@@ -131,7 +156,9 @@ export const BEAT_MS = {
   SETTLE: 620,
   /** A moment for a dialog to leave before anything happens on the board. */
   BREATH: 340,
-  BATTLE: 1100,
+  BATTLE: 700,
+  /** A city standing up into the light. Matches the CSS. */
+  CITY_WAKES: 900,
   OPEN: 1700,
   /** An open that also reads out what it did needs longer. */
   OPEN_WITH_ABILITY: 2400,
@@ -158,6 +185,27 @@ const SLIDES: ReadonlySet<GameEvent['type']> = new Set([
   'CARD_BOTTOMED',
 ]);
 
+/** What an event changes on the board, if anything a beat should hold back. */
+function changes(event: GameEvent): { card?: CardInstanceId; city?: number } | null {
+  switch (event.type) {
+    case 'CARD_OPENED':
+    case 'CARD_DRAWN':
+    case 'DECK_SEARCHED':
+    case 'CARD_RETURNED':
+    case 'CARD_TRASHED':
+    case 'CHARACTER_MOVED':
+    case 'CHARACTER_DESTROYED':
+      return { card: event.card };
+    case 'DAMAGE_DEALT':
+      return { card: event.target };
+    case 'CITY_FLIPPED':
+    case 'CITY_OCCUPIED':
+      return { city: event.city };
+    default:
+      return null;
+  }
+}
+
 /**
  * Cuts a batch into the beats that show it, in the order the engine resolved
  * them, from the point of view of one seat.
@@ -166,7 +214,10 @@ const SLIDES: ReadonlySet<GameEvent['type']> = new Set([
  * Everything else is shown to both players alike.
  */
 export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[] {
-  const beats: Beat[] = [];
+  // Beats as they are made, each with the index of the event that opened it,
+  // so what happened *after* that event and before the next beat can be
+  // charged to it below.
+  const made: { anchor: number; beat: Moment }[] = [];
 
   // Abilities an open fired are folded into the open — one card, shown once,
   // with what it did — so those `ABILITY_RESOLVED` events are spoken for.
@@ -183,16 +234,18 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
   }, null);
 
   // A strike beat being assembled: blows land together, then the deaths.
-  let strike: { hits: Hit[]; deaths: CardInstanceId[] } | null = null;
+  let strike: { anchor: number; hits: Hit[]; deaths: CardInstanceId[] } | null = null;
   const closeStrike = (): void => {
     if (!strike) return;
-    const { hits, deaths } = strike;
-    const ms =
-      deaths.length > 0
-        ? (hits.length > 0 ? BEAT_MS.DEATH_AFTER : 0) + BEAT_MS.DEATH_FADE
-        : BEAT_MS.STRIKE;
+    const { anchor, hits, deaths } = strike;
+    // A death holds where it stood for a moment and then fades, whether or
+    // not a blow is drawn in front of it.
+    const ms = deaths.length > 0 ? BEAT_MS.DEATH_AFTER + BEAT_MS.DEATH_FADE : BEAT_MS.STRIKE;
     const combat = hits.some((hit) => hit.combat);
-    beats.push({ kind: 'strike', hits, deaths, city: combat ? battleCity : null, ms });
+    made.push({
+      anchor,
+      beat: { kind: 'strike', hits, deaths, city: combat ? battleCity : null, ms },
+    });
     strike = null;
   };
 
@@ -207,12 +260,15 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
           if (later.type === 'TURN_STARTED') break;
           if (later.type === 'PHASE_CHANGED') phases.push(later.phaseId);
         }
-        beats.push({
-          kind: 'turn',
-          player: event.player,
-          turnNumber: event.turnNumber,
-          phases,
-          ms: BEAT_MS.TURN,
+        made.push({
+          anchor: index,
+          beat: {
+            kind: 'turn',
+            player: event.player,
+            turnNumber: event.turnNumber,
+            phases,
+            ms: BEAT_MS.TURN,
+          },
         });
         break;
       }
@@ -221,27 +277,42 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
         // Spoken for by the turn banner if one is in this batch before it.
         const announced = events.slice(0, index).some((earlier) => earlier.type === 'TURN_STARTED');
         if (announced || event.player !== viewer) break;
-        const last = beats[beats.length - 1];
-        if (last && last.kind === 'phase') {
-          beats[beats.length - 1] = { ...last, phases: [...last.phases, event.phaseId] };
+        const last = made[made.length - 1];
+        if (last && last.beat.kind === 'phase') {
+          last.beat = { ...last.beat, phases: [...last.beat.phases, event.phaseId] };
         } else {
-          beats.push({
-            kind: 'phase',
-            player: event.player,
-            phases: [event.phaseId],
-            ms: BEAT_MS.PHASE,
+          made.push({
+            anchor: index,
+            beat: {
+              kind: 'phase',
+              player: event.player,
+              phases: [event.phaseId],
+              ms: BEAT_MS.PHASE,
+            },
           });
         }
         break;
       }
 
       case 'BATTLE_DECLARED':
-        beats.push({
-          kind: 'battle',
-          city: event.city,
-          attacker: event.attacker,
-          ms: BEAT_MS.BATTLE,
+        made.push({
+          anchor: index,
+          beat: {
+            kind: 'battle',
+            city: event.city,
+            attacker: event.attacker,
+            ms: BEAT_MS.BATTLE,
+          },
         });
+        break;
+
+      case 'CITY_FLIPPED':
+        if (event.faceUp) {
+          made.push({
+            anchor: index,
+            beat: { kind: 'cityWakes', city: event.city, ms: BEAT_MS.CITY_WAKES },
+          });
+        }
         break;
 
       case 'CARD_OPENED': {
@@ -253,26 +324,32 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
         const fired = firedAt >= 0 ? events[firedAt] : undefined;
         if (firedAt >= 0) folded.add(firedAt);
         const ability = fired && fired.type === 'ABILITY_RESOLVED' ? fired.text : undefined;
-        beats.push({
-          kind: 'open',
-          card: event.card,
-          player: event.player,
-          ...(ability !== undefined ? { ability } : {}),
-          ...(ability !== undefined && fizzled.has(event.card) ? { fizzled: true } : {}),
-          ms: ability === undefined ? BEAT_MS.OPEN : BEAT_MS.OPEN_WITH_ABILITY,
+        made.push({
+          anchor: index,
+          beat: {
+            kind: 'open',
+            card: event.card,
+            player: event.player,
+            ...(ability !== undefined ? { ability } : {}),
+            ...(ability !== undefined && fizzled.has(event.card) ? { fizzled: true } : {}),
+            ms: ability === undefined ? BEAT_MS.OPEN : BEAT_MS.OPEN_WITH_ABILITY,
+          },
         });
         break;
       }
 
       case 'ABILITY_RESOLVED':
         if (folded.has(index)) break;
-        beats.push({
-          kind: 'ability',
-          card: event.card,
-          player: event.player,
-          text: event.text,
-          ...(fizzled.has(event.card) ? { fizzled: true } : {}),
-          ms: BEAT_MS.ABILITY,
+        made.push({
+          anchor: index,
+          beat: {
+            kind: 'ability',
+            card: event.card,
+            player: event.player,
+            text: event.text,
+            ...(fizzled.has(event.card) ? { fizzled: true } : {}),
+            ms: BEAT_MS.ABILITY,
+          },
         });
         break;
 
@@ -280,7 +357,7 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
         // A blow that lands while a death is already pending starts a new
         // beat: two strikes in a row are two moments, not one.
         if (strike && strike.deaths.length > 0) closeStrike();
-        strike ??= { hits: [], deaths: [] };
+        strike ??= { anchor: index, hits: [], deaths: [] };
         strike.hits.push({
           source: event.source,
           target: event.target,
@@ -293,18 +370,21 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
       case 'CHARACTER_DESTROYED':
         // Joins the blow that killed it. A death with no strike before it (an
         // effect that destroys outright, §13) opens a beat of its own.
-        strike ??= { hits: [], deaths: [] };
+        strike ??= { anchor: index, hits: [], deaths: [] };
         strike.deaths.push(event.card);
         break;
 
       case 'CITY_OCCUPIED':
         // A city falling vacant pays nobody and is not announced.
         if (event.player !== null) {
-          beats.push({
-            kind: 'cityTaken',
-            city: event.city,
-            player: event.player,
-            ms: BEAT_MS.CITY_TAKEN,
+          made.push({
+            anchor: index,
+            beat: {
+              kind: 'cityTaken',
+              city: event.city,
+              player: event.player,
+              ms: BEAT_MS.CITY_TAKEN,
+            },
           });
         }
         break;
@@ -315,6 +395,32 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
   });
   closeStrike();
 
+  // Charge every board change to the beat it happened under: the last one
+  // opened at or before it. A change before any beat is shown at once — the
+  // cost paid for an open leaves the hand as the card is clicked, not when
+  // the card is held up. A turn beat holds nothing back either: it plays
+  // first and at once, so the unlocks and the draw it announces may as well
+  // slide under the banner.
+  const beats: Beat[] = made.map(({ beat }) => ({ ...beat, reveals: NOTHING }));
+  const held = made.map(() => ({ cards: new Set<CardInstanceId>(), cities: new Set<number>() }));
+  events.forEach((event, index) => {
+    const change = changes(event);
+    if (!change) return;
+    let owner = -1;
+    made.forEach((entry, at) => {
+      if (entry.anchor <= index && entry.beat.kind !== 'turn') owner = at;
+    });
+    const bucket = held[owner];
+    if (!bucket) return;
+    if (change.card !== undefined) bucket.cards.add(change.card);
+    if (change.city !== undefined) bucket.cities.add(change.city);
+  });
+  held.forEach((bucket, at) => {
+    const beat = beats[at];
+    if (beat)
+      beats[at] = { ...beat, reveals: { cards: [...bucket.cards], cities: [...bucket.cities] } };
+  });
+
   // Let the board finish moving before anything is held up over it. Not when
   // a turn banner opens the batch — it covers the cards sliding under it —
   // and a phase caption alone is not something to hold the board for.
@@ -323,7 +429,7 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
   const speaks = beats.some((beat) => beat.kind !== 'phase');
   if (!(first && first.kind === 'turn')) {
     const settle = Math.max(slides ? BEAT_MS.SETTLE : 0, speaks ? BEAT_MS.BREATH : 0);
-    if (settle > 0) beats.unshift({ kind: 'settle', ms: settle });
+    if (settle > 0) beats.unshift({ kind: 'settle', ms: settle, reveals: NOTHING });
   }
 
   return beats;

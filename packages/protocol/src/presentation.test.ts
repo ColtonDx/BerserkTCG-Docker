@@ -87,6 +87,15 @@ describe('planBeats', () => {
     expect(first?.ms).toBe(BEAT_MS.DEATH_AFTER + BEAT_MS.DEATH_FADE);
   });
 
+  it('wakes the city when the vanguard steps forward, after the lock has settled', () => {
+    const events: GameEvent[] = [
+      { type: 'VANGUARD_DESIGNATED', card: a },
+      { type: 'CITY_FLIPPED', city: 2, faceUp: true, cityLevel: 1 },
+      { type: 'BATTLE_STEP', step: 'opens', waitingOn: THEM },
+    ];
+    expect(kinds(events)).toEqual(['settle', 'cityWakes']);
+  });
+
   it('does not announce a city falling vacant', () => {
     const events: GameEvent[] = [{ type: 'CITY_OCCUPIED', city: 1, player: null }];
     expect(kinds(events)).toEqual([]);
@@ -105,6 +114,26 @@ describe('planBeats', () => {
       { type: 'CARD_DRAWN', player: THEM, card: c },
     ];
     expect(kinds(events)).toEqual(['settle', 'ability', 'turn', 'ability']);
+  });
+
+  it('charges each board change to the beat that explains it', () => {
+    const events: GameEvent[] = [
+      // Paid before the card is held up: the hand loses these at once.
+      { type: 'CARD_TRASHED', player: ME, card: c },
+      { type: 'CARD_OPENED', player: ME, card: a, city: 2 },
+      { type: 'DAMAGE_DEALT', source: a, target: b, amount: 4, combat: false },
+      { type: 'CHARACTER_DESTROYED', card: b },
+      { type: 'CITY_OCCUPIED', city: 2, player: ME },
+      { type: 'CARD_DRAWN', player: ME, card: c },
+    ];
+    const beats = planBeats(events, ME);
+    expect(beats.map((beat) => beat.kind)).toEqual(['settle', 'open', 'strike', 'cityTaken']);
+    const [settle, open, strike, taken] = beats;
+    expect(settle?.reveals.cards).toEqual([]);
+    expect(open?.reveals.cards).toEqual([a]);
+    expect(strike?.reveals.cards).toEqual([b]);
+    expect(taken?.reveals.cities).toEqual([2]);
+    expect(taken?.reveals.cards).toEqual([c]);
   });
 
   it('adds up to the time the screen is busy', () => {

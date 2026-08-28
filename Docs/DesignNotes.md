@@ -27,7 +27,7 @@
 - Set a card from their hand to an area
 - Activate a card that has a tap ability
 - Move an unlocked card (lock it) up to its maximum move distance
-- Attack a city in the area that you are in. Set cities will flip at this point.
+- Attack a city in the area that you are in. The city stays face down until a vanguard is named; until then the attack can be called off.
 
 16. If the player starts an attack, we go to the combat step. We can go to the combat step multiple times per turn but only once per area. and we go back to the main step after each combat step.
 
@@ -36,7 +36,7 @@
 - Set a card from their hand to an area
 - Activate a card that has a tap ability
 - Move an unlocked card (lock it) up to its maximum move distance
-- Attack a city in the area that you are in. Set cities will flip at this point.
+- Attack a city in the area that you are in. The city stays face down until a vanguard is named; until then the attack can be called off.
 
 16. If the player starts an attack, we go to the combat step. We can go to the combat step multiple times per turn but only once per area. and we go back to the main step after each combat step.
 
@@ -49,7 +49,7 @@
 
 1. Once the combat phase starts, the player who is NOT the turn player has an option to open a card in that area. They can choose not to.
 2. Turn player has an option to open a card in this area.
-3. Turn player selects their Vanguard (character that is attacking), and any additional creatures that are joining them in the battle. Those creatures lock.
+3. Turn player selects their Vanguard (character that is attacking) — a set city flips face up at this point, and the attack can no longer be called off — and any additional creatures that are joining them in the battle. Those creatures lock.
 4. Defending player locks creatures that will defend the city. If the defending player currently occupies the city, all creatures in the area MUST lock and be active in combat.
 5. Damage is dealth and combat resolves.
 6. Combat results in one of the following:
