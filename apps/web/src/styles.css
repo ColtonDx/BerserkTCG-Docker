@@ -188,6 +188,27 @@ body {
   color: var(--ink-faint);
 }
 
+/* A room password, under the create button: optional, and quiet about it. */
+.lobby__password {
+  width: 100%;
+  max-width: 320px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.browse__lock {
+  margin-right: 6px;
+  font-size: 12px;
+}
+
+/* DesignNotes 3 — the button that deals, once both decks are in. */
+.seats__start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
 .lobby__code {
   display: block;
   padding: 10px 12px;
@@ -1075,6 +1096,16 @@ button.card:hover {
   box-shadow:
     0 0 0 1px rgb(125 10 20 / 55%) inset,
     0 0 18px rgb(125 10 20 / 45%);
+}
+
+/* An attachment (Rules.md §13): tucked behind the character wearing it and
+ * a size smaller, so the pair read as one thing with something on it. */
+.card--attached {
+  --scale: 0.8;
+
+  margin-left: -46px;
+  z-index: 0;
+  opacity: 0.92;
 }
 
 /* Mid-slide between zones: over everything, and not a drop target. */

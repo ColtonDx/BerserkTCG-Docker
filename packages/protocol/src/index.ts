@@ -22,7 +22,7 @@ import type {
  *    breaking change so old tabs are told to reload instead of silently
  *    desyncing.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export * from './presentation.js';
 
@@ -47,8 +47,23 @@ export const OPENING_CEREMONY_MS = 6300;
 /* ------------------------------------------------------- client -> server */
 
 export interface ClientToServerEvents {
-  /** Join (or rejoin) a match as a seated player. */
-  'match:join': (payload: { matchId: MatchId }, ack: (result: JoinResult) => void) => void;
+  /**
+   * Join (or rejoin) a match as a seated player. A private room wants its
+   * password (DesignNotes 2); a seat already held needs none.
+   */
+  'match:join': (
+    payload: { matchId: MatchId; password?: string },
+    ack: (result: JoinResult) => void,
+  ) => void;
+
+  /**
+   * Deal the match. DesignNotes 3 — once both seats hold a legal deck,
+   * either player may start it; nothing deals on its own.
+   */
+  'match:start': (
+    payload: { matchId: MatchId },
+    ack: (result: { ok: true } | { ok: false; message: string }) => void,
+  ) => void;
 
   /**
    * Start a match against the computer. Both seats are filled at once, so it
@@ -56,8 +71,12 @@ export interface ClientToServerEvents {
    */
   'match:createSolo': (ack: (result: JoinResult) => void) => void;
 
-  /** Create a new match and take the first seat. */
-  'match:create': (ack: (result: JoinResult) => void) => void;
+  /**
+   * Create a new match and take the first seat. With a password the room is
+   * private (DesignNotes 2): it is listed, but joining needs the word.
+   * Without one, an open match waiting for an opponent is joined instead.
+   */
+  'match:create': (payload: { password?: string }, ack: (result: JoinResult) => void) => void;
 
   /** Leave the current match. */
   'match:leave': (payload: { matchId: MatchId }) => void;
@@ -145,6 +164,8 @@ export interface OpenMatch {
   readonly host: string;
   readonly seats: number;
   readonly capacity: number;
+  /** Needs a password to join. DesignNotes 2. */
+  readonly locked: boolean;
   /** Milliseconds since the match was made. */
   readonly age: number;
 }
@@ -181,8 +202,8 @@ export interface MatchLobby {
     /** Null until this seat has chosen a deck. */
     readonly deckName: string | null;
   }[];
-  /** True once both seats hold a legal deck and the match is dealing. */
-  readonly starting: boolean;
+  /** True once both seats hold a legal deck: either player may start. */
+  readonly ready: boolean;
 }
 
 export type SelectDeckResult =
@@ -194,7 +215,12 @@ export type ActionResult =
   | { readonly ok: false; readonly violation: RuleViolation };
 
 export type ServerErrorCode =
-  'MATCH_NOT_FOUND' | 'MATCH_FULL' | 'NOT_A_PLAYER' | 'PROTOCOL_MISMATCH' | 'INTERNAL';
+  | 'MATCH_NOT_FOUND'
+  | 'MATCH_FULL'
+  | 'WRONG_PASSWORD'
+  | 'NOT_A_PLAYER'
+  | 'PROTOCOL_MISMATCH'
+  | 'INTERNAL';
 
 /** Socket.IO namespace the game runs on. */
 export const GAME_NAMESPACE = '/game';

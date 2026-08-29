@@ -239,7 +239,11 @@ function revealedByPendingSearch(
   if (!pending || pending.waitingOn !== viewer || pending.kind.zone !== 'deck') {
     return new Set();
   }
-  return new Set(searchable(ctx, state, viewer, pending.kind.named).map((c) => c.instanceId));
+  return new Set(
+    searchable(ctx, state, viewer, pending.kind.named, pending.kind.characterOnly).map(
+      (c) => c.instanceId,
+    ),
+  );
 }
 
 function canSee(card: CardInstance, viewer: PlayerId): boolean {

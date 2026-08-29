@@ -27,11 +27,12 @@ function seatedMatch() {
   return { manager, match };
 }
 
-/** Seats both players and has them choose decks, so the match deals. */
+/** Seats both players, has them choose decks, and starts the match. */
 function dealtMatch() {
   const seated = seatedMatch();
   seated.manager.chooseDeck(seated.match.id, ALICE, legalDeck('alice'));
   seated.manager.chooseDeck(seated.match.id, BOB, legalDeck('bob'));
+  seated.manager.startMatch(seated.match.id, ALICE);
   return seated;
 }
 
@@ -57,8 +58,42 @@ describe('MatchManager', () => {
     expect(match.state).toBeNull();
 
     manager.chooseDeck(match.id, BOB, legalDeck('bob'));
+    // Both decks are in, and still nothing deals: DesignNotes 3 has one of
+    // the players press the button.
+    expect(match.state).toBeNull();
+    expect(manager.readyToStart(match)).toBe(true);
+    expect(manager.startMatch(match.id, CAROL).ok).toBe(false);
+
+    expect(manager.startMatch(match.id, BOB).ok).toBe(true);
     // Rules.md §9 — the match opens in setup while both players mulligan.
     expect(match.state?.status.kind).toBe('setup');
+    expect(manager.startMatch(match.id, ALICE).ok).toBe(false);
+  });
+
+  it('will not start before both decks are chosen', () => {
+    const { manager, match } = seatedMatch();
+    manager.chooseDeck(match.id, ALICE, legalDeck('alice'));
+    const early = manager.startMatch(match.id, ALICE);
+    expect(early.ok).toBe(false);
+    expect(match.state).toBeNull();
+  });
+
+  it('keeps a private room to those who know the word', () => {
+    // DesignNotes 2 — a room password.
+    const manager = new MatchManager();
+    const match = manager.create('griffith');
+    expect(manager.join(match.id, ALICE, 'Alice', null, 'griffith').ok).toBe(true);
+
+    const wrong = manager.join(match.id, BOB, 'Bob', null, 'guts');
+    expect(wrong.ok).toBe(false);
+    if (!wrong.ok) expect(wrong.code).toBe('WRONG_PASSWORD');
+    expect(manager.join(match.id, BOB, 'Bob', null, null).ok).toBe(false);
+    expect(manager.join(match.id, BOB, 'Bob', null, 'griffith').ok).toBe(true);
+
+    // A seat already held needs no password: reconnecting must not ask.
+    expect(manager.join(match.id, ALICE, 'Alice').ok).toBe(true);
+    // And a private room is never handed out as "an open match".
+    expect(manager.findOrCreateOpen().id).not.toBe(match.id);
   });
 
   it('refuses an illegal deck', () => {

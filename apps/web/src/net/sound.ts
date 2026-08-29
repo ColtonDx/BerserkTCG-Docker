@@ -295,3 +295,66 @@ export function playPhase(): void {
   // A second, quieter tail a beat behind, so it settles rather than stops.
   rush(ctx, now + 0.13, 0.34, 0.03, 480, 950);
 }
+
+/**
+ * A blow landing. Rules.md §11 ④.
+ *
+ * A thud with an edge on it: a low struck tone for the weight and a short
+ * burst of noise for the impact. Kept short so a band of several blows reads
+ * as several rather than as one long noise.
+ */
+export function playHit(): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  rush(ctx, now, 0.11, 0.16, 500, 1900);
+  ring(ctx, now + 0.005, 165, 0.38, 0.13, 1.51);
+}
+
+/**
+ * A character dying. Rules.md §12.
+ *
+ * The opposite of a draw: a long fall, the noise sweeping *down* and thinning
+ * as it goes, with a low tone under it that fades slower than the noise.
+ */
+export function playDeath(): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  rush(ctx, now, 0.55, 0.09, 1400, 260);
+  ring(ctx, now + 0.05, 110, 0.9, 0.07, 1.49);
+}
+
+/**
+ * A city waking to be fought over. Rules.md §5.
+ *
+ * A bell, rising: two struck tones a fifth apart, the second a beat behind,
+ * so it lifts rather than simply sounds.
+ */
+export function playCityWake(): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  ring(ctx, now, 523, 1.1, 0.07, 2.005);
+  ring(ctx, now + 0.14, 784, 1.3, 0.06, 2.01);
+}
+
+/**
+ * A city changing hands. Rules.md §12 — the biggest thing that happens.
+ *
+ * Three rising tones and a swell of air under them: a small fanfare, kept
+ * quiet enough to sit under the card being held up rather than over it.
+ */
+export function playCityTaken(): void {
+  const ctx = audio();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  rush(ctx, now, 0.5, 0.06, 300, 1600);
+  ring(ctx, now + 0.02, 440, 0.9, 0.06, 2.003);
+  ring(ctx, now + 0.16, 554, 0.9, 0.06, 2.006);
+  ring(ctx, now + 0.3, 659, 1.6, 0.08, 2.004);
+}

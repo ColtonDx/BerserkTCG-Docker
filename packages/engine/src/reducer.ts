@@ -20,6 +20,8 @@ import { ok, violation, type Result, type RuleViolation } from './result.js';
 import {
   activatedAbilities,
   activationCost,
+  areasFor,
+  askingAbilities,
   battleResult,
   canActivate,
   canCommit,
@@ -41,7 +43,7 @@ import {
   searchable,
   stillFighting,
   legalTargets,
-  targetingAbilities,
+  settable,
   turnOrdinal,
   OPENED_ON_TURN,
   uniqueConflict,
@@ -54,6 +56,7 @@ import type {
   BattleState,
   BattleStep,
   CardInstance,
+  Continuation,
   GameAction,
   GameEvent,
   GameState,
@@ -131,7 +134,7 @@ export function reduce(
     if (actor !== state.pending.waitingOn) {
       return violation('NOT_YOUR_PRIORITY', 'Waiting on your opponent to choose.', '§13');
     }
-    if (action.type !== 'CHOOSE_CARD') {
+    if (action.type !== 'CHOOSE_CARD' && action.type !== 'ANSWER') {
       return violation('WRONG_PHASE', 'Answer the card you are being asked for first.', '§13');
     }
   }
@@ -175,6 +178,7 @@ export function reduce(
     action.type !== 'CONCEDE' &&
     action.type !== 'USE_ABILITY' &&
     action.type !== 'CHOOSE_CARD' &&
+    action.type !== 'ANSWER' &&
     !inBattle &&
     state.quick === null &&
     state.turn.priorityPlayer !== actor
@@ -351,6 +355,9 @@ function applyAction(
     case 'CHOOSE_CARD':
       return settled(ctx, draft, events, chooseCard(ctx, draft, actor, action.card, events));
 
+    case 'ANSWER':
+      return settled(ctx, draft, events, answer(ctx, draft, actor, action.accept, events));
+
     case 'MULLIGAN':
     case 'BOTTOM_CARD':
     case 'KEEP_HAND':
@@ -467,6 +474,11 @@ function declareBattle(
   // `designateVanguard`. A declaration called off leaves the board exactly as
   // it found it.
 
+  // Remembered for cards that ask "if a battle was declared in this area
+  // this turn" (BK1-065) — a declaration counts even if it is called off.
+  if (!draft.turn.declaredCities.includes(cityIndex)) {
+    draft.turn.declaredCities = toDraft([...draft.turn.declaredCities, cityIndex]);
+  }
   events.push({ type: 'BATTLE_DECLARED', city: cityIndex, attacker: actor });
   events.push({ type: 'BATTLE_STEP', step: 'vanguard', waitingOn: actor });
   // The defender may want to answer before a vanguard is even named.
@@ -961,6 +973,8 @@ function endBattle(
     if (city.occupiedBy !== battle.attacker) {
       city.occupiedBy = battle.attacker;
       occupier = battle.attacker;
+      // "If you captured this area this turn" (BK1-039). Rules.md §13.
+      draft.turn.capturedCities = toDraft([...draft.turn.capturedCities, battle.city]);
       events.push({ type: 'CITY_OCCUPIED', city: battle.city, player: battle.attacker });
       // §12 — the city card's own effect: a fresh occupation draws two.
       drawInto(draft, battle.attacker, 2, events);
@@ -1109,6 +1123,23 @@ function openCard(
   if (uniqueConflict(ctx, draft, def)) {
     return violation('ILLEGAL_TARGET', `${def.name} is Unique and already on the field.`, '§8');
   }
+  // "This card can only be opened if …" — Rules.md §13, `Ability.gate`. The
+  // condition is read before anything is paid, so a shut gate costs nothing.
+  const shut = (def.abilities ?? []).find(
+    (ability) =>
+      ability.trigger === 'open' &&
+      ability.gate === true &&
+      !conditionHolds(
+        ctx,
+        draft as GameState,
+        card as CardInstance,
+        ability.condition,
+        draft.battle,
+      ),
+  );
+  if (shut) {
+    return violation('WRONG_PHASE', `${def.name} cannot be opened now: ${shut.text}`, '§13');
+  }
 
   const payCards: CardInstance[] = [];
   for (const id of pay) {
@@ -1212,6 +1243,7 @@ function moveCharacter(
   // Rules.md §6 — moving locks the character.
   card.locked = true;
   card.cityIndex = city;
+  arrived(draft, actor, city);
   events.push({ type: 'CHARACTER_MOVED', card: cardId, from, to: city });
   return ok(true);
 }
@@ -1328,6 +1360,11 @@ function beginTurn(
     turnNumber,
     openedThisTurn: false,
     battledCities: [],
+    declaredCities: [],
+    capturedCities: [],
+    arrivals: [],
+    drawSkipped: false,
+    drawAtEnd: 0,
   };
 
   events.push({ type: 'TURN_STARTED', player, turnNumber });
@@ -1434,6 +1471,8 @@ function applyRefresh(draft: Draft<GameState>, player: PlayerId, events: GameEve
  * Returns false if the match ended.
  */
 function applyDraw(draft: Draft<GameState>, player: PlayerId, events: GameEvent[]): boolean {
+  // Given up this turn for cards later (BK1-066). Rules.md §13.
+  if (draft.turn.drawSkipped) return true;
   const isFirstPlayersFirstTurn = draft.turn.turnNumber === 1 && player === draft.seats[0];
   if (isFirstPlayersFirstTurn) return true;
   return drawInto(draft, player, 1, events);
@@ -1477,6 +1516,12 @@ function applyEndOfTurn(
   player: PlayerId,
   events: GameEvent[],
 ): void {
+  // Cards owed at the end of the turn in place of the Draw phase (BK1-066),
+  // before anything else the end of the turn does.
+  if (draft.turn.drawAtEnd > 0) {
+    drawInto(draft, player, draft.turn.drawAtEnd, events);
+    draft.turn.drawAtEnd = 0;
+  }
   // Rules.md §13 — "at the end of the turn" abilities go off before the board
   // is tidied, or a character that returns to hand would be tidied first.
   fireTurnTrigger(ctx, draft, player, 'turnEnd', events);
@@ -1599,7 +1644,7 @@ function checkTargets(
   targets: readonly CardInstanceId[],
   areas: readonly number[] = [],
 ): Result<Choices, RuleViolation> {
-  const asking = targetingAbilities(ctx, source, 'open');
+  const asking = askingAbilities(ctx, source, 'open');
   if (targets.length > asking.length) {
     return violation('ILLEGAL_TARGET', 'That card does not ask for that many targets.', '§13');
   }
@@ -1611,31 +1656,32 @@ function checkTargets(
   const chosenAreas: (number | undefined)[] = [];
 
   for (const [index, ability] of asking.entries()) {
-    const picked = targets[index];
-    if (picked === undefined) {
+    let picked: CardInstanceId | undefined;
+    if (ability.target) {
+      picked = targets[index];
+      if (picked !== undefined) {
+        const allowed = legalTargets(ctx, draft, source, ability.target, draft.battle);
+        if (!allowed.some((card) => card.instanceId === picked)) {
+          return violation('ILLEGAL_TARGET', 'That character cannot be targeted.', '§13');
+        }
+      }
       // Nothing chosen is a real outcome, not an error: the ability resolves
       // and finds nobody.
-      cards.push(undefined);
-      chosenAreas.push(undefined);
-      continue;
-    }
-    const allowed = legalTargets(ctx, draft, source, ability.target);
-    if (!allowed.some((card) => card.instanceId === picked)) {
-      return violation('ILLEGAL_TARGET', 'That character cannot be targeted.', '§13');
     }
     cards.push(picked);
 
     // The area, where the ability asks for one. Validated against the chosen
-    // character, because "adjacent" is adjacent to *them* — see `areasFor`.
-    if (ability.target.area === undefined) {
+    // character where the kind is relative to one, because "adjacent" is
+    // adjacent to *them* — see `areasFor`.
+    if (ability.area === undefined || (ability.target !== undefined && picked === undefined)) {
       chosenAreas.push(undefined);
       continue;
     }
-    const options = areasFor(draft, ability.target.area, picked);
-    const area = areas[index] ?? options[0];
+    const options = areasFor(ctx, draft, ability.area, source, picked);
+    const area = areas[index] ?? (options.length === 1 ? options[0] : undefined);
     if (area === undefined) {
-      // Nowhere to send them — an area at the end of the row with the only
-      // neighbour somehow gone. The move finds nowhere and does nothing.
+      // Nowhere to send them, or a choice the client did not make when there
+      // was one. The move finds nowhere and does nothing.
       chosenAreas.push(undefined);
       continue;
     }
@@ -1652,25 +1698,6 @@ function checkTargets(
 interface Choices {
   readonly cards: readonly (CardInstanceId | undefined)[];
   readonly areas: readonly (number | undefined)[];
-}
-
-/**
- * The areas an ability may send its chosen character to. Rules.md §13.
- *
- * `adjacent` is the row's neighbours of wherever that character is standing —
- * the cities are a line, so it is index ±1, and the ends of the row have one
- * neighbour rather than two. The single implementation, so `legalActions` and
- * `reduce` cannot disagree about what "adjacent" means.
- */
-export function areasFor(
-  state: Pick<GameState, 'cards' | 'cities'>,
-  kind: 'adjacent',
-  target: CardInstanceId,
-): number[] {
-  void kind;
-  const from = state.cards[target]?.cityIndex;
-  if (from === undefined) return [];
-  return [from - 1, from + 1].filter((index) => index >= 0 && index < state.cities.length);
 }
 
 /**
@@ -1754,7 +1781,7 @@ function useAbility(
   // would need the same (character, area) plumbing the on-open path has.
   // Refusing is better than accepting the field and quietly ignoring it —
   // silently dropping a choice the player made is the worse failure.
-  if (entry.ability.target?.area !== undefined) {
+  if (entry.ability.area !== undefined) {
     return violation(
       'NOT_IMPLEMENTED',
       'Choosing an area for a cost-bearing ability is not built yet.',
@@ -1807,12 +1834,14 @@ function fireAbilities(
   let asked = 0;
   for (const ability of definitionOf(ctx, source).abilities ?? []) {
     if (ability.trigger !== trigger) continue;
-    const index = ability.target ? asked++ : -1;
+    const index = ability.target !== undefined || ability.area !== undefined ? asked++ : -1;
     const chosen = index >= 0 ? choices.cards[index] : undefined;
     const area = index >= 0 ? choices.areas[index] : undefined;
     if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) continue;
-    // An ability that asked for a target and got nobody has nothing to do.
+    // An ability that asked for a target and got nobody has nothing to do,
+    // and one that asked for an area and got nowhere likewise.
     if (ability.target && chosen === undefined) continue;
+    if (ability.area && area === undefined) continue;
     resolveEffect(ctx, draft, source, ability, events, chosen, area);
   }
 }
@@ -1839,26 +1868,22 @@ function resolveEffect(
     text: ability.text,
   });
 
-  let did = runEffect(ctx, draft, source, ability.effect, events, chosen, ability.text, area);
-  for (const next of ability.then ?? []) {
-    // An effect that stopped to ask has suspended the ability (§13), and what
-    // follows it on the printed line has not happened yet. No card in the set
-    // asks in the middle of its own sentence — both that do ask, ask last — so
-    // rather than build a continuation nobody needs, this is an engine bug if
-    // it ever fires, and it says so instead of silently dropping the rest.
-    if (draft.pending) {
-      throw new Error(
-        `${source.defId}: "${ability.text}" asks the player a question before the end of its own line; ` +
-          'a resumable effect chain would be needed to finish it.',
-      );
-    }
-    did = runEffect(ctx, draft, source, next, events, chosen, ability.text, area) || did;
-  }
+  const did = runChain(
+    ctx,
+    draft,
+    source,
+    [ability.effect, ...(ability.then ?? [])],
+    events,
+    chosen,
+    ability.text,
+    area,
+  );
 
   // Rules.md §13 resolves what it can, and sometimes that is nothing. Said
   // out loud, because a card that came forward and changed nothing otherwise
-  // looks like a card that does not work.
-  if (!did) {
+  // looks like a card that does not work. A line that stopped to ask has not
+  // finished, and is not nothing.
+  if (!did && !draft.pending) {
     events.push({
       type: 'ABILITY_FIZZLED',
       card: source.instanceId,
@@ -1866,6 +1891,44 @@ function resolveEffect(
       text: ability.text,
     });
   }
+}
+
+/**
+ * Runs the effects of one printed line in order. Rules.md §13.
+ *
+ * An effect that stops to ask suspends the line: whatever follows it is
+ * written onto the pending choice as its `then`, and `finishChoice` runs it
+ * once the answer is in — "search your deck for a character … then draw 1
+ * card" draws after the search, in printed order, however long the player
+ * takes over the search.
+ */
+function runChain(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  effects: readonly Effect[],
+  events: GameEvent[],
+  chosen: CardInstanceId | undefined,
+  text: string,
+  area: number | undefined,
+): boolean {
+  let did = false;
+  for (const [index, effect] of effects.entries()) {
+    did = runEffect(ctx, draft, source, effect, events, chosen, text, area) || did;
+    if (draft.pending) {
+      const rest = effects.slice(index + 1);
+      if (rest.length > 0) {
+        const then: Continuation = {
+          effects: rest,
+          ...(chosen !== undefined ? { chosen } : {}),
+          ...(area !== undefined ? { area } : {}),
+        };
+        draft.pending.then = toDraft(then);
+      }
+      return true;
+    }
+  }
+  return did;
 }
 
 /**
@@ -1935,6 +1998,7 @@ function runEffect(
         // Never ask for more than the hand holds: a player owing two discards
         // from a hand of one would be stuck on a question with no answer.
         count: Math.min(effect.count, handSize(draft, player)),
+        upTo: false,
         kind: { zone: 'hand', action: 'discard' },
       });
       return pushed();
@@ -1946,19 +2010,86 @@ function runEffect(
       // A search that can find nothing does not stop to ask — the effect
       // resolves, finds nobody, and play carries on (Rules.md §13). The deck
       // is still shuffled, because the player has looked through it.
-      const found = searchable(ctx, draft, player, effect.named);
+      const found = searchable(ctx, draft, player, effect.named, effect.characterOnly === true);
       if (found.length === 0) {
         shuffleDeck(draft, player);
         return false;
       }
+      const to = effect.to ?? 'hand';
       askFor(draft, events, {
         waitingOn: player,
         source: source.instanceId,
         text,
         count: Math.min(effect.count, found.length),
-        kind: { zone: 'deck', action: 'toHand', named: effect.named },
+        upTo: effect.upTo === true,
+        kind: {
+          zone: 'deck',
+          action: to === 'hand' ? 'toHand' : to === 'trash' ? 'toTrash' : 'toCity',
+          named: effect.named,
+          characterOnly: effect.characterOnly === true,
+          ...(to === 'set' && source.cityIndex !== undefined ? { city: source.cityIndex } : {}),
+          reveal: effect.reveal === true,
+        },
       });
       return pushed();
+    }
+
+    case 'setFromHand': {
+      // "You may set … and immediately open it" (BK1-061). Nothing eligible in
+      // hand is nothing to ask; otherwise the player picks one, or none.
+      if (source.cityIndex === undefined) return false;
+      const eligible = settable(ctx, draft as GameState, controller, effect.maxLevel);
+      if (eligible.length === 0) return false;
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: 1,
+        upTo: true,
+        kind: {
+          zone: 'hand',
+          action: 'setAndOpen',
+          city: source.cityIndex,
+          maxLevel: effect.maxLevel,
+        },
+      });
+      return pushed();
+    }
+
+    case 'may': {
+      // A yes or no. What follows a yes rides on the choice as its `then`.
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: 1,
+        upTo: false,
+        kind: { zone: 'decision' },
+        then: { effects: effect.effects, ...(chosen !== undefined ? { chosen } : {}) },
+      });
+      return pushed();
+    }
+
+    case 'skipDraw': {
+      // Only the turn player's own Draw phase, and only before it has run:
+      // the trigger that carries this fires at the start of the turn.
+      if (draft.turn.activePlayer !== controller || draft.turn.drawSkipped) return false;
+      draft.turn.drawSkipped = true;
+      draft.turn.drawAtEnd += effect.atEnd;
+      events.push({ type: 'DRAW_SKIPPED', player: controller });
+      return true;
+    }
+
+    case 'attach': {
+      const host = selected(ctx, draft, source, effect.who, chosen)[0];
+      if (!host || host.instanceId === source.instanceId) return false;
+      const wearer = draft.cards[source.instanceId];
+      if (!wearer) return false;
+      wearer.attachedTo = host.instanceId;
+      // It stands where its host stands. `refreshBoard` keeps it there.
+      if (host.cityIndex !== undefined) wearer.cityIndex = host.cityIndex;
+      events.push({ type: 'CARD_ATTACHED', card: source.instanceId, to: host.instanceId });
+      return true;
     }
 
     case 'unlock': {
@@ -2020,7 +2151,7 @@ function runEffect(
       // stands — an ability whose own card has left the field has nowhere to
       // send anybody — and "an adjacent area" is the one the player picked,
       // already checked against the chosen character by `checkTargets`.
-      const to = effect.where === 'adjacentArea' ? area : source.cityIndex;
+      const to = effect.where === 'chosenArea' ? area : source.cityIndex;
       if (to === undefined) return false;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         const from = card.cityIndex;
@@ -2028,6 +2159,7 @@ function runEffect(
         // Not locked and no Move spent: this is the effect moving them, not
         // the character taking their Main-phase move (Rules.md §10 ④(1), §14).
         card.cityIndex = to;
+        if (card.faceUp) arrived(draft, card.controller, to);
         events.push({ type: 'CHARACTER_MOVED', card: card.instanceId, from, to });
       }
       // A city whose occupier has just walked away is no longer theirs
@@ -2186,29 +2318,71 @@ function chooseCard(
   if (actor !== pending.waitingOn) {
     return violation('NOT_YOUR_PRIORITY', 'That choice is not yours to make.', '§13');
   }
-
-  const card = draft.cards[cardId];
-  if (!card || card.controller !== actor || card.zone !== pending.kind.zone) {
-    return violation('CARD_NOT_IN_ZONE', `That card is not in your ${pending.kind.zone}.`, '§13');
+  const kind = pending.kind;
+  if (kind.zone === 'decision') {
+    return violation('WRONG_PHASE', 'That is a yes or no, not a card.', '§13');
   }
 
-  if (pending.kind.action === 'discard') {
+  const card = draft.cards[cardId];
+  if (!card || card.controller !== actor || card.zone !== kind.zone) {
+    return violation('CARD_NOT_IN_ZONE', `That card is not in your ${kind.zone}.`, '§13');
+  }
+
+  if (kind.zone === 'hand' && kind.action === 'discard') {
     moveToZone(draft, cardId, { player: actor, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
+  } else if (kind.zone === 'hand') {
+    // Set and open at once, paying nothing (BK1-061). The level ceiling is
+    // re-checked here rather than trusted from the client.
+    const eligible = settable(ctx, draft as GameState, actor, kind.maxLevel);
+    if (!eligible.some((c) => c.instanceId === cardId)) {
+      return violation('ILLEGAL_TARGET', 'That card cannot be set by this effect.', '§13');
+    }
+    moveToCity(draft, cardId, kind.city, { controller: actor, faceUp: false });
+    events.push({ type: 'CARD_SET', player: actor, card: cardId, city: kind.city });
+    card.faceUp = true;
+    card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+    events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city: kind.city });
+    // The card's own on-open abilities fire, with nothing chosen for them:
+    // the effect said "open it", not "open it and point it at somebody".
+    fireAbilities(ctx, draft, card as CardInstance, 'open', events);
+    refreshBoard(ctx, draft, events);
   } else {
-    // The name restriction is re-checked here rather than trusted from the
+    // The restrictions are re-checked here rather than trusted from the
     // client: `legalActions` only offers matching cards, and `reduce` never
     // takes that on faith.
-    const name = definitionOf(ctx, card as CardInstance).name;
-    if (pending.kind.named !== null && name !== pending.kind.named) {
-      return violation('ILLEGAL_TARGET', `That card is not a ${pending.kind.named}.`, '§13');
+    const def = definitionOf(ctx, card as CardInstance);
+    if (kind.named !== null && def.name !== kind.named) {
+      return violation('ILLEGAL_TARGET', `That card is not a ${kind.named}.`, '§13');
     }
-    moveToZone(draft, cardId, { player: actor, zone: 'hand' });
-    events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
+    if (kind.characterOnly && !isCharacter(ctx, card as CardInstance)) {
+      return violation('ILLEGAL_TARGET', 'That card is not a character.', '§13');
+    }
+    if (kind.reveal) events.push({ type: 'CARD_REVEALED', player: actor, card: cardId });
+    if (kind.action === 'toHand') {
+      moveToZone(draft, cardId, { player: actor, zone: 'hand' });
+      events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
+    } else if (kind.action === 'toTrash') {
+      moveToZone(draft, cardId, { player: actor, zone: 'trash' });
+      events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
+      events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
+    } else {
+      const city = kind.city;
+      if (city === undefined) return violation('WRONG_PHASE', 'Nowhere to set that card.', '§13');
+      moveToCity(draft, cardId, city, { controller: actor, faceUp: false });
+      events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
+      events.push({ type: 'CARD_SET', player: actor, card: cardId, city });
+    }
   }
 
   const left = pending.count - 1;
-  if (left > 0) {
+  // The choice goes on while cards are owed *and* there is anything left to
+  // choose from — a search for two Mercenaries with one in the deck ends when
+  // that one is taken, rather than waiting on a question with no answer.
+  const remaining = legalActions(ctx, draft as GameState, actor).some(
+    (action) => action.type === 'CHOOSE_CARD',
+  );
+  if (left > 0 && remaining) {
     pending.count = left;
     events.push({
       type: 'CHOICE_REQUIRED',
@@ -2220,10 +2394,74 @@ function chooseCard(
     return ok(true);
   }
 
-  const searched = pending.kind.zone === 'deck';
-  draft.pending = null;
-  if (searched) shuffleDeck(draft, actor);
+  finishChoice(ctx, draft, events);
   return ok(true);
+}
+
+/**
+ * A yes or a no, or "that will do". Rules.md §13, `ANSWER`.
+ *
+ * On a decision, yes runs what the line said follows and no drops it. On an
+ * "up to" choice, no ends the choice where it stands; yes is not an answer
+ * to a question that was not asked.
+ */
+function answer(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  actor: PlayerId,
+  accept: boolean,
+  events: GameEvent[],
+): Result<true, RuleViolation> {
+  const pending = draft.pending;
+  if (!pending) return violation('WRONG_PHASE', 'Nothing is waiting on an answer.', '§13');
+  if (actor !== pending.waitingOn) {
+    return violation('NOT_YOUR_PRIORITY', 'That choice is not yours to make.', '§13');
+  }
+  if (pending.kind.zone === 'decision') {
+    if (!accept) delete pending.then;
+    finishChoice(ctx, draft, events);
+    return ok(true);
+  }
+  if (!pending.upTo) {
+    return violation('WRONG_PHASE', 'That choice has to be made in full.', '§13');
+  }
+  if (accept) return violation('WRONG_PHASE', 'Choose a card, or stop.', '§13');
+  finishChoice(ctx, draft, events);
+  return ok(true);
+}
+
+/**
+ * Closes the outstanding choice: shuffles a searched deck (the search is
+ * over at that point, not before) and runs whatever the printed line still
+ * had to say — which may stop to ask again, and then this is called again.
+ */
+function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const pending = draft.pending;
+  if (!pending) return;
+  const searched = pending.kind.zone === 'deck';
+  const player = pending.waitingOn;
+  const rest = pending.then;
+  const source = draft.cards[pending.source];
+  const text = pending.text;
+  draft.pending = null;
+  if (searched) shuffleDeck(draft, player);
+  if (rest && source) {
+    runChain(
+      ctx,
+      draft,
+      source as CardInstance,
+      rest.effects,
+      events,
+      rest.chosen,
+      text,
+      rest.area,
+    );
+  }
+}
+
+/** Notes a character arriving in a city this turn, for cards that ask. */
+function arrived(draft: Draft<GameState>, player: PlayerId, city: number): void {
+  draft.turn.arrivals = toDraft([...draft.turn.arrivals, { player, city }]);
 }
 
 /** Every face-up card on the field, so turn triggers can sweep the board. */

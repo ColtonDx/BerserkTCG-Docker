@@ -49,6 +49,7 @@ const SPEAKS: ReadonlySet<Beat['kind']> = new Set([
   'battle',
   'cityWakes',
   'open',
+  'reveal',
   'ability',
   'strike',
   'cityTaken',

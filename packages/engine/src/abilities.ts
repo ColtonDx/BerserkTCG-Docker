@@ -23,6 +23,15 @@ export interface StatLine {
 }
 
 /**
+ * What an attachment lends its host. Range is here and not in `StatLine`
+ * because nothing else in the set moves it: it is printed-only everywhere but
+ * on a character wearing a Sylph Sword (BK1-076). Rules.md §11 ④.
+ */
+export interface Grants extends StatLine {
+  readonly range?: number;
+}
+
+/**
  * Which cards an ability reaches, relative to the card that has it.
  *
  * Defaults are the narrow reading: the source itself, its controller's side,
@@ -69,18 +78,6 @@ export interface TargetSpec {
   readonly side?: 'yours' | 'theirs' | 'any';
   readonly where?: 'thisArea' | 'anywhere';
   readonly subtype?: string;
-  /**
-   * The ability also asks for an **area**, chosen after the character.
-   *
-   * `adjacent` is the only kind so far: "move it to an adjacent area"
-   * (BK1-032), meaning a city next to the chosen character's own, which is
-   * index ±1 along the row. It is a real choice anywhere but the two ends,
-   * where only one neighbour exists and the engine takes it without asking.
-   *
-   * The choice travels in `OPEN_CARD.areas` / `USE_ABILITY.areas`, not in
-   * `targets`: an area is not a card, and an ability may want either or both.
-   */
-  readonly area?: 'adjacent';
   /** Rules.md §7 — some effects only reach small characters. */
   readonly maxLevel?: number;
   /** Rules.md §3 — some effects only reach one colour. */
@@ -110,6 +107,20 @@ export interface TargetSpec {
   readonly maxDistance?: number;
 }
 
+/**
+ * Which areas an ability lets the player choose between. Rules.md §13.
+ *
+ * - `adjacent` — a city next to the chosen character's own (BK1-032), index
+ *   ±1 along the row. A real choice anywhere but the two ends.
+ * - `anyOther` — any city but the one the card stands in (BK1-068).
+ * - `enemyLevel3` — any city where the opponent has a character of Level 3
+ *   or more standing face up (BK1-062).
+ *
+ * The choice travels in `OPEN_CARD.areas` / `USE_ABILITY.areas`, not in
+ * `targets`: an area is not a card, and an ability may want either or both.
+ */
+export type AreaKind = 'adjacent' | 'anyOther' | 'enemyLevel3';
+
 /** What has to be true for the ability to apply. */
 export type Condition =
   /** A card of this name is face up on your side, anywhere. */
@@ -123,7 +134,13 @@ export type Condition =
   /** The other player occupies the area it stands in. */
   | { readonly when: 'enemyOccupiesThisArea' }
   /** It was opened this turn. Rules.md §7. */
-  | { readonly when: 'openedThisTurn' };
+  | { readonly when: 'openedThisTurn' }
+  /** Its controller took the area it stands in this turn. Rules.md §12. */
+  | { readonly when: 'youCapturedThisArea' }
+  /** A battle was declared over its area this turn, by anyone. Rules.md §11. */
+  | { readonly when: 'battleDeclaredThisArea' }
+  /** No enemy character arrived in its area this turn, by move or effect. */
+  | { readonly when: 'noEnemyArrivedThisArea' };
 
 /**
  * What the ability does when it applies.
@@ -168,19 +185,54 @@ export type Effect =
    */
   | { readonly do: 'discard'; readonly player: 'you' | 'opponent'; readonly count: number }
   /**
-   * Take a card out of your deck and shuffle. Rules.md §13.
+   * Take cards out of your deck and shuffle. Rules.md §13.
    *
    * `named` is the printed restriction — "add 1 Serpico from your deck" — and
-   * matches the card's printed *name*, so any printing of it will do. A search
-   * that finds nothing simply finds nothing; it is not an error and does not
-   * stop to ask.
+   * matches the card's printed *name*, so any printing of it will do;
+   * `characterOnly` is "search for a character". A search that finds nothing
+   * simply finds nothing; it is not an error and does not stop to ask.
+   *
+   * `upTo` lets the player stop short of `count`. `to` says where the cards
+   * go: the hand, the Trash (BK1-075), or face down into this area as Set
+   * Cards (BK1-025). `reveal` shows the opponent what was taken (BK1-065).
    */
   | {
       readonly do: 'search';
       readonly player: 'you';
       readonly count: number;
       readonly named: string | null;
+      readonly characterOnly?: boolean;
+      readonly upTo?: boolean;
+      readonly to?: 'hand' | 'trash' | 'set';
+      readonly reveal?: boolean;
     }
+  /**
+   * Set a character from hand into this area and open it at once, paying
+   * nothing and ignoring City Level (BK1-061). Rules.md §13 — the card names
+   * a Level ceiling precisely because the usual gate does not apply. Always
+   * "you may": the player can decline.
+   *
+   * RULES: the printed line does not say whether the cost is paid. Read as
+   * free — a Level 3 Quick whose whole point is putting Guts on the table.
+   */
+  | { readonly do: 'setFromHand'; readonly maxLevel: number | null }
+  /**
+   * "You may …": a yes or no, and the effects that follow a yes. Rules.md
+   * §13. Stops the game on the question like any other pending choice.
+   */
+  | { readonly do: 'may'; readonly effects: readonly Effect[] }
+  /**
+   * Give up this turn's Draw phase and draw `atEnd` cards at the end of the
+   * turn instead (BK1-066). Only meaningful at the start of a turn, before
+   * the Draw phase has run.
+   */
+  | { readonly do: 'skipDraw'; readonly atEnd: number }
+  /**
+   * Attach the source to the chosen character. Rules.md §13. The grants are
+   * read off the board while both stand — see `rules.ts:continuousBonus` and
+   * `rangeOf` — and the attachment leaves with its host.
+   */
+  | { readonly do: 'attach'; readonly who: Selector; readonly grants: Grants }
   | { readonly do: 'unlock'; readonly who: Selector }
   | { readonly do: 'returnToHand'; readonly who: Selector }
   /**
@@ -225,16 +277,16 @@ export type Effect =
    *
    * - `sourceArea` — "move that character to this area", where "this" is the
    *   card doing the moving.
-   * - `adjacentArea` — "move it to an adjacent area" (BK1-032). Which one is
-   *   the player's choice, and it is a real one at any city but the two ends
-   *   of the row, so it is asked as a second target: `TargetSpec.area` marks
-   *   the ability as wanting an area, and the destination rides in the
-   *   action's `areas` alongside its chosen characters.
+   * - `chosenArea` — wherever the player picked: `Ability.area` marks the
+   *   ability as wanting an area (adjacent for BK1-032, any other for
+   *   BK1-068, one the enemy holds a Level 3 in for BK1-062), and the
+   *   destination rides in the action's `areas` alongside its chosen
+   *   characters.
    */
   | {
       readonly do: 'moveTo';
       readonly who: Selector;
-      readonly where: 'sourceArea' | 'adjacentArea';
+      readonly where: 'sourceArea' | 'chosenArea';
     }
   /** Rules.md §11 — may not lead or join an attack. */
   | { readonly do: 'cannotAttack'; readonly who: Selector };
@@ -295,6 +347,19 @@ export interface Ability {
    */
   readonly then?: readonly Effect[];
   readonly condition?: Condition;
+  /**
+   * The condition gates the *open* rather than the effect: "this card can
+   * only be opened if …" (BK1-039, BK1-065). A card whose gate is shut is
+   * never offered and is refused — the ordinary reading would let it be
+   * opened and do nothing, which is a Set Card thrown away.
+   */
+  readonly gate?: boolean;
+  /**
+   * The ability asks the player to choose an area. Rules.md §13. With a
+   * `target`, the area is chosen after the character (BK1-032: "move it to
+   * an adjacent area"); without one, the area is the only choice (BK1-068).
+   */
+  readonly area?: AreaKind;
   /**
    * Whose turns a turn-edge trigger answers to, and the difference is printed
    * on the cards: Corkus says "at the start of **your** turn" and BK1-003
@@ -518,8 +583,9 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       trigger: 'open',
       // "an enemy character that is level 2 or less in this area" — three
       // narrowings, all printed, plus the area the effect sends it to.
-      target: { side: 'theirs', where: 'thisArea', maxLevel: 2, area: 'adjacent' },
-      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'adjacentArea' },
+      target: { side: 'theirs', where: 'thisArea', maxLevel: 2 },
+      area: 'adjacent',
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'chosenArea' },
       // One printed line, one ability: the draw rides in `then` so it cannot
       // be taken without the move.
       then: [{ do: 'draw', player: 'you', count: 1 }],
@@ -879,6 +945,117 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       target: { where: 'thisArea', colour: 'black' },
       effect: { do: 'destroy', who: { scope: 'target' } },
       text: 'When this card is opened, destroy 1 black character in this area.',
+    },
+  ],
+
+  'BK1-025': [
+    {
+      trigger: 'open',
+      // "Up to 2": a ceiling, so the player may stop after one or none. Found
+      // cards go face down into this area as Set Cards.
+      effect: { do: 'search', player: 'you', count: 2, upTo: true, named: 'Mercenary', to: 'set' },
+      text: 'Search your deck for up to 2 cards named Mercenary and set them in this area.',
+    },
+  ],
+  'BK1-039': [
+    {
+      trigger: 'open',
+      // The condition gates the open itself: a card that "can only be opened
+      // if" is never offered otherwise.
+      condition: { when: 'youCapturedThisArea' },
+      gate: true,
+      effect: { do: 'search', player: 'you', count: 3, upTo: true, named: 'Mercenary', to: 'set' },
+      text: 'This card can only be opened if you captured this area this turn. Search your deck for up to 3 Mercenary cards and set them in this area.',
+    },
+  ],
+  'BK1-061': [
+    {
+      trigger: 'open',
+      condition: { when: 'noEnemyArrivedThisArea' },
+      // "You may": the choice stops to ask, and finishing with nothing set
+      // is a legal answer.
+      effect: { do: 'setFromHand', maxLevel: 4 },
+      text: 'When this card is opened, if an opponent did not move a character to this area this turn, you may set 1 level 4 or lower character from your hand in this area, and immediately open it.',
+    },
+  ],
+  'BK1-062': [
+    {
+      trigger: 'open',
+      target: { side: 'yours', where: 'thisArea' },
+      area: 'enemyLevel3',
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'chosenArea' },
+      text: 'Move 1 character you control from this area to any area that an opponent has a character of level 3 or higher in.',
+    },
+  ],
+  'BK1-065': [
+    {
+      trigger: 'open',
+      condition: { when: 'battleDeclaredThisArea' },
+      gate: true,
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 1,
+        named: null,
+        characterOnly: true,
+        to: 'hand',
+        reveal: true,
+      },
+      // The draw waits for the search to be answered — see `Continuation`.
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'Open this card only if a battle was declared in this area this turn by either player. Search your deck for a character, reveal it, and add it to your hand. Then draw 1 card.',
+    },
+  ],
+  'BK1-066': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards. At the start of your turn, you may choose to skip your draw phase and if you do, draw 2 cards at the end of your turn instead.',
+    },
+    {
+      trigger: 'turnStart',
+      // Asked before the Draw phase runs — `beginTurn` fires this trigger
+      // and then stops on the question.
+      effect: { do: 'may', effects: [{ do: 'skipDraw', atEnd: 2 }] },
+      text: 'When this card is opened, draw 2 cards. At the start of your turn, you may choose to skip your draw phase and if you do, draw 2 cards at the end of your turn instead.',
+    },
+  ],
+  'BK1-068': [
+    {
+      trigger: 'open',
+      // No character to point at: the area is the whole choice.
+      area: 'anyOther',
+      effect: {
+        do: 'moveTo',
+        who: { scope: 'any', side: 'yours', where: 'thisArea', faceDown: true },
+        where: 'chosenArea',
+      },
+      text: 'When this card is opened, move all your set cards from this area to any other area.',
+    },
+  ],
+  'BK1-075': [
+    {
+      trigger: 'open',
+      effect: { do: 'search', player: 'you', count: 3, named: null, to: 'trash' },
+      then: [{ do: 'draw', player: 'you', count: 2 }],
+      text: 'When this card is opened, choose 3 cards from your deck and send them to the graveyard. Then draw 2 cards.',
+    },
+  ],
+  'BK1-076': [
+    {
+      trigger: 'open',
+      // "A character" — either side's, as printed.
+      target: { where: 'anywhere' },
+      effect: { do: 'attach', who: { scope: 'target' }, grants: { power: 3, range: 1 } },
+      text: 'When this card is opened, attach it to a character. That character gains +1 Range and +3 Power as long as this card remains in play',
+    },
+  ],
+  'BK1-077': [
+    {
+      trigger: 'open',
+      target: { where: 'anywhere' },
+      effect: { do: 'attach', who: { scope: 'target' }, grants: { power: 2, hp: 4, move: 1 } },
+      text: 'When this card is opened, attach it to a character. That character gains +1 Move and +2/+4 as long as this card remains in play',
     },
   ],
 

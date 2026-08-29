@@ -1,7 +1,14 @@
 import type { PlayerView } from '@berserk/engine';
 import { BEAT_MS } from '@berserk/protocol';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
-import { playDraw, playSchwing } from '../net/sound.js';
+import {
+  playCityTaken,
+  playCityWake,
+  playDeath,
+  playDraw,
+  playHit,
+  playSchwing,
+} from '../net/sound.js';
 import type { Stage } from '../state/usePresentation.js';
 import { CardImage } from './CardImage.js';
 
@@ -124,6 +131,7 @@ export function BoardFx({ view, stage }: { view: PlayerView; stage: Stage | null
       return;
     }
     if (beat.kind === 'cityWakes') {
+      playCityWake();
       wake(beat.city, later);
       return;
     }
@@ -131,11 +139,16 @@ export function BoardFx({ view, stage }: { view: PlayerView; stage: Stage | null
       // Rules.md §12 — the city pays two cards, and the label says so as it
       // arrives; the two draws are heard as it does, one after the other,
       // rather than at the top of the batch before the fight was even shown.
+      playCityTaken();
       later(() => playDraw(1), 320);
       later(() => playDraw(1), 620);
       return;
     }
     if (beat.kind !== 'strike') return;
+    // The blows land as the beat opens; a death is heard where it is seen,
+    // behind the blow that caused it.
+    if (beat.hits.length > 0) playHit();
+    if (beat.deaths.length > 0) later(playDeath, beat.hits.length > 0 ? BEAT_MS.DEATH_AFTER : 0);
 
     const current = viewRef.current;
     const stamp = `${key}`;

@@ -30,11 +30,14 @@ export interface MatchClient {
   readonly chosenDeck: string | null;
   /** True when this match was started against the computer. */
   readonly solo: boolean;
-  createMatch: () => void;
+  /** Find an open match, or with a password make a private one. DesignNotes 2. */
+  createMatch: (password?: string) => void;
   /** Start a match against the computer. */
   createSolo: () => void;
-  joinMatch: (matchId: MatchId) => void;
+  joinMatch: (matchId: MatchId, password?: string) => void;
   selectDeck: (deckId: string) => void;
+  /** Deal the match once both decks are chosen. DesignNotes 3. */
+  startMatch: () => void;
   /** Steps out of a match and back to the menu. */
   leaveMatch: () => void;
   submit: (action: GameAction) => void;
@@ -137,15 +140,18 @@ export function useMatch(enabled: boolean): MatchClient {
     }
   }, []);
 
-  const createMatch = useCallback(() => {
-    setSolo(false);
-    guard('Creating a match', () => {
-      getSocket().emit('match:create', (result) => {
-        if (result.ok) enterMatch(result.matchId, result.view);
-        else setLastError(result.message);
+  const createMatch = useCallback(
+    (password?: string) => {
+      setSolo(false);
+      guard('Creating a match', () => {
+        getSocket().emit('match:create', password ? { password } : {}, (result) => {
+          if (result.ok) enterMatch(result.matchId, result.view);
+          else setLastError(result.message);
+        });
       });
-    });
-  }, [enterMatch, guard]);
+    },
+    [enterMatch, guard],
+  );
 
   const createSolo = useCallback(() => {
     setSolo(true);
@@ -158,17 +164,32 @@ export function useMatch(enabled: boolean): MatchClient {
   }, [enterMatch, guard]);
 
   const joinMatch = useCallback(
-    (id: MatchId) => {
+    (id: MatchId, password?: string) => {
       setSolo(false);
       guard('Joining the match', () => {
-        getSocket().emit('match:join', { matchId: id }, (result) => {
-          if (result.ok) enterMatch(result.matchId, result.view);
-          else setLastError(result.message);
-        });
+        getSocket().emit(
+          'match:join',
+          password ? { matchId: id, password } : { matchId: id },
+          (result) => {
+            if (result.ok) enterMatch(result.matchId, result.view);
+            else setLastError(result.message);
+          },
+        );
       });
     },
     [enterMatch, guard],
   );
+
+  const startMatch = useCallback(() => {
+    const id = matchIdRef.current;
+    if (!id) return;
+    setLastError(null);
+    guard('Starting the match', () => {
+      getSocket().emit('match:start', { matchId: id }, (result) => {
+        if (!result.ok) setLastError(result.message);
+      });
+    });
+  }, [guard]);
 
   const selectDeck = useCallback(
     (deckId: string) => {
@@ -228,6 +249,7 @@ export function useMatch(enabled: boolean): MatchClient {
     createSolo,
     joinMatch,
     selectDeck,
+    startMatch,
     leaveMatch,
     submit,
   };

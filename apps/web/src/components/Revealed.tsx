@@ -31,6 +31,8 @@ export interface Reveal {
   readonly mine: boolean;
   /** True when the card was opened; false when an ability on it went off. */
   readonly opened: boolean;
+  /** Shown on its way into a hand — a search that says "reveal it". */
+  readonly revealed: boolean;
   /**
    * The printed line, when an ability went off (Rules.md §13). Carried so the
    * player can see what just happened to their numbers.
@@ -54,13 +56,17 @@ export function Revealed({ reveal }: { reveal: Reveal }): JSX.Element {
   const classes = ['reveal'];
   if (leaving) classes.push(reveal.stays ? 'reveal--settling' : 'reveal--spent');
 
-  const who = reveal.opened
+  const who = reveal.revealed
     ? reveal.mine
-      ? 'You open'
-      : 'They open'
-    : reveal.mine
-      ? 'Your ability'
-      : 'Their ability';
+      ? 'You reveal'
+      : 'They reveal'
+    : reveal.opened
+      ? reveal.mine
+        ? 'You open'
+        : 'They open'
+      : reveal.mine
+        ? 'Your ability'
+        : 'Their ability';
 
   return (
     <div className={classes.join(' ')} aria-hidden="true">
@@ -77,6 +83,7 @@ export function Revealed({ reveal }: { reveal: Reveal }): JSX.Element {
          * that changed nothing from looking like a card that does not work. */}
         {reveal.fizzled && <span className="reveal__fizzle">nothing for it to affect</span>}
         {/* A Normal effect never reaches the table, so say where it went. */}
+        {reveal.revealed && <span className="reveal__fate">to hand</span>}
         {reveal.opened && !reveal.stays && (
           <span className="reveal__fate">resolves, then to the graveyard</span>
         )}

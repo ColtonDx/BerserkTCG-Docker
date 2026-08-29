@@ -103,6 +103,16 @@ type Moment =
       readonly fizzled?: boolean;
       readonly ms: number;
     }
+  /**
+   * A card shown to both players on its way into a hand — a search that
+   * says "reveal it". Rules.md §13.
+   */
+  | {
+      readonly kind: 'reveal';
+      readonly card: CardInstanceId;
+      readonly player: PlayerId;
+      readonly ms: number;
+    }
   /** An ability going off on a card already on the table. Rules.md §13. */
   | {
       readonly kind: 'ability';
@@ -163,6 +173,8 @@ export const BEAT_MS = {
   /** An open that also reads out what it did needs longer. */
   OPEN_WITH_ABILITY: 2400,
   ABILITY: 1900,
+  /** A card revealed on its way into a hand: long enough to read the name. */
+  REVEAL: 1500,
   /** A band of blows with nobody dying of them. */
   STRIKE: 760,
   /** A death waits behind the blow that caused it, then fades. */
@@ -183,6 +195,7 @@ const SLIDES: ReadonlySet<GameEvent['type']> = new Set([
   'VANGUARD_DESIGNATED',
   'CHARACTER_COMMITTED',
   'CARD_BOTTOMED',
+  'CARD_ATTACHED',
 ]);
 
 /** What an event changes on the board, if anything a beat should hold back. */
@@ -337,6 +350,13 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
         });
         break;
       }
+
+      case 'CARD_REVEALED':
+        made.push({
+          anchor: index,
+          beat: { kind: 'reveal', card: event.card, player: event.player, ms: BEAT_MS.REVEAL },
+        });
+        break;
 
       case 'ABILITY_RESOLVED':
         if (folded.has(index)) break;

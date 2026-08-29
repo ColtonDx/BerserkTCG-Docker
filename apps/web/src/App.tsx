@@ -225,9 +225,9 @@ export function App(): JSX.Element {
         <LobbyBrowser
           error={match.lastError}
           onBack={() => setBrowsing(false)}
-          onJoin={(matchId) => {
+          onJoin={(matchId, password) => {
             setBrowsing(false);
-            match.joinMatch(matchId);
+            match.joinMatch(matchId, password);
           }}
         />
       );
@@ -239,8 +239,8 @@ export function App(): JSX.Element {
           status={match.status}
           matchId={match.matchId}
           error={match.lastError}
-          onCreate={() => turnPage(match.createMatch)}
-          onJoin={(matchId) => turnPage(() => match.joinMatch(matchId))}
+          onCreate={(password) => turnPage(() => match.createMatch(password))}
+          onJoin={(matchId, password) => turnPage(() => match.joinMatch(matchId, password))}
           onBuildDeck={() => setBuilding(true)}
           onBrowse={() => setBrowsing(true)}
           onSolo={() => turnPage(match.createSolo)}
@@ -267,6 +267,7 @@ export function App(): JSX.Element {
         onChoose={match.selectDeck}
         onBuildDeck={() => setBuilding(true)}
         onLeave={match.leaveMatch}
+        onStart={match.startMatch}
       />
     );
   }
@@ -468,7 +469,7 @@ export function App(): JSX.Element {
             setSending(null);
             match.submit({
               ...sending.action,
-              targets: sending.targets as never,
+              ...(sending.targets.length > 0 ? { targets: sending.targets as never } : {}),
               areas: [area] as never,
             });
           }}
@@ -535,18 +536,20 @@ export function App(): JSX.Element {
 function revealFrom(stage: Stage | null, view: PlayerView): Reveal | null {
   if (!stage) return null;
   const { beat, key } = stage;
-  if (beat.kind !== 'open' && beat.kind !== 'ability') return null;
+  if (beat.kind !== 'open' && beat.kind !== 'ability' && beat.kind !== 'reveal') return null;
   const card = view.cards[beat.card];
   if (!card || !('defId' in card)) return null;
-  const ability = beat.kind === 'open' ? beat.ability : beat.text;
+  const ability =
+    beat.kind === 'open' ? beat.ability : beat.kind === 'ability' ? beat.text : undefined;
   return {
     key,
     defId: card.defId,
     stays: staysOnTable(card.defId),
     mine: beat.player === view.viewer,
     opened: beat.kind === 'open',
+    revealed: beat.kind === 'reveal',
     ...(ability !== undefined ? { ability } : {}),
-    fizzled: beat.fizzled === true,
+    fizzled: beat.kind !== 'reveal' && beat.fizzled === true,
     ms: beat.ms,
   };
 }
@@ -677,6 +680,28 @@ function targetChoices(view: PlayerView, action: PayableAction): Choice[] {
   }
 
   return choices;
+}
+
+/**
+ * The areas this play may be pointed at when it asks for no character —
+ * one offer per area, read off `legalActions` the way targets are.
+ */
+function areaChoices(view: PlayerView, action: PayableAction): number[] {
+  const areas: number[] = [];
+  for (const offered of view.legalActions) {
+    if (offered.type !== action.type || offered.card !== action.card) continue;
+    if (
+      action.type === 'USE_ABILITY' &&
+      (offered as Extract<GameAction, { type: 'USE_ABILITY' }>).ability !== action.ability
+    ) {
+      continue;
+    }
+    const targets = (offered as { targets?: readonly string[] }).targets ?? [];
+    if (targets.length > 0) continue;
+    const area = (offered as { areas?: readonly number[] }).areas?.[0];
+    if (area !== undefined && !areas.includes(area)) areas.push(area);
+  }
+  return areas;
 }
 
 /**

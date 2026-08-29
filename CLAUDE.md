@@ -486,14 +486,17 @@ its printed line — `resolveEffect` throws rather than quietly dropping a `then
 that follows one, because resuming a half-run line would need a continuation no
 card in the set wants.
 
-**Not implemented.** The list of what is left lives in `TODO.md`. Green is 27
-of its 35 printed lines; the eight outstanding wait mostly on attachments, on
-being able to aim an effect at an _area_ rather than a character, and on a
-search that does more than add a card to hand. The
-**priority stack** (§14) is still unbuilt.
-Recovering a _forgotten_ password is not built — that needs a channel the
-server does not have. `DesignNotes` 3's room passwords and start-game button
-are also outstanding: a match deals as soon as both seats hold a legal deck.
+**Not implemented.** The list of what is left lives in `TODO.md`. Green is
+complete; three transcribed lines still want a ruling before they are built.
+The **priority stack** (§14) is still unbuilt. Recovering a _forgotten_
+password is not built — that needs a channel the server does not have.
+
+**Rooms.** `DesignNotes` 2 and 3 are built: a match made with a password is
+private — listed with a lock, joined only with the word, never handed out as
+"an open match" — and nothing deals between people on its own: once both
+seats hold a legal deck either player presses **Start game** (`match:start`,
+`matches.ts:startMatch`). Against the computer the last deck chosen deals at
+once, because there is nobody else to press it.
 
 **Getting back into a game.** A seat survives both a disconnect and a
 mid-game leave — `matches.ts:leave` keeps it once a match has dealt, because

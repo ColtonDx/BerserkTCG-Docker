@@ -116,7 +116,7 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
             connected: s.connected,
             deckName: s.deck?.name ?? null,
           })),
-          starting: matches.readyToStart(match),
+          ready: matches.readyToStart(match),
         };
         io.of(GAME_NAMESPACE).to(matchRoom(matchId)).emit('match:lobby', lobby);
       }
@@ -144,9 +144,18 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       session.matchId = matchId;
     };
 
-    socket.on('match:create', async (ack) => {
-      const match = matches.findOrCreateOpen();
-      const result = matches.join(match.id, session.playerId, session.displayName, await badge());
+    socket.on('match:create', async ({ password }, ack) => {
+      // A password makes a private room of its own; without one, an open
+      // match waiting for an opponent is joined instead. DesignNotes 2.
+      const word = typeof password === 'string' && password.length > 0 ? password : null;
+      const match = word === null ? matches.findOrCreateOpen() : matches.create(word);
+      const result = matches.join(
+        match.id,
+        session.playerId,
+        session.displayName,
+        await badge(),
+        word,
+      );
       if (!result.ok) {
         ack({ ok: false, code: result.code, message: 'Could not create a match.' });
         return;
@@ -177,13 +186,24 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       broadcastState(match.id);
     });
 
-    socket.on('match:join', async ({ matchId }, ack) => {
-      const result = matches.join(matchId, session.playerId, session.displayName, await badge());
+    socket.on('match:join', async ({ matchId, password }, ack) => {
+      const result = matches.join(
+        matchId,
+        session.playerId,
+        session.displayName,
+        await badge(),
+        typeof password === 'string' ? password : null,
+      );
       if (!result.ok) {
         ack({
           ok: false,
           code: result.code,
-          message: result.code === 'MATCH_FULL' ? 'That match is full.' : 'No such match.',
+          message:
+            result.code === 'MATCH_FULL'
+              ? 'That match is full.'
+              : result.code === 'WRONG_PASSWORD'
+                ? 'That is not the password.'
+                : 'No such match.',
         });
         return;
       }
@@ -232,6 +252,7 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
         host: match.seats[0]?.displayName ?? 'Waiting',
         seats: match.seats.length,
         capacity: 2,
+        locked: match.password !== null,
         age: now - match.createdAt,
       }));
       ack(open);
@@ -307,6 +328,21 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       // Dealt: the human is watching the opening ceremony, and Femto settles
       // its hand only once that is over.
       if (match?.state) holdMatch(matchId, OPENING_CEREMONY_MS);
+      void driveAi(matches, matchId, (aiEvents) => broadcastState(matchId, aiEvents));
+    });
+
+    // DesignNotes 3 — either player deals the match once both decks are in.
+    socket.on('match:start', ({ matchId }, ack) => {
+      const result = matches.startMatch(matchId, session.playerId);
+      if (!result.ok) {
+        ack({ ok: false, message: result.message });
+        return;
+      }
+      ack({ ok: true });
+      broadcastState(matchId);
+      // The opening ceremony plays on both screens; the computer, if seated,
+      // settles its hand only once it is over.
+      holdMatch(matchId, OPENING_CEREMONY_MS);
       void driveAi(matches, matchId, (aiEvents) => broadcastState(matchId, aiEvents));
     });
 

@@ -50,6 +50,8 @@ export interface Match {
   readonly actions: { actor: PlayerId; action: GameAction }[];
   readonly seed: number;
   readonly createdAt: number;
+  /** The word a private room asks for on the way in. DesignNotes 2. */
+  readonly password: string | null;
 }
 
 const MAX_SEATS = 2;
@@ -77,7 +79,7 @@ export class MatchManager {
     throw new Error('Could not find a free join code');
   }
 
-  create(): Match {
+  create(password: string | null = null): Match {
     const match: Match = {
       id: this.newCode(),
       seats: [],
@@ -86,6 +88,7 @@ export class MatchManager {
       // Seeded from a CSPRNG so players cannot predict their shuffle.
       seed: randomInt(0, 2 ** 31 - 1),
       createdAt: Date.now(),
+      password: password && password.length > 0 ? password : null,
     };
     this.matches.set(match.id, match);
     return match;
@@ -135,10 +138,20 @@ export class MatchManager {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  /** Finds a match waiting for an opponent, or creates one. */
+  /**
+   * Finds a match waiting for an opponent, or creates one. A private room is
+   * never handed to somebody who did not ask for it by code.
+   */
   findOrCreateOpen(): Match {
     for (const match of this.matches.values()) {
-      if (match.seats.length < MAX_SEATS && !match.state) return match;
+      if (
+        match.seats.length < MAX_SEATS &&
+        !match.state &&
+        match.password === null &&
+        !match.seats.some((seat) => seat.ai)
+      ) {
+        return match;
+      }
     }
     return this.create();
   }
@@ -152,7 +165,10 @@ export class MatchManager {
     playerId: PlayerId,
     displayName: string,
     icon: string | null = null,
-  ): { ok: true; match: Match } | { ok: false; code: 'MATCH_NOT_FOUND' | 'MATCH_FULL' } {
+    password: string | null = null,
+  ):
+    | { ok: true; match: Match }
+    | { ok: false; code: 'MATCH_NOT_FOUND' | 'MATCH_FULL' | 'WRONG_PASSWORD' } {
     const match = this.matches.get(matchId);
     if (!match) return { ok: false, code: 'MATCH_NOT_FOUND' };
 
@@ -165,6 +181,11 @@ export class MatchManager {
     }
 
     if (match.seats.length >= MAX_SEATS) return { ok: false, code: 'MATCH_FULL' };
+    // A seat already held needs no password — checked above — but a new one
+    // in a private room does. DesignNotes 2.
+    if (match.password !== null && match.password !== password) {
+      return { ok: false, code: 'WRONG_PASSWORD' };
+    }
     // Seating no longer deals: both players pick a deck first (DesignNotes 4).
     match.seats.push({
       playerId,
@@ -312,7 +333,10 @@ export class MatchManager {
     }
 
     seat.deck = deck;
-    if (match.seats.length === MAX_SEATS && match.seats.every((s) => s.deck)) {
+    // Against the computer the deal follows the last deck at once: there is
+    // nobody else to press the button. Between people it waits for one of
+    // them to (DesignNotes 3) — see `startMatch`.
+    if (this.readyToStart(match) && match.seats.some((s) => s.ai)) {
       this.start(match);
     }
     return { ok: true, match };
@@ -321,6 +345,27 @@ export class MatchManager {
   /** True once both seats are filled and both have chosen a deck. */
   readyToStart(match: Match): boolean {
     return match.seats.length === MAX_SEATS && match.seats.every((s) => s.deck !== null);
+  }
+
+  /**
+   * Deals the match, at a seated player's request. DesignNotes 3 — either
+   * player may start it, once both hold a legal deck.
+   */
+  startMatch(
+    matchId: MatchId,
+    playerId: PlayerId,
+  ): { ok: true; match: Match } | { ok: false; message: string } {
+    const match = this.matches.get(matchId);
+    if (!match) return { ok: false, message: 'No such match.' };
+    if (match.state) return { ok: false, message: 'The match has already started.' };
+    if (!match.seats.some((s) => s.playerId === playerId)) {
+      return { ok: false, message: 'You are not seated here.' };
+    }
+    if (!this.readyToStart(match)) {
+      return { ok: false, message: 'Both players have to choose a deck first.' };
+    }
+    this.start(match);
+    return { ok: true, match };
   }
 
   private start(match: Match): void {

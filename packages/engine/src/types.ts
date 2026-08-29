@@ -1,3 +1,4 @@
+import type { Effect } from './abilities.js';
 import type { CardDefId, CardInstanceId, MatchId, PlayerId } from './ids.js';
 import type { Rng } from './rng.js';
 
@@ -56,6 +57,13 @@ export interface CardInstance {
   readonly damage: number;
   /** Counters keyed by name, for card effects that track state. */
   readonly counters: Readonly<Record<string, number>>;
+  /**
+   * The character this card is attached to, for an Eternal that says
+   * "attach it to a character" (BK1-076). Rules.md §13. It stands where its
+   * host stands, lends the host its numbers while both are on the field, and
+   * goes to the Trash when the host does — see `rules.ts:refreshBoard`.
+   */
+  readonly attachedTo?: CardInstanceId;
 }
 
 export interface PlayerState {
@@ -130,24 +138,65 @@ export interface PendingChoice {
   readonly text: string;
   /** How many cards are still owed. Counts down; the choice ends at zero. */
   readonly count: number;
+  /**
+   * "Up to": the player may stop before the count is spent, with `ANSWER`.
+   * A line that says "search for up to 2" has named a ceiling, not a debt.
+   */
+  readonly upTo: boolean;
   readonly kind: PendingChoiceKind;
+  /**
+   * The rest of the printed line, to run once this is answered. Rules.md §13
+   * — "search your deck for a character … then draw 1 card" stops to ask
+   * in the middle of its sentence, and the draw waits here for the answer.
+   */
+  readonly then?: Continuation;
+}
+
+/** What an asking effect left unfinished, and the choices it was made with. */
+export interface Continuation {
+  readonly effects: readonly Effect[];
+  readonly chosen?: CardInstanceId;
+  readonly area?: number;
 }
 
 export type PendingChoiceKind =
   /** Pitch from your own hand, your pick. Answered with `CHOOSE_CARD`. */
   | { readonly zone: 'hand'; readonly action: 'discard' }
   /**
-   * Search your deck and take a card, then reshuffle. Rules.md §13.
+   * Set a card from hand into a city and open it at once, paying nothing
+   * (BK1-061). Rules.md §13. `maxLevel` is the printed ceiling.
+   */
+  | {
+      readonly zone: 'hand';
+      readonly action: 'setAndOpen';
+      readonly city: number;
+      readonly maxLevel: number | null;
+    }
+  /**
+   * Search your deck for cards and do something with them, then reshuffle.
+   * Rules.md §13.
    *
    * `named` is the printed restriction — "1 Serpico" — matched against the
    * card's *name*, not its id, because several printings share a name and the
-   * line does not care which one is found. `null` is an unrestricted search.
+   * line does not care which one is found. `null` is an unrestricted search;
+   * `characterOnly` narrows it to characters. What is found goes to the hand,
+   * to the Trash, or face down into `city` as a Set Card; `reveal` shows the
+   * opponent what was taken.
    *
    * The deck is hidden from everyone (`view.ts`), so the view reveals exactly
    * the cards this choice may legally take and nothing else: a search that
    * showed the whole deck would leak the draw order it is about to reshuffle.
    */
-  | { readonly zone: 'deck'; readonly action: 'toHand'; readonly named: string | null };
+  | {
+      readonly zone: 'deck';
+      readonly action: 'toHand' | 'toTrash' | 'toCity';
+      readonly named: string | null;
+      readonly characterOnly: boolean;
+      readonly city?: number;
+      readonly reveal: boolean;
+    }
+  /** A yes or no — "you may …" — answered with `ANSWER`. Rules.md §13. */
+  | { readonly zone: 'decision' };
 
 /** The five phases of a turn. Rules.md §10. */
 export type PhaseId = 'refresh' | 'draw' | 'open' | 'main' | 'end';
@@ -176,6 +225,23 @@ export interface TurnState {
   readonly openedThisTurn: boolean;
   /** Cities already battled this turn — one battle per city. Rules.md §10 ④. */
   readonly battledCities: readonly number[];
+  /**
+   * Cities a battle was declared over this turn, called off or not. Read by
+   * cards that ask "if a battle was declared in this area this turn"
+   * (BK1-065). Rules.md §13.
+   */
+  readonly declaredCities: readonly number[];
+  /** Cities the turn player took this turn (Rules.md §12), for "if you captured this area this turn". */
+  readonly capturedCities: readonly number[];
+  /**
+   * Every character that arrived in a city this turn, by a move (§10 ④(1)) or
+   * an effect (§13), for cards that ask whether an opponent moved here.
+   */
+  readonly arrivals: readonly { readonly player: PlayerId; readonly city: number }[];
+  /** The Draw phase was given up this turn (BK1-066). Rules.md §13. */
+  readonly drawSkipped: boolean;
+  /** Cards owed to the turn player at the end of the turn instead. */
+  readonly drawAtEnd: number;
 }
 
 /**
@@ -376,7 +442,13 @@ export type GameAction =
       readonly pay?: readonly CardInstanceId[];
     }
   /** Decline to interrupt a pending effect. Rules.md §14. */
-  | { readonly type: 'PASS_PRIORITY' };
+  | { readonly type: 'PASS_PRIORITY' }
+  /**
+   * Answer a yes-or-no the game has stopped on, or stop an "up to" choice
+   * short. Rules.md §13. `accept: false` on an up-to search is "that will
+   * do"; on a "you may" it is "no".
+   */
+  | { readonly type: 'ANSWER'; readonly accept: boolean };
 
 export type GameActionType = GameAction['type'];
 
@@ -409,6 +481,16 @@ export type GameEvent =
       readonly trigger: QuickTrigger;
     }
   | { readonly type: 'QUICK_DECLINED'; readonly player: PlayerId }
+  /**
+   * A card shown to both players on its way somewhere hidden — a search that
+   * says "reveal it". Rules.md §13. The card id is public for the moment of
+   * the reveal; the view redacts it again once it is in hand.
+   */
+  | { readonly type: 'CARD_REVEALED'; readonly player: PlayerId; readonly card: CardInstanceId }
+  /** An Eternal attached itself to a character. Rules.md §13. */
+  | { readonly type: 'CARD_ATTACHED'; readonly card: CardInstanceId; readonly to: CardInstanceId }
+  /** The turn player gave up their Draw phase (BK1-066). */
+  | { readonly type: 'DRAW_SKIPPED'; readonly player: PlayerId }
   | {
       /**
        * An effect stopped to ask a player which cards. Rules.md §13. The

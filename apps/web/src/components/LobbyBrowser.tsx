@@ -16,7 +16,7 @@ import { Embers } from './Embers.js';
 const REFRESH_MS = 4000;
 
 interface Props {
-  readonly onJoin: (matchId: MatchId) => void;
+  readonly onJoin: (matchId: MatchId, password?: string) => void;
   readonly onBack: () => void;
   readonly error: string | null;
 }
@@ -61,8 +61,28 @@ export function LobbyBrowser({ onJoin, onBack, error }: Props): JSX.Element {
           <ul className="browse">
             {matches.map((match) => (
               <li key={match.matchId}>
-                <button type="button" className="browse__row" onClick={() => onJoin(match.matchId)}>
-                  <span className="browse__code">{match.matchId}</span>
+                <button
+                  type="button"
+                  className="browse__row"
+                  onClick={() => {
+                    // A private room asks for its word on the way in.
+                    // DesignNotes 2.
+                    if (!match.locked) {
+                      onJoin(match.matchId);
+                      return;
+                    }
+                    const word = window.prompt(`Password for ${match.host}'s room`);
+                    if (word !== null) onJoin(match.matchId, word);
+                  }}
+                >
+                  <span className="browse__code">
+                    {match.locked && (
+                      <span className="browse__lock" title="Private room">
+                        🔒
+                      </span>
+                    )}
+                    {match.matchId}
+                  </span>
                   <span className="browse__host">{match.host}</span>
                   <span className="browse__seats">
                     {match.seats}/{match.capacity}

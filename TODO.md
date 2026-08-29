@@ -39,25 +39,17 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    last thing on its printed line; `resolveEffect` throws rather than silently
    dropping a `then` that follows one.
 
-   The eight green cards left, and what each is waiting on:
-   - **A search that does more than take a card.** BK1-065 reveals what it
-     finds and then draws, and BK1-075 sends three cards to the graveyard.
-     `search` only adds to hand, and `count` is exact rather than "up to" —
-     which BK1-025 and BK1-039 also want, along with setting what they find
-     into an area.
-   - **Attachments.** BK1-076 Sylph Sword and BK1-077 Sylph Hood attach to a
-     character and change its numbers while they remain in play. Needs a card
-     to belong to another card, and Range to become modifiable — it is
-     printed-only today (`rules.ts:rangeOf`).
-   - **An area as a target, chosen freely.** BK1-062 moves a character to any
-     area an opponent holds a Level 3+ character in, and BK1-068 moves your
-     Set Cards to one. `TargetSpec.area` exists now but offers only
-     `adjacent` (BK1-032) — a shortlist read off the chosen character, not an
-     arbitrary area with its own conditions.
-   - **Two one-offs.** BK1-061 needs "did an opponent move a character here
-     this turn", which nothing records yet, and then a set-and-immediately-open.
-     BK1-066 needs an optional skip of your own Draw phase, remembered across
-     the turn.
+   **Green is 35 of its 35 printed lines.** The last eight brought: a
+   resumable effect chain (`Continuation` — an asking effect no longer has
+   to be the last thing on its line), searches that send what they find to
+   the Trash or face down into an area and may stop short ("up to",
+   `ANSWER`), a reveal on the way to hand, gates ("this card can only be
+   opened if …", `Ability.gate`), areas chosen on their own or against a
+   condition (`AreaKind`), "you may" decisions, a skipped Draw phase paid
+   back at the end of the turn, and attachments (`CardInstance.attachedTo`)
+   with Range finally modifiable (`rules.ts:rangeOf`). BK1-061's "set and
+   immediately open" is read as free and outside the City Level gate —
+   marked `RULES:` in `abilities.ts` and worth confirming.
 
    Three transcribed lines are ambiguous and want a ruling before they are
    built: BK1-038 "unlock all Hawk characters" (both sides, or yours?),
@@ -77,14 +69,9 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
 
 ## Presentation
 
-1. **Sound** for battle and occupation. Draw, shuffle, the page turn and the
-   phase sweep are done and synthesised rather than recorded
-   (`net/sound.ts`). A blow landing, a character dying and a city changing
-   hands all have their moment on screen now but none of them make a noise —
-   each is a beat of the presentation queue (`BoardFx`, `CityTaken`), so a
-   sound has an exact moment to land on and these are only waiting to be
-   written.
-2. **Character voices.** Sounds from the show for unique characters.
+1. **Character voices.** Sounds from the show for unique characters. Every
+   other sound is synthesised in `net/sound.ts` and lands on a beat of the
+   presentation queue; a voice would be the first recorded asset.
 
 ## Notes
 

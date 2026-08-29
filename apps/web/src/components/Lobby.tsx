@@ -22,8 +22,9 @@ interface LobbyProps {
   readonly status: string;
   readonly matchId: MatchId | null;
   readonly error: string | null;
-  readonly onCreate: () => void;
-  readonly onJoin: (matchId: MatchId) => void;
+  /** With a password, a private room of its own. DesignNotes 2. */
+  readonly onCreate: (password?: string) => void;
+  readonly onJoin: (matchId: MatchId, password?: string) => void;
   readonly onBuildDeck: () => void;
   readonly onBrowse: () => void;
   readonly onSolo: () => void;
@@ -83,6 +84,10 @@ export function Lobby({
   onSignOut,
 }: LobbyProps): JSX.Element {
   const [joinCode, setJoinCode] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
+  // A room password, for a game meant for one particular person. Empty is
+  // the ordinary open match.
+  const [password, setPassword] = useState('');
   const connected = status === 'connected';
   const ongoing = useOngoingMatches(connected && matchId === null);
 
@@ -139,10 +144,19 @@ export function Lobby({
               type="button"
               className="btn btn--primary"
               disabled={!connected}
-              onClick={onCreate}
+              onClick={() => onCreate(password || undefined)}
             >
-              Find / Create Match
+              {password ? 'Create Private Match' : 'Find / Create Match'}
             </button>
+            <input
+              className="lobby__password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Room password (optional)"
+              aria-label="Room password"
+              autoComplete="off"
+            />
 
             <div className="lobby__divider">
               <span>or</span>
@@ -168,7 +182,7 @@ export function Lobby({
               className="lobby__join"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (joinCode.length === 6) onJoin(joinCode as MatchId);
+                if (joinCode.length === 6) onJoin(joinCode as MatchId, joinPassword || undefined);
               }}
             >
               <input
@@ -182,6 +196,14 @@ export function Lobby({
                 inputMode="numeric"
                 autoComplete="off"
                 spellCheck={false}
+              />
+              <input
+                type="password"
+                value={joinPassword}
+                onChange={(e) => setJoinPassword(e.target.value)}
+                placeholder="Password"
+                aria-label="Room password, if the room has one"
+                autoComplete="off"
               />
               <button type="submit" className="btn" disabled={!connected || joinCode.length !== 6}>
                 Join

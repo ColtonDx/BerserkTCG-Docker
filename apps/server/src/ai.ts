@@ -289,7 +289,13 @@ export function chooseAction(
       (action): action is Extract<GameAction, { type: 'CHOOSE_CARD' }> =>
         action.type === 'CHOOSE_CARD',
     );
-    if (picks.length === 0) return null;
+    if (picks.length === 0) {
+      // A yes or no (§13 "you may"): yes, since a card only ever offers what
+      // helps its controller. Or an up-to choice with nothing left to take.
+      const yes = actions.find((action) => action.type === 'ANSWER' && action.accept);
+      const done = actions.find((action) => action.type === 'ANSWER' && !action.accept);
+      return yes ?? done ?? null;
+    }
     // Pitching gives up the card it could open latest — `worst`, the same
     // judgement it uses at the hand limit. Searching wants the opposite end of
     // that ordering: a search is a free pick, and the cheap cards will come
@@ -399,7 +405,69 @@ export function chooseAction(
     }
   }
 
+  // March. With nothing to open, attack or set, an unlocked character
+  // standing somewhere useless walks toward somewhere useful.
+  const march = marchToward(state, actions, player);
+  if (march) return march;
+
   return actions.find((action) => action.type === 'END_PHASE') ?? null;
+}
+
+/**
+ * Where a character should be, if not where it is. Rules.md §10 ④(1).
+ *
+ * Femto used to sit its characters where they were set and never move them,
+ * so the Capital could stand face up and unclaimed beside an idle army. The
+ * judgement is by destination, in order:
+ *
+ * - the Royal Capital, once it is face up and not Femto's — the game cannot
+ *   be won without it (§1), so getting somebody there is worth a turn's move;
+ * - an unheld face-up city with no enemy in it — presence that becomes an
+ *   uncontested claim next turn;
+ * - a city the enemy holds where this character tips the balance.
+ *
+ * A character never leaves a city Femto occupies if it is the last one
+ * standing there: `refreshBoard` would vacate it (§12), and that trades a
+ * city for a walk.
+ */
+function marchToward(
+  state: GameState,
+  actions: readonly GameAction[],
+  player: PlayerId,
+): GameAction | null {
+  const moves = actions.filter(
+    (action): action is Extract<GameAction, { type: 'MOVE_CHARACTER' }> =>
+      action.type === 'MOVE_CHARACTER',
+  );
+  if (moves.length === 0) return null;
+  const enemy = enemyOf(state, player);
+
+  let best: { move: GameAction; score: number } | null = null;
+  for (const move of moves) {
+    const mover = state.cards[move.card];
+    const from = mover?.cityIndex;
+    if (!mover || from === undefined) continue;
+    const home = state.cities[from];
+    // The last one holding a city stays.
+    if (home?.occupiedBy === player && presence(state, from, player, { faceUpOnly: true }) <= 1) {
+      continue;
+    }
+    const city = state.cities[move.city];
+    if (!city) continue;
+    const mine = powerIn(state, move.city, player) + powerOf(state, move.card);
+    const theirs = powerIn(state, move.city, enemy);
+    let score = -1;
+    if (city.faceUp && city.royalCapital && city.occupiedBy !== player) {
+      score = 1000 + (mine - theirs);
+    } else if (city.occupiedBy === null && city.faceUp && theirs === 0) {
+      score = 300 - presence(state, move.city, player, { faceUpOnly: true }) * 50;
+    } else if (city.occupiedBy === enemy && mine > theirs) {
+      score = 200 + (mine - theirs);
+    }
+    if (score < 0) continue;
+    if (!best || score > best.score) best = { move, score };
+  }
+  return best?.move ?? null;
 }
 
 /**

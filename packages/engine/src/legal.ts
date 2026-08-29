@@ -1,10 +1,14 @@
 import { abilityKey } from './abilities.js';
 import { costTotal } from './cards.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
-import { areasFor, currentPhase } from './reducer.js';
+import { currentPhase } from './reducer.js';
 import {
   activatedAbilities,
   activationCost,
+  areasFor,
+  askingAbilities,
+  conditionHolds,
+  settable,
   canActivate,
   canCommit,
   canVanguard,
@@ -13,7 +17,6 @@ import {
   powerOf,
   quickCardRelevant,
   quickRelevant,
-  targetingAbilities,
   cityLevel,
   definitionOf,
   isCharacter,
@@ -130,11 +133,26 @@ function choosable(
   pending: PendingChoice,
   player: PlayerId,
 ): GameAction[] {
+  const kind = pending.kind;
+  const actions: GameAction[] = [];
+  if (kind.zone === 'decision') {
+    // A yes or a no, and nothing else.
+    return [
+      { type: 'ANSWER', accept: true },
+      { type: 'ANSWER', accept: false },
+    ];
+  }
   const cards =
-    pending.kind.zone === 'hand'
-      ? cardsInZone(state, player, 'hand')
-      : searchable(ctx, state, player, pending.kind.named);
-  return cards.map((card) => ({ type: 'CHOOSE_CARD', card: card.instanceId }));
+    kind.zone === 'hand'
+      ? kind.action === 'setAndOpen'
+        ? settable(ctx, state, player, kind.maxLevel)
+        : cardsInZone(state, player, 'hand')
+      : searchable(ctx, state, player, kind.named, kind.characterOnly);
+  actions.push(...cards.map((card) => ({ type: 'CHOOSE_CARD' as const, card: card.instanceId })));
+  // "Up to": the player may stop here. A choice with nothing left to pick
+  // from is stopped by the engine itself, so this is only ever a real option.
+  if (pending.upTo && cards.length > 0) actions.push({ type: 'ANSWER', accept: false });
+  return actions;
 }
 
 /**
@@ -381,7 +399,17 @@ function openActions(
     const payment = choosePayment(ctx, def.cost, hand);
     if (!payment) continue;
 
-    const asking = targetingAbilities(ctx, card, 'open');
+    // "This card can only be opened if …" — a shut gate is not an offer.
+    // Rules.md §13, `Ability.gate`.
+    const gated = (def.abilities ?? []).some(
+      (ability) =>
+        ability.trigger === 'open' &&
+        ability.gate === true &&
+        !conditionHolds(ctx, state, card, ability.condition, state.battle),
+    );
+    if (gated) continue;
+
+    const asking = askingAbilities(ctx, card, 'open');
 
     // One open per legal target, rather than one open carrying a suggestion.
     //
@@ -397,7 +425,21 @@ function openActions(
     // accepts any other legal combination.
     if (asking.length === 1) {
       const ability = asking[0] as (typeof asking)[number];
-      const options = legalTargets(ctx, state, card, ability.target, state.battle);
+      // An ability that asks only for an area gets one offer per area
+      // (BK1-068: "move all your set cards from this area to any other").
+      if (ability.target === undefined && ability.area !== undefined) {
+        const areas = areasFor(ctx, state, ability.area, card);
+        if (areas.length === 0) {
+          actions.push({ type: 'OPEN_CARD', card: card.instanceId, pay: payment });
+        }
+        for (const area of areas) {
+          actions.push({ type: 'OPEN_CARD', card: card.instanceId, pay: payment, areas: [area] });
+        }
+        continue;
+      }
+      const options = ability.target
+        ? legalTargets(ctx, state, card, ability.target, state.battle)
+        : [];
       // Nobody to point at is not a reason to refuse the open: the ability
       // resolves and finds nobody (Rules.md §13).
       if (options.length === 0) {
@@ -409,9 +451,9 @@ function openActions(
           // different plays at a middle city, and the client cannot work out
           // which areas count without knowing what "adjacent" means.
           const areas =
-            ability.target.area === undefined
+            ability.area === undefined
               ? [undefined]
-              : areasFor(state, ability.target.area, option.instanceId);
+              : areasFor(ctx, state, ability.area, card, option.instanceId);
           for (const area of areas.length > 0 ? areas : [undefined]) {
             actions.push({
               type: 'OPEN_CARD',
@@ -427,7 +469,11 @@ function openActions(
     }
 
     const targets = asking
-      .map((ability) => legalTargets(ctx, state, card, ability.target, state.battle)[0])
+      .map((ability) =>
+        ability.target
+          ? legalTargets(ctx, state, card, ability.target, state.battle)[0]
+          : undefined,
+      )
       .filter((choice): choice is CardInstance => choice !== undefined)
       .map((choice) => choice.instanceId);
 

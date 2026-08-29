@@ -581,13 +581,19 @@ function CityColumn({
   onAimAt?: ((card: string) => void) | undefined;
   onAimHover?: ((card: string | null) => void) | undefined;
 }): JSX.Element {
-  const inCity = (player: PlayerId | undefined): ViewCard[] =>
-    player === undefined
-      ? []
-      : Object.values(view.cards).filter(
-          (card) =>
-            card.zone === 'city' && card.cityIndex === city.index && card.controller === player,
-        );
+  // Attachments follow their host in the lane, tucked behind it — a Sylph
+  // Sword is drawn on the character wearing it, not as a stranger beside.
+  const inCity = (player: PlayerId | undefined): ViewCard[] => {
+    if (player === undefined) return [];
+    const here = Object.values(view.cards).filter(
+      (card) => card.zone === 'city' && card.cityIndex === city.index && card.controller === player,
+    );
+    const hosts = here.filter((card) => wornBy(card) === undefined);
+    return hosts.flatMap((host) => [
+      host,
+      ...here.filter((card) => wornBy(card) === host.instanceId),
+    ]);
+  };
 
   const occupied = city.occupiedBy;
   // A face-down city says nothing at all, the way a face-down card doesn't.
@@ -1120,6 +1126,8 @@ function CardTile({
   // Rules.md §6 — a locked card is turned; DesignNotes 11 shows that as a tilt.
   const classes = ['card'];
   if (card.locked) classes.push('card--locked');
+  // Worn by another character (Rules.md §13): smaller, and behind it.
+  if (wornBy(card) !== undefined) classes.push('card--attached');
   // A character an ability has lifted glows *and says by how much*, because
   // the numbers that changed are not printed anywhere the player can see on
   // the table — the art still shows what it was printed with. Rules.md §13.
@@ -1260,3 +1268,7 @@ function CardTile({
     </div>
   );
 }
+
+/** The host this card is attached to, if it is an attachment. Rules.md §13. */
+const wornBy = (card: ViewCard): string | undefined =>
+  'attachedTo' in card ? card.attachedTo : undefined;

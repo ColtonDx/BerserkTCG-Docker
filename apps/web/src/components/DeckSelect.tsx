@@ -22,6 +22,8 @@ interface Props {
   readonly error: string | null;
   readonly onBuildDeck: () => void;
   readonly onLeave: () => void;
+  /** Deal the match. DesignNotes 3 — either player, once both decks are in. */
+  readonly onStart: () => void;
 }
 
 export function DeckSelect({
@@ -33,6 +35,7 @@ export function DeckSelect({
   error,
   onBuildDeck,
   onLeave,
+  onStart,
 }: Props): JSX.Element {
   const [decks, setDecks] = useState<SavedDeck[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +88,16 @@ export function DeckSelect({
           </div>
         ))}
         {(lobby?.seats.length ?? 0) < 2 && <p className="muted">Waiting for an opponent…</p>}
+        {/* DesignNotes 3 — nothing deals on its own between people: once both
+         * decks are in, either player presses the button. */}
+        {lobby?.ready && (
+          <div className="seats__start">
+            <button type="button" className="btn btn--primary" onClick={onStart}>
+              Start game
+            </button>
+            <span className="muted">Both decks are in — either player can start.</span>
+          </div>
+        )}
       </div>
 
       {loading ? (

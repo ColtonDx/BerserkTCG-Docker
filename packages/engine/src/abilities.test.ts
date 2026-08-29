@@ -5,6 +5,7 @@ import { asCardDefId, asMatchId, asPlayerId, type CardInstanceId, type PlayerId 
 import { SHIELD } from './abilities.js';
 import {
   boostSources,
+  rangeOf,
   stillFighting,
   cannotAttack,
   damageAfterReduction,
@@ -830,6 +831,257 @@ describe('an ability that finds nothing to do (Rules.md §13)', () => {
     const types = result.value.events.map((event) => event.type);
     expect(types).toContain('ABILITY_RESOLVED');
     expect(types).not.toContain('ABILITY_FIZZLED');
+  });
+});
+
+describe('searches that do more than take a card (Rules.md §13)', () => {
+  /** Answers an outstanding choice with the first card offered, `n` times. */
+  function pick(state: GameState, player: PlayerId, n: number): GameState {
+    let next = state;
+    for (let i = 0; i < n; i++) {
+      const choice = engine.legalActions(next, player).find((a) => a.type === 'CHOOSE_CARD');
+      if (!choice) throw new Error('nothing to choose');
+      next = apply(next, player, choice);
+    }
+    return next;
+  }
+
+  it('BK1-075 Magical Research sends three to the graveyard, then draws two', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const card = place(state, player, 'BK1-075', 2, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const open = openOf(state, player, card.card);
+    expect(open).toBeDefined();
+    const hand =
+      zoneSize(state, player, 'hand') - (open as GameAction & { pay: unknown[] }).pay.length;
+    const trash = zoneSize(state, player, 'trash');
+    state = apply(state, player, open as GameAction);
+
+    // Stopped on the search; the draw has not happened yet.
+    expect(state.pending?.kind.zone).toBe('deck');
+    expect(state.pending?.then?.effects[0]?.do).toBe('draw');
+    expect(zoneSize(state, player, 'hand')).toBe(hand);
+
+    state = pick(state, player, 3);
+    expect(state.pending).toBeNull();
+    // Three to the graveyard (plus the card itself, a Normal), then two drawn.
+    expect(zoneSize(state, player, 'trash')).toBe(
+      trash + 3 + 1 + (open as GameAction & { pay: unknown[] }).pay.length,
+    );
+    expect(zoneSize(state, player, 'hand')).toBe(hand + 2);
+  });
+
+  it('BK1-025 Request To Join sets up to two Mercenaries, and may stop at one', () => {
+    let state = started('BK1-001');
+    const player = state.turn.activePlayer;
+    const card = place(state, player, 'BK1-025', 3, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const open = openOf(state, player, card.card);
+    expect(open).toBeDefined();
+    state = apply(state, player, open as GameAction);
+    expect(state.pending?.upTo).toBe(true);
+
+    const first = engine.legalActions(state, player).find((a) => a.type === 'CHOOSE_CARD');
+    state = apply(state, player, first as GameAction);
+    // One set face down in the area, and the offer to stop is still there.
+    const set = Object.values(state.cards).filter(
+      (c) => c.zone === 'city' && c.cityIndex === 3 && !c.faceUp && c.controller === player,
+    );
+    expect(set).toHaveLength(1);
+    expect(engine.legalActions(state, player).some((a) => a.type === 'ANSWER')).toBe(true);
+    state = apply(state, player, { type: 'ANSWER', accept: false });
+    expect(state.pending).toBeNull();
+  });
+
+  it('BK1-065 A Sword For Protection is shut until a battle is declared here', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    state = place(state, player, 'BK1-041', 2).state;
+    state = place(state, other, 'BK1-041', 2).state;
+    const card = place(state, player, 'BK1-065', 2, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    expect(openOf(state, player, card.card)).toBeUndefined();
+
+    // Declare, then call it off: the declaration is what the card asks about.
+    state = atMain(state);
+    state = apply(state, player, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, player, { type: 'BATTLE_PASS' });
+    state = {
+      ...state,
+      turn: { ...state.turn, phaseIndex: state.phases.findIndex((p) => p.id === 'open') },
+    };
+    const open = openOf(state, player, card.card);
+    expect(open, 'declared here this turn, so openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+    expect(state.pending?.kind.zone).toBe('deck');
+    const events: GameEvent[] = [];
+    const choice = engine.legalActions(state, player).find((a) => a.type === 'CHOOSE_CARD');
+    const result = engine.reduce(state, player, choice as GameAction);
+    expect(result.ok).toBe(true);
+    if (result.ok) events.push(...result.value.events);
+    // Revealed on the way to hand, and the draw followed.
+    expect(events.map((e) => e.type)).toContain('CARD_REVEALED');
+    expect(events.filter((e) => e.type === 'CARD_DRAWN')).toHaveLength(1);
+  });
+});
+
+describe('areas chosen freely (Rules.md §13)', () => {
+  it('BK1-068 Compensation For The Porter moves every Set Card here to the chosen area', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const one = place(state, player, 'BK1-041', 1, { faceUp: false });
+    const two = place(one.state, player, 'BK1-041', 1, { faceUp: false });
+    const card = place(two.state, player, 'BK1-068', 1, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const offers = engine
+      .legalActions(state, player)
+      .filter(
+        (a): a is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          a.type === 'OPEN_CARD' && a.card === card.card,
+      );
+    // One offer per other area — never its own.
+    expect(offers.map((a) => a.areas?.[0]).sort()).toEqual([0, 2, 3, 4]);
+    const toFour = offers.find((a) => a.areas?.[0] === 4);
+    state = apply(state, player, toFour as GameAction);
+    expect(state.cards[one.card]?.cityIndex).toBe(4);
+    expect(state.cards[two.card]?.cityIndex).toBe(4);
+    expect(state.cards[one.card]?.faceUp).toBe(false);
+  });
+
+  it('BK1-062 Goal Of The Swordsman only offers areas holding an enemy of Level 3+', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    const mine = place(state, player, 'BK1-041', 0);
+    state = place(mine.state, other, 'BK1-044', 3).state; // Guts, Level 3
+    state = place(state, other, 'BK1-041', 4).state; // a Mercenary, Level 0
+    const card = place(state, player, 'BK1-062', 0, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const offers = engine
+      .legalActions(state, player)
+      .filter(
+        (a): a is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          a.type === 'OPEN_CARD' && a.card === card.card,
+      );
+    expect(offers.map((a) => a.areas?.[0])).toEqual([3]);
+    state = apply(state, player, offers[0] as GameAction);
+    expect(state.cards[mine.card]?.cityIndex).toBe(3);
+    expect(state.cards[mine.card]?.locked).toBe(false);
+  });
+});
+
+describe('BK1-061 Reunion On The Hill Of Swords', () => {
+  it('sets a character from hand and opens it for nothing, unless an enemy came here this turn', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    // The card is set first, then Guts (Level 3) is put in hand: Level 4 or
+    // lower qualifies.
+    const card = place(state, player, 'BK1-061', 2, { faceUp: false });
+    state = openable(card.state, player, card.card);
+    const spare = Object.values(state.cards).find(
+      (c) => c.controller === player && c.zone === 'hand',
+    ) as CardInstance;
+    state = {
+      ...state,
+      cards: { ...state.cards, [spare.instanceId]: { ...spare, defId: asCardDefId('BK1-044') } },
+    };
+    // City Level is 3 for the card itself; Guts would need it too, but the
+    // effect ignores the gate. Nobody has moved here: the condition holds.
+    state = apply(state, player, openOf(state, player, card.card) as GameAction);
+    expect(state.pending?.kind).toMatchObject({ zone: 'hand', action: 'setAndOpen' });
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: spare.instanceId });
+    const guts = state.cards[spare.instanceId];
+    expect(guts?.zone).toBe('city');
+    expect(guts?.faceUp).toBe(true);
+    expect(guts?.cityIndex).toBe(2);
+    expect(state.turn.openedThisTurn).toBe(true); // the card itself spent it
+
+    // Now an enemy arrives in the area this turn, and the same card fizzles.
+    let again = started(GREEN);
+    const enemy = place(again, other, 'BK1-041', 1);
+    again = enemy.state;
+    again = { ...again, turn: { ...again.turn, arrivals: [{ player: other, city: 2 }] } };
+    const second = place(again, player, 'BK1-061', 2, { faceUp: false });
+    again = openable(second.state, player, second.card);
+    const result = engine.reduce(again, player, openOf(again, player, second.card) as GameAction);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // The condition is unmet, so the ability does not fire at all: nothing
+      // is asked, and nothing is set.
+      expect(result.value.state.pending).toBeNull();
+      expect(result.value.events.map((e) => e.type)).not.toContain('CHOICE_REQUIRED');
+    }
+  });
+});
+
+describe('BK1-066 Lost Time', () => {
+  it('asks at the start of the turn, and a yes trades the draw for two at the end', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    state = place(state, player, 'BK1-066', 2).state;
+    // Round the turn to the owner's next: the trigger asks at its start.
+    state = endTurn(state, player);
+    expect(state.turn.activePlayer).toBe(other);
+    state = endTurn(state, other);
+    expect(state.turn.activePlayer).toBe(player);
+    expect(state.pending?.kind.zone).toBe('decision');
+    expect(state.pending?.waitingOn).toBe(player);
+
+    const before = zoneSize(state, player, 'hand');
+    state = apply(state, player, { type: 'ANSWER', accept: true });
+    // The Draw phase ran without drawing.
+    expect(state.turn.drawSkipped).toBe(true);
+    expect(zoneSize(state, player, 'hand')).toBe(before);
+    const events: GameEvent[] = [];
+    state = endTurn(state, player, events);
+    expect(events.filter((e) => e.type === 'CARD_DRAWN' && e.player === player)).toHaveLength(2);
+  });
+});
+
+describe('attachments (Rules.md §13)', () => {
+  it('BK1-076 Sylph Sword lends +1 Range and +3 Power while both stand, and falls with its host', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const host = place(state, player, 'BK1-041', 2);
+    const sword = place(host.state, player, 'BK1-076', 2, { faceUp: false });
+    state = openable(sword.state, player, sword.card);
+    const open = engine
+      .legalActions(state, player)
+      .find(
+        (a): a is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          a.type === 'OPEN_CARD' && a.card === sword.card && a.targets?.[0] === host.card,
+      );
+    expect(open).toBeDefined();
+    const printed = power(state, host.card);
+    state = apply(state, player, open as GameAction);
+    expect(state.cards[sword.card]?.attachedTo).toBe(host.card);
+    expect(power(state, host.card)).toBe(printed + 3);
+    expect(rangeOf({ registry }, state, cardOf(state, host.card))).toBe(1);
+    expect(boostSources({ registry }, state, cardOf(state, host.card))).toContain(sword.card);
+
+    // The host dies; the sword goes with it.
+    const dead = { ...cardOf(state, host.card), damage: 99 };
+    const result = engine.reduce(
+      { ...state, cards: { ...state.cards, [host.card]: dead } },
+      player,
+      { type: 'END_PHASE' },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Damage is swept at the End phase rather than killing outright, so use
+    // the effect route instead: send the host to the Trash directly.
+    let gone = state;
+    gone = {
+      ...gone,
+      cards: { ...gone.cards, [host.card]: { ...cardOf(gone, host.card), zone: 'trash' as const } },
+    };
+    const swept = engine.reduce(gone, player, { type: 'END_PHASE' });
+    expect(swept.ok).toBe(true);
+    if (swept.ok) expect(swept.value.state.cards[sword.card]?.zone).toBe('trash');
   });
 });
 

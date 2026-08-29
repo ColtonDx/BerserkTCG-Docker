@@ -6,9 +6,11 @@ import {
   SHIELD,
   usedOnTurnCounter,
   type Ability,
+  type AreaKind,
   type CardFacts,
   type Condition,
   type Effect,
+  type Grants,
   type Selector,
   type StatLine,
   type TargetSpec,
@@ -18,7 +20,7 @@ import type { Draft } from './draft.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { ok, violation, type Result, type RuleViolation } from './result.js';
 import type { BattleResult, BattleState, CardInstance, GameEvent, GameState } from './types.js';
-import { cardsInCity, cityDistance, zoneKey } from './zones.js';
+import { cardsInCity, cityDistance, moveToZone, zoneKey } from './zones.js';
 
 /**
  * Derived rules — the questions the reducer keeps asking about a position.
@@ -164,6 +166,26 @@ export function refreshBoard(
   draft: Draft<GameState>,
   events: GameEvent[],
 ): void {
+  // An attachment stands where its host stands and goes where its host goes
+  // — including the Trash. Rules.md §13: "as long as this card remains in
+  // play" is the host's being in play too, because a sword with nobody to
+  // hold it is not on the table.
+  for (const worn of Object.values(draft.cards)) {
+    if (worn.attachedTo === undefined || worn.zone !== 'city') continue;
+    const host = draft.cards[worn.attachedTo];
+    if (!host || host.zone !== 'city' || !host.faceUp) {
+      delete worn.attachedTo;
+      moveToZone(draft, worn.instanceId, { player: worn.owner, zone: 'trash' });
+      events.push({ type: 'CARD_TRASHED', player: worn.owner, card: worn.instanceId });
+      continue;
+    }
+    if (host.cityIndex !== undefined && worn.cityIndex !== host.cityIndex) {
+      const from = worn.cityIndex ?? host.cityIndex;
+      worn.cityIndex = host.cityIndex;
+      events.push({ type: 'CHARACTER_MOVED', card: worn.instanceId, from, to: host.cityIndex });
+    }
+  }
+
   for (const city of draft.cities) {
     const present = cardsInCity(draft, city.index).filter(
       (card) => card.faceUp && isCharacter(ctx, card),
@@ -258,9 +280,57 @@ export const hpOf = (ctx: EngineContext, state: BoardView, card: CardInstance): 
 export const moveOf = (ctx: EngineContext, state: BoardView, card: CardInstance): number =>
   statOf(ctx, state, card, 'move');
 
-/** A character's printed Range, which sets when it strikes. Rules.md §11 ④. */
-export const rangeOf = (ctx: EngineContext, card: CardInstance): number =>
-  definitionOf(ctx, card).stats?.range ?? 0;
+/**
+ * A character's Range, which sets when it strikes. Rules.md §11 ④. Printed,
+ * plus whatever it is wearing: nothing in the set moves Range except an
+ * attachment (BK1-076), so there is no counter for it.
+ */
+export const rangeOf = (
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards'>,
+  card: CardInstance,
+): number =>
+  Math.max(
+    0,
+    (definitionOf(ctx, card).stats?.range ?? 0) + attachedBonus(ctx, state, card, 'range'),
+  );
+
+/**
+ * What the cards attached to this one lend it, for one stat. Rules.md §13.
+ *
+ * Read off the board like any continuous ability: an attachment in the
+ * Trash lends nothing, and `refreshBoard` sends it there the moment its
+ * host leaves.
+ */
+function attachedBonus(
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards'>,
+  card: CardInstance,
+  stat: keyof Grants,
+): number {
+  let total = 0;
+  for (const worn of attachmentsOn(ctx, state, card)) {
+    for (const ability of definitionOf(ctx, worn).abilities ?? []) {
+      if (ability.effect.do !== 'attach') continue;
+      total += ability.effect.grants[stat] ?? 0;
+    }
+  }
+  return total;
+}
+
+/** The face-up attachments on the field whose host this card is. */
+export const attachmentsOn = (
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards'>,
+  card: CardInstance,
+): CardInstance[] =>
+  Object.values(state.cards).filter(
+    (worn) =>
+      worn.attachedTo === card.instanceId &&
+      worn.zone === 'city' &&
+      worn.faceUp &&
+      (definitionOf(ctx, worn).abilities ?? []).some((ability) => ability.effect.do === 'attach'),
+  );
 
 /**
  * Everything continuously changing this card's numbers, summed.
@@ -287,7 +357,7 @@ function continuousBonus(
       total += change;
     }
   }
-  return total;
+  return total + attachedBonus(ctx, state, card, stat);
 }
 
 /**
@@ -359,6 +429,10 @@ export function boostSources(
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
       if (!found.includes(source.instanceId)) found.push(source.instanceId);
       break;
+    }
+    // Something worn lifts its wearer as surely as an aura does.
+    if (source.attachedTo === card.instanceId && attachmentsOn(ctx, state, card).includes(source)) {
+      if (!found.includes(source.instanceId)) found.push(source.instanceId);
     }
   }
   return found;
@@ -496,6 +570,11 @@ export function quickRelevant(
     return false;
   }
   if (!conditionHolds(ctx, state, source, ability.condition, state.battle)) return false;
+  if (ability.area !== undefined && areasFor(ctx, state, ability.area, source).length === 0) {
+    // Relative to a character it is checked once one is chosen; here only the
+    // kinds that stand on their own can be empty.
+    if (ability.area !== 'adjacent') return false;
+  }
 
   const inBattle = state.battle !== null;
   const effects = [ability.effect, ...(ability.then ?? [])];
@@ -542,7 +621,20 @@ function effectRelevant(
       // "For each" of nothing draws nothing.
       return effect.per === undefined || reachedBy(ctx, state, source, effect.per).length > 0;
     case 'search':
-      return searchable(ctx, state, source.controller, effect.named).length > 0;
+      return (
+        searchable(ctx, state, source.controller, effect.named, effect.characterOnly === true)
+          .length > 0
+      );
+    case 'setFromHand':
+      return settable(ctx, state, source.controller, effect.maxLevel).length > 0;
+    case 'may':
+      return effect.effects.some((inner) =>
+        effectRelevant(ctx, state, source, ability, inner, inBattle),
+      );
+    case 'skipDraw':
+      return true;
+    case 'attach':
+      return reaches(effect.who);
     case 'discard': {
       const player =
         effect.player === 'you'
@@ -744,6 +836,18 @@ export function conditionHolds(
       const holder = cityOf(state, source)?.occupiedBy;
       return holder !== null && holder !== undefined && holder !== source.controller;
     }
+    case 'youCapturedThisArea':
+      return (
+        source.cityIndex !== undefined &&
+        state.turn.activePlayer === source.controller &&
+        state.turn.capturedCities.includes(source.cityIndex)
+      );
+    case 'battleDeclaredThisArea':
+      return source.cityIndex !== undefined && state.turn.declaredCities.includes(source.cityIndex);
+    case 'noEnemyArrivedThisArea':
+      return !state.turn.arrivals.some(
+        (arrival) => arrival.city === source.cityIndex && arrival.player !== source.controller,
+      );
     case 'isVanguard':
       return battle?.vanguard === source.instanceId;
     case 'attackingOccupiedArea': {
@@ -780,8 +884,8 @@ export function nextRangeBand(
     .filter((card): card is CardInstance => card !== undefined && card.zone === 'city');
   if (alive.length === 0) return [];
 
-  const top = Math.max(...alive.map((card) => rangeOf(ctx, card)));
-  const band = alive.filter((card) => rangeOf(ctx, card) === top);
+  const top = Math.max(...alive.map((card) => rangeOf(ctx, state, card)));
+  const band = alive.filter((card) => rangeOf(ctx, state, card) === top);
   // Ties assign attacker-first (§11 ④), so order the band that way.
   return [
     ...band.filter((card) => card.controller === battle.attacker),
@@ -892,6 +996,7 @@ export function searchable(
   state: GameState,
   player: PlayerId,
   named: string | null,
+  characterOnly = false,
 ): CardInstance[] {
   const deck = state.zoneOrder[zoneKey(player, 'deck')] ?? [];
   return (
@@ -901,5 +1006,73 @@ export function searchable(
       // By printed name, not by card id: "1 Serpico" does not care which
       // printing of Serpico the deck happens to be holding.
       .filter((card) => named === null || definitionOf(ctx, card).name === named)
+      .filter((card) => !characterOnly || isCharacter(ctx, card))
   );
+}
+
+/**
+ * The areas an ability may send somebody to. Rules.md §13, `AreaKind`.
+ *
+ * The single implementation, so `legalActions` and `reduce` cannot disagree
+ * about what "adjacent" or "any other area" means. `target` is the chosen
+ * character, for a kind that is relative to one.
+ */
+export function areasFor(
+  ctx: EngineContext,
+  state: BoardView,
+  kind: AreaKind,
+  source: CardInstance,
+  target?: CardInstanceId,
+): number[] {
+  const all = state.cities.map((city) => city.index);
+  switch (kind) {
+    case 'adjacent': {
+      const from = target === undefined ? undefined : state.cards[target]?.cityIndex;
+      if (from === undefined) return [];
+      return [from - 1, from + 1].filter((index) => index >= 0 && index < state.cities.length);
+    }
+    case 'anyOther':
+      return all.filter((index) => index !== source.cityIndex);
+    case 'enemyLevel3':
+      return all.filter(
+        (index) =>
+          index !== state.cards[target ?? '']?.cityIndex &&
+          Object.values(state.cards).some(
+            (card) =>
+              card.zone === 'city' &&
+              card.cityIndex === index &&
+              card.faceUp &&
+              card.controller !== source.controller &&
+              isCharacter(ctx, card) &&
+              (definitionOf(ctx, card).level ?? 0) >= 3,
+          ),
+      );
+  }
+}
+
+/** The abilities on a card that ask the player to choose something, in order. */
+export const askingAbilities = (
+  ctx: EngineContext,
+  card: CardInstance,
+  trigger: Trigger,
+): Ability[] =>
+  (definitionOf(ctx, card).abilities ?? []).filter(
+    (ability) =>
+      ability.trigger === trigger && (ability.target !== undefined || ability.area !== undefined),
+  );
+
+/** The cards in hand a "set from hand" choice may take. Rules.md §13. */
+export function settable(
+  ctx: EngineContext,
+  state: GameState,
+  player: PlayerId,
+  maxLevel: number | null,
+): CardInstance[] {
+  return (state.zoneOrder[zoneKey(player, 'hand')] ?? [])
+    .map((id) => state.cards[id])
+    .filter((card): card is CardInstance => card !== undefined && isCharacter(ctx, card))
+    .filter((card) => {
+      const level = definitionOf(ctx, card).level;
+      return level !== null && (maxLevel === null || level <= maxLevel);
+    });
 }

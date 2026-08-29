@@ -33,7 +33,13 @@ export type HandStep =
       readonly owed: number;
       readonly text: string;
       readonly from: 'hand' | 'deck';
-    };
+      /** What happens to a chosen card, which is what the prompt has to say. */
+      readonly action: 'discard' | 'setAndOpen' | 'toHand' | 'toTrash' | 'toCity';
+      /** The player may stop short of the count. Rules.md §13 — "up to". */
+      readonly upTo: boolean;
+    }
+  /** A card asking yes or no — "you may …". Rules.md §13. */
+  | { readonly kind: 'decide'; readonly text: string };
 
 /** Which hand step, if any, the player owes right now. */
 export function handStep(view: PlayerView): HandStep | null {
@@ -43,11 +49,15 @@ export function handStep(view: PlayerView): HandStep | null {
   // First, because it outranks everything: until it is answered nothing else
   // in the game is legal at all (Rules.md §13).
   if (view.pending && view.pending.waitingOn === view.viewer) {
+    const kind = view.pending.kind;
+    if (kind.zone === 'decision') return { kind: 'decide', text: view.pending.text };
     return {
       kind: 'choose',
       owed: view.pending.count,
       text: view.pending.text,
-      from: view.pending.kind.zone,
+      from: kind.zone,
+      action: kind.action,
+      upTo: view.pending.upTo,
     };
   }
 
@@ -86,17 +96,24 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
   // actions rather than off the deck zone is deliberate: the client is never
   // sent the rest of the deck, so this cannot show a card it should not.
   const searching = step.kind === 'choose' && step.from === 'deck';
-  const shown = searching
-    ? view.legalActions
-        .filter((action) => action.type === 'CHOOSE_CARD')
-        .map((action) => view.cards[(action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card])
-        .filter((card): card is NonNullable<typeof card> => card !== undefined)
-    : (view.zoneOrder[`${view.viewer}:hand`] ?? [])
-        .map((id) => view.cards[id])
-        .filter((card): card is NonNullable<typeof card> => card !== undefined);
+  const shown =
+    step.kind === 'decide'
+      ? []
+      : searching
+        ? view.legalActions
+            .filter((action) => action.type === 'CHOOSE_CARD')
+            .map(
+              (action) => view.cards[(action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card],
+            )
+            .filter((card): card is NonNullable<typeof card> => card !== undefined)
+        : (view.zoneOrder[`${view.viewer}:hand`] ?? [])
+            .map((id) => view.cards[id])
+            .filter((card): card is NonNullable<typeof card> => card !== undefined);
+  // "That will do": an up-to choice may be ended early. Rules.md §13.
+  const canStop = view.legalActions.some((action) => action.type === 'ANSWER' && !action.accept);
 
   // A card is clickable only when the current step actually acts on cards.
-  const picking = step.kind !== 'mulligan';
+  const picking = step.kind !== 'mulligan' && step.kind !== 'decide';
   const actionFor = (instanceId: string): GameAction | null => {
     if (step.kind === 'bottom') return { type: 'BOTTOM_CARD', card: instanceId as never };
     if (step.kind === 'discard') return { type: 'DISCARD_CARD', card: instanceId as never };
@@ -194,6 +211,37 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
             })}
           </div>
 
+          {step.kind === 'decide' && (
+            <div className="focus__actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => onAction({ type: 'ANSWER', accept: false })}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => onAction({ type: 'ANSWER', accept: true })}
+              >
+                Yes
+              </button>
+            </div>
+          )}
+
+          {step.kind === 'choose' && canStop && (
+            <div className="focus__actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => onAction({ type: 'ANSWER', accept: false })}
+              >
+                {step.action === 'setAndOpen' ? 'Set nothing' : 'That will do'}
+              </button>
+            </div>
+          )}
+
           {step.kind === 'mulligan' && (
             <div className="focus__actions">
               <button
@@ -222,22 +270,31 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
 function title(step: HandStep): string {
   if (step.kind === 'mulligan') return 'Your opening hand';
   if (step.kind === 'bottom') return 'Put cards on the bottom';
+  if (step.kind === 'decide') return 'A card asks';
   if (step.kind === 'choose') {
-    return step.from === 'deck' ? 'Search your deck' : 'Discard';
+    if (step.from === 'deck') return 'Search your deck';
+    return step.action === 'setAndOpen' ? 'Set and open' : 'Discard';
   }
   return 'Discard to seven';
 }
 
 function hint(step: HandStep): string {
+  if (step.kind === 'decide') return step.text;
   if (step.kind === 'choose') {
     // The printed line first, in the card's own words: the player is being
     // interrupted by a card, and what it says is the whole reason they are
     // being asked. Then what to click, and how many times.
-    const many = step.owed === 1 ? 'a card' : `${step.owed} cards`;
+    const many = step.owed === 1 ? 'a card' : `${step.upTo ? 'up to ' : ''}${step.owed} cards`;
     const what =
-      step.from === 'deck'
+      step.action === 'toHand'
         ? `Click ${many} to add to your hand — your deck is shuffled afterwards.`
-        : `Click ${many} to discard, or 🔍 to read one first.`;
+        : step.action === 'toTrash'
+          ? `Click ${many} to send to the graveyard — your deck is shuffled afterwards.`
+          : step.action === 'toCity'
+            ? `Click ${many} to set face down in this area — your deck is shuffled afterwards.`
+            : step.action === 'setAndOpen'
+              ? 'Click a card to set it in this area and open it at once, paying nothing.'
+              : `Click ${many} to discard, or 🔍 to read one first.`;
     return `${step.text} ${what}`;
   }
   if (step.kind === 'mulligan') {
