@@ -508,7 +508,13 @@ export function App(): JSX.Element {
       {/* The coach, for the guided game. It reads the table and rings what
        * to click; it never sends anything. DesignNotes "Tutorial". */}
       {match.tutorial && ceremony === 'playing' && (
-        <Tutorial view={table} paying={opening !== null} busy={busy} onQuit={() => undefined} />
+        <Tutorial
+          view={table}
+          paying={opening !== null}
+          busy={busy}
+          onHold={match.holdForCoach}
+          onQuit={() => undefined}
+        />
       )}
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} />}

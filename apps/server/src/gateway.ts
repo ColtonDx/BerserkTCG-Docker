@@ -10,7 +10,7 @@ import {
 } from '@berserk/protocol';
 import type { FastifyInstance } from 'fastify';
 import { Server, type Socket } from 'socket.io';
-import { AI_NAME, AI_PLAYER_ID, driveAi, holdFor, holdMatch } from './ai.js';
+import { AI_NAME, AI_PLAYER_ID, driveAi, holdFor, holdForCoach, holdMatch } from './ai.js';
 import { findProfile, readToken } from './auth.js';
 import { config } from './config.js';
 import { getDeck, listPrecons } from './decks.js';
@@ -375,11 +375,22 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       void driveAi(matches, matchId, (aiEvents) => broadcastState(matchId, aiEvents));
     });
 
+    // DesignNotes "Tutorial" — the coach is on screen; Femto waits.
+    socket.on('tutorial:hold', ({ matchId, hold }) => {
+      const match = matches.get(matchId);
+      if (!match?.tutorial || !match.seats.some((seat) => seat.playerId === session.playerId)) {
+        return;
+      }
+      holdForCoach(matchId, hold === true);
+    });
+
     socket.on('state:resync', ({ matchId }, ack) => {
       ack(matches.viewFor(matchId, session.playerId));
     });
 
     socket.on('match:leave', ({ matchId }) => {
+      // A coach nobody is reading holds nothing.
+      holdForCoach(matchId, false);
       const { removed } = matches.leave(matchId, session.playerId);
       void socket.leave(matchRoom(matchId));
       void socket.leave(seatRoom(matchId, session.playerId));
@@ -392,6 +403,7 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
     socket.on('disconnect', (reason) => {
       app.log.info({ socketId: socket.id, reason }, 'client disconnected');
       if (!session.matchId) return;
+      holdForCoach(session.matchId, false);
       // The seat is kept so the player can reconnect and resume the match.
       matches.setConnected(session.matchId, session.playerId, false);
       broadcastState(session.matchId);

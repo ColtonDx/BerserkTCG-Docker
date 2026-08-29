@@ -72,9 +72,26 @@ export function holdMatch(matchId: MatchId, ms: number): void {
   holdUntil.set(matchId, Math.max(holdUntil.get(matchId) ?? 0, until));
 }
 
+/**
+ * Matches whose coach has a step on screen. DesignNotes "Tutorial" — Femto
+ * does nothing until the player has read it, however long that takes.
+ */
+const reading = new Set<MatchId>();
+
+/** The coach is showing a step (or has been read). Only the tutorial sets this. */
+export function holdForCoach(matchId: MatchId, hold: boolean): void {
+  if (hold) reading.add(matchId);
+  else reading.delete(matchId);
+}
+
 const untilQuiet = async (matchId: MatchId): Promise<void> => {
   const wait = (holdUntil.get(matchId) ?? 0) - Date.now();
   if (wait > 0) await pause(wait);
+  // A player reading the coach is not waiting on Femto; Femto is waiting on
+  // them. Polled rather than signalled, because the answer can only come
+  // from the client and a few hundred milliseconds of lag on "Got it" is
+  // nothing against the reading.
+  while (reading.has(matchId)) await pause(150);
 };
 
 /** Stops a rules bug from spinning the AI forever. */

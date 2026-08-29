@@ -106,6 +106,14 @@ export interface ClientToServerEvents {
   'matches:mine': (payload: Record<string, never>, ack: (result: OngoingMatch[]) => void) => void;
 
   /**
+   * The coach has a step on screen (or has just been read). DesignNotes
+   * "Tutorial" — Femto does nothing while the player is still reading, so the
+   * table never moves under an explanation. Honoured only in a tutorial
+   * match the sender is seated in; anywhere else it is ignored.
+   */
+  'tutorial:hold': (payload: { matchId: MatchId; hold: boolean }) => void;
+
+  /**
    * Choose the deck to play. The match deals once both seats have chosen a
    * legal deck. DesignNotes 4.
    */

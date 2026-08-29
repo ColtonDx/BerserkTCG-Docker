@@ -42,6 +42,8 @@ export interface MatchClient {
   selectDeck: (deckId: string) => void;
   /** Deal the match once both decks are chosen. DesignNotes 3. */
   startMatch: () => void;
+  /** The coach is showing a step: Femto waits until it is read. DesignNotes "Tutorial". */
+  holdForCoach: (hold: boolean) => void;
   /** Steps out of a match and back to the menu. */
   leaveMatch: () => void;
   submit: (action: GameAction) => void;
@@ -199,6 +201,15 @@ export function useMatch(enabled: boolean): MatchClient {
     [enterMatch, guard],
   );
 
+  const holdForCoach = useCallback(
+    (hold: boolean) => {
+      const id = matchIdRef.current;
+      if (!id) return;
+      guard('Holding the computer', () => getSocket().emit('tutorial:hold', { matchId: id, hold }));
+    },
+    [guard],
+  );
+
   const startMatch = useCallback(() => {
     const id = matchIdRef.current;
     if (!id) return;
@@ -272,6 +283,7 @@ export function useMatch(enabled: boolean): MatchClient {
     joinMatch,
     selectDeck,
     startMatch,
+    holdForCoach,
     leaveMatch,
     submit,
   };

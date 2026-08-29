@@ -137,3 +137,8 @@ board shows they happened. Reactions fire the first time something new turns
 up: a Quick window, a card asking a question, the Royal Capital, an ability.
 After the first city is taken the coach says so and stays quiet except for
 reactions. Skip is always available; the match carries on without the coach.
+
+**Femto waits for the reader.** While a step is on screen the client tells the
+server (`tutorial:hold`), and Femto does nothing until it is read — Got it —
+or done on the table. Nothing may move under an explanation. Only a tutorial
+match honours the message.

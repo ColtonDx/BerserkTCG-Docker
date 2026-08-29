@@ -266,10 +266,15 @@ interface Props {
   readonly paying: boolean;
   /** Something is being shown; the coach waits for it. */
   readonly busy: boolean;
+  /**
+   * A step is on screen (true) or has been read (false). Femto does nothing
+   * while it is true — the table must not move under an explanation.
+   */
+  readonly onHold: (hold: boolean) => void;
   readonly onQuit: () => void;
 }
 
-export function Tutorial({ view, paying, busy, onQuit }: Props): JSX.Element | null {
+export function Tutorial({ view, paying, busy, onHold, onQuit }: Props): JSX.Element | null {
   const me = view.viewer;
   const [done, setDone] = useState<ReadonlySet<string>>(new Set());
   const [quit, setQuit] = useState(false);
@@ -287,6 +292,13 @@ export function Tutorial({ view, paying, busy, onQuit }: Props): JSX.Element | n
       null
     );
   }, [view, me, paying, done, quit]);
+
+  // While a step is up, Femto waits. Released when it is read or done, and
+  // when the coach goes away for good.
+  useEffect(() => {
+    onHold(current !== null);
+  }, [current, onHold]);
+  useEffect(() => () => onHold(false), [onHold]);
 
   // Lessons finish themselves when the board shows they happened.
   useEffect(() => {
@@ -355,17 +367,18 @@ export function Tutorial({ view, paying, busy, onQuit }: Props): JSX.Element | n
         <h2 className="coach__title">{current.title}</h2>
         <p className="coach__body">{current.body}</p>
         <div className="coach__actions">
-          {(!current.done || current.reaction) && (
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => setDone((now) => new Set([...now, current.id]))}
-            >
-              {current.reaction ? 'Got it' : 'Next'}
-            </button>
-          )}
+          {/* Every step can be read and dismissed; one with something to do
+           * on the table finishes itself when that happens. Femto waits for
+           * either. */}
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => setDone((now) => new Set([...now, current.id]))}
+          >
+            {current.reaction ? 'Got it' : current.done ? 'Got it — I’ll do it' : 'Next'}
+          </button>
           {current.done && !current.reaction && (
-            <span className="coach__wait">Do it on the table to continue</span>
+            <span className="coach__wait">or do it on the table</span>
           )}
           <button
             type="button"
