@@ -16,6 +16,7 @@ import {
   type RuleViolation,
 } from '@berserk/engine';
 import { randomInt } from 'node:crypto';
+import { tutorialSeed } from './tutorial.js';
 
 /**
  * In-memory match registry — the authoritative home of every live game.
@@ -52,6 +53,8 @@ export interface Match {
   readonly createdAt: number;
   /** The word a private room asks for on the way in. DesignNotes 2. */
   readonly password: string | null;
+  /** The guided game: fixed decks and a fixed seed. DesignNotes "Tutorial". */
+  readonly tutorial: boolean;
 }
 
 const MAX_SEATS = 2;
@@ -79,16 +82,21 @@ export class MatchManager {
     throw new Error('Could not find a free join code');
   }
 
-  create(password: string | null = null): Match {
+  create(
+    password: string | null = null,
+    options: { seed?: number; tutorial?: boolean } = {},
+  ): Match {
     const match: Match = {
       id: this.newCode(),
       seats: [],
       state: null,
       actions: [],
-      // Seeded from a CSPRNG so players cannot predict their shuffle.
-      seed: randomInt(0, 2 ** 31 - 1),
+      // Seeded from a CSPRNG so players cannot predict their shuffle — unless
+      // the match is the tutorial, which deals the same way every time.
+      seed: options.seed ?? randomInt(0, 2 ** 31 - 1),
       createdAt: Date.now(),
       password: password && password.length > 0 ? password : null,
+      tutorial: options.tutorial === true,
     };
     this.matches.set(match.id, match);
     return match;
@@ -340,6 +348,26 @@ export class MatchManager {
       this.start(match);
     }
     return { ok: true, match };
+  }
+
+  /**
+   * The guided game: the human and Femto, both on the tutorial deck, dealt
+   * from the seed that seats the human first. DesignNotes "Tutorial".
+   */
+  createTutorial(
+    playerId: PlayerId,
+    displayName: string,
+    icon: string | null,
+    ai: { playerId: PlayerId; displayName: string },
+    deck: { id: string; name: string; cards: readonly DeckEntry[] },
+  ): Match {
+    const seed = tutorialSeed(this.engine, playerId, ai.playerId);
+    const match = this.create(null, { seed, tutorial: true });
+    this.join(match.id, playerId, displayName, icon);
+    this.seatAi(match.id, ai.playerId, ai.displayName);
+    for (const seat of match.seats) seat.deck = deck;
+    this.start(match);
+    return match;
   }
 
   /** True once both seats are filled and both have chosen a deck. */

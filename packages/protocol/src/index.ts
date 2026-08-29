@@ -72,6 +72,12 @@ export interface ClientToServerEvents {
   'match:createSolo': (ack: (result: JoinResult) => void) => void;
 
   /**
+   * Start the guided game: the computer, fixed decks, a fixed deal, and the
+   * client's coach walking through it. DesignNotes "Tutorial". Deals at once.
+   */
+  'match:createTutorial': (ack: (result: JoinResult) => void) => void;
+
+  /**
    * Create a new match and take the first seat. With a password the room is
    * private (DesignNotes 2): it is listed, but joining needs the word.
    * Without one, an open match waiting for an opponent is joined instead.

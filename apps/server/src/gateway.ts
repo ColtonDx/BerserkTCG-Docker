@@ -14,6 +14,7 @@ import { AI_NAME, AI_PLAYER_ID, driveAi, holdFor, holdMatch } from './ai.js';
 import { findProfile, readToken } from './auth.js';
 import { config } from './config.js';
 import { getDeck, listPrecons } from './decks.js';
+import { TUTORIAL_DECK } from './tutorial.js';
 import type { MatchManager } from './matches.js';
 
 /**
@@ -184,6 +185,34 @@ export function registerGateway(app: FastifyInstance, matches: MatchManager): Se
       await joinRooms(match.id);
       ack({ ok: true, matchId: match.id, seat: session.playerId, view: null });
       broadcastState(match.id);
+    });
+
+    socket.on('match:createTutorial', async (ack) => {
+      let match;
+      try {
+        match = matches.createTutorial(
+          session.playerId,
+          session.displayName,
+          await badge(),
+          { playerId: AI_PLAYER_ID, displayName: AI_NAME },
+          TUTORIAL_DECK,
+        );
+      } catch (error) {
+        app.log.error(error, 'starting the tutorial failed');
+        ack({ ok: false, code: 'INTERNAL', message: 'Could not start the tutorial.' });
+        return;
+      }
+      await joinRooms(match.id);
+      ack({
+        ok: true,
+        matchId: match.id,
+        seat: session.playerId,
+        view: matches.viewFor(match.id, session.playerId),
+      });
+      broadcastState(match.id);
+      // The opening ceremony plays; Femto settles its hand once it is over.
+      holdMatch(match.id, OPENING_CEREMONY_MS);
+      void driveAi(matches, match.id, (aiEvents) => broadcastState(match.id, aiEvents));
     });
 
     socket.on('match:join', async ({ matchId, password }, ack) => {

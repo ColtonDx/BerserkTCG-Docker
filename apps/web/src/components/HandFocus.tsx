@@ -255,6 +255,7 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
               <button
                 type="button"
                 className="btn btn--primary"
+                data-tutorial="keep"
                 onClick={() => onAction({ type: 'KEEP_HAND' })}
               >
                 Keep

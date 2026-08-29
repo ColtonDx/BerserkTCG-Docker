@@ -5469,3 +5469,122 @@ button {
     filter: drop-shadow(0 0 6px rgb(130 175 255 / 40%));
   }
 }
+
+/* ------------------------------------------------------------------ the coach
+ *
+ * The guided game (DesignNotes "Tutorial"). A panel in the top right that
+ * says what the table is asking, and rings around the things to click. It
+ * sits above the hand overlay so the first lesson can point at Keep, and
+ * below the reveals, which it waits for anyway.
+ */
+
+.coach {
+  position: fixed;
+  top: 58px;
+  right: 14px;
+  z-index: 47;
+  width: min(340px, 40vw);
+  padding: 14px 16px 12px;
+  background: rgb(6 6 7 / 92%);
+  border: 1px solid var(--blood);
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px rgb(216 16 32 / 25%) inset,
+    0 14px 40px rgb(0 0 0 / 75%);
+  animation: quickbar-in 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.coach--reaction {
+  border-color: var(--ink-faint);
+}
+
+.coach__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.coach__kicker,
+.coach__rule {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--blood-bright);
+}
+
+.coach__rule {
+  color: var(--ink-faint);
+}
+
+.coach__title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+.coach__body {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.coach__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.coach__wait {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.coach__quit {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.coach__rings {
+  position: fixed;
+  inset: 0;
+  z-index: 46;
+  pointer-events: none;
+}
+
+.coach__ring {
+  position: absolute;
+  border: 2px solid var(--blood-bright);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 4px rgb(216 16 32 / 18%),
+    0 0 24px rgb(216 16 32 / 45%);
+  animation: coach-pulse 1400ms ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach__ring {
+    animation: none;
+  }
+}

@@ -92,7 +92,12 @@ export function BattleBar({ view, battle, onAction, busy = false }: Props): JSX.
       </span>
 
       {asking && canPass && (
-        <button type="button" className="btn" onClick={() => onAction({ type: 'BATTLE_PASS' })}>
+        <button
+          type="button"
+          className="btn"
+          data-tutorial="battle-pass"
+          onClick={() => onAction({ type: 'BATTLE_PASS' })}
+        >
           {DECLINE[battle.step]}
         </button>
       )}

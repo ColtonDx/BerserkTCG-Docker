@@ -118,3 +118,22 @@ at a turn's edges, on attack, on death — resolve at once rather than
 stacking, since they arrive in the middle of something else resolving and
 §14 has no interrupts mid-resolution. A round that interrupted one of the
 moments above returns to it once the stack has drained.
+
+## Tutorial
+
+The guided game is an ordinary singleplayer match with two things fixed: both
+players use the tutorial deck (`server/tutorial.ts`), and the seed is the first
+one whose deal seats the human first with a hand that has Mercenaries to set
+and a Level 1 to open. The engine is deterministic from those, so the coach
+knows what the player is holding without the rules changing at all.
+
+The coach (`components/Tutorial.tsx`) reads the view, says what the table is
+asking, and rings the thing to click. Its steps are predicates on the view,
+not positions in a script: a player who sets three cards or moves before
+attacking is met where they are. Lessons run in order — the hand, setting,
+ending the turn, the Open step and its cost, declaring battle, the vanguard,
+the combat open, committing, damage, taking a city — and finish when the
+board shows they happened. Reactions fire the first time something new turns
+up: a Quick window, a card asking a question, the Royal Capital, an ability.
+After the first city is taken the coach says so and stays quiet except for
+reactions. Skip is always available; the match carries on without the coach.

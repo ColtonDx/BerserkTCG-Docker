@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { GameMenu } from './components/GameMenu.js';
 import { MatchOver } from './components/MatchOver.js';
 import { TurnButton } from './components/TurnButton.js';
+import { Tutorial } from './components/Tutorial.js';
 import { Aim } from './components/Aim.js';
 import { AssignDamage } from './components/AssignDamage.js';
 import { Banner } from './components/Banner.js';
@@ -244,6 +245,7 @@ export function App(): JSX.Element {
           onBuildDeck={() => setBuilding(true)}
           onBrowse={() => setBrowsing(true)}
           onSolo={() => turnPage(match.createSolo)}
+          onTutorial={() => turnPage(match.createTutorial)}
           onSettings={() => setSettings(true)}
           account={auth.user}
           onSignOut={auth.signOut}
@@ -410,7 +412,8 @@ export function App(): JSX.Element {
         onAgain={() =>
           turnPage(() => {
             match.leaveMatch();
-            if (match.solo) match.createSolo();
+            if (match.tutorial) match.createTutorial();
+            else if (match.solo) match.createSolo();
             else match.createMatch();
           })
         }
@@ -501,6 +504,11 @@ export function App(): JSX.Element {
           onPeek={setPeeking}
           onInspect={setInspecting}
         />
+      )}
+      {/* The coach, for the guided game. It reads the table and rings what
+       * to click; it never sends anything. DesignNotes "Tutorial". */}
+      {match.tutorial && ceremony === 'playing' && (
+        <Tutorial view={table} paying={opening !== null} busy={busy} onQuit={() => undefined} />
       )}
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} />}

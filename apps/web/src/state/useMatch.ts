@@ -30,10 +30,14 @@ export interface MatchClient {
   readonly chosenDeck: string | null;
   /** True when this match was started against the computer. */
   readonly solo: boolean;
+  /** True when this match is the guided game. DesignNotes "Tutorial". */
+  readonly tutorial: boolean;
   /** Find an open match, or with a password make a private one. DesignNotes 2. */
   createMatch: (password?: string) => void;
   /** Start a match against the computer. */
   createSolo: () => void;
+  /** Start the guided game against the computer. */
+  createTutorial: () => void;
   joinMatch: (matchId: MatchId, password?: string) => void;
   selectDeck: (deckId: string) => void;
   /** Deal the match once both decks are chosen. DesignNotes 3. */
@@ -55,6 +59,7 @@ export function useMatch(enabled: boolean): MatchClient {
   // something to infer from a seat id — the AI's player id belongs to the
   // server, and reading it here would make it part of the wire contract.
   const [solo, setSolo] = useState(false);
+  const [tutorial, setTutorial] = useState(false);
   const matchIdRef = useRef<MatchId | null>(null);
 
   useEffect(() => {
@@ -143,6 +148,7 @@ export function useMatch(enabled: boolean): MatchClient {
   const createMatch = useCallback(
     (password?: string) => {
       setSolo(false);
+      setTutorial(false);
       guard('Creating a match', () => {
         getSocket().emit('match:create', password ? { password } : {}, (result) => {
           if (result.ok) enterMatch(result.matchId, result.view);
@@ -153,8 +159,20 @@ export function useMatch(enabled: boolean): MatchClient {
     [enterMatch, guard],
   );
 
+  const createTutorial = useCallback(() => {
+    setSolo(true);
+    setTutorial(true);
+    guard('Starting the tutorial', () => {
+      getSocket().emit('match:createTutorial', (result) => {
+        if (result.ok) enterMatch(result.matchId, result.view);
+        else setLastError(result.message);
+      });
+    });
+  }, [enterMatch, guard]);
+
   const createSolo = useCallback(() => {
     setSolo(true);
+    setTutorial(false);
     guard('Starting a single-player match', () => {
       getSocket().emit('match:createSolo', (result) => {
         if (result.ok) enterMatch(result.matchId, result.view);
@@ -166,6 +184,7 @@ export function useMatch(enabled: boolean): MatchClient {
   const joinMatch = useCallback(
     (id: MatchId, password?: string) => {
       setSolo(false);
+      setTutorial(false);
       guard('Joining the match', () => {
         getSocket().emit(
           'match:join',
@@ -220,6 +239,7 @@ export function useMatch(enabled: boolean): MatchClient {
     setChosenDeck(null);
     setLastError(null);
     setSolo(false);
+    setTutorial(false);
   }, [guard]);
 
   const submit = useCallback(
@@ -245,8 +265,10 @@ export function useMatch(enabled: boolean): MatchClient {
     lobby,
     chosenDeck,
     solo,
+    tutorial,
     createMatch,
     createSolo,
+    createTutorial,
     joinMatch,
     selectDeck,
     startMatch,

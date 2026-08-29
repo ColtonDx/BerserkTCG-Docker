@@ -206,7 +206,12 @@ export function QuickPrompt({
       </div>
 
       <div className="quickbar__answer">
-        <button type="button" className="btn btn--primary" onClick={onPass}>
+        <button
+          type="button"
+          className="btn btn--primary"
+          data-tutorial="quick-pass"
+          onClick={onPass}
+        >
           Pass
         </button>
         {manner === 'countdown' && (

@@ -509,6 +509,14 @@ seats hold a legal deck either player presses **Start game** (`match:start`,
 `matches.ts:startMatch`). Against the computer the last deck chosen deals at
 once, because there is nobody else to press it.
 
+**The tutorial** (`DesignNotes` "Tutorial") is a solo match dealt from a
+fixed seed found by `server/tutorial.ts:tutorialSeed` — the first seed that
+seats the human first with a teachable hand — on a fixed white deck for both
+players. `match:createTutorial` deals at once. The coach
+(`components/Tutorial.tsx`) is pure display: steps are predicates on the view
+that ring what to click and finish when the board shows it happened, so it
+never has to know what Femto did. It never sends an action.
+
 **Getting back into a game.** A seat survives both a disconnect and a
 mid-game leave — `matches.ts:leave` keeps it once a match has dealt, because
 walking away is not a vacancy — so the only thing a dropped player ever lacked

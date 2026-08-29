@@ -28,6 +28,8 @@ interface LobbyProps {
   readonly onBuildDeck: () => void;
   readonly onBrowse: () => void;
   readonly onSolo: () => void;
+  /** The guided game. DesignNotes "Tutorial". */
+  readonly onTutorial: () => void;
   readonly onSettings: () => void;
   readonly account: { username: string } | null;
   readonly onSignOut: () => void;
@@ -79,6 +81,7 @@ export function Lobby({
   onBuildDeck,
   onBrowse,
   onSolo,
+  onTutorial,
   onSettings,
   account,
   onSignOut,
@@ -164,6 +167,10 @@ export function Lobby({
 
             <button type="button" className="btn" disabled={!connected} onClick={onSolo}>
               Singleplayer
+            </button>
+
+            <button type="button" className="btn" disabled={!connected} onClick={onTutorial}>
+              Tutorial
             </button>
 
             <button type="button" className="btn" onClick={onBrowse}>
