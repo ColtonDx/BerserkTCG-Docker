@@ -510,6 +510,7 @@ export function App(): JSX.Element {
       {match.tutorial && ceremony === 'playing' && (
         <Tutorial
           view={table}
+          events={match.recentEvents}
           paying={opening !== null}
           busy={busy}
           onHold={match.holdForCoach}

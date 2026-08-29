@@ -1,6 +1,7 @@
-import type { GameAction, PlayerId, PlayerView } from '@berserk/engine';
+import type { GameAction, GameEvent, PlayerId, PlayerView } from '@berserk/engine';
 import { isCityHidden, isHidden } from '@berserk/engine';
-import { useEffect, useMemo, useState, type CSSProperties, type JSX } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from 'react';
+import { nameOf } from '../state/useCardNames.js';
 
 /**
  * The coach: a guided first game. DesignNotes "Tutorial".
@@ -13,12 +14,14 @@ import { useEffect, useMemo, useState, type CSSProperties, type JSX } from 'reac
  * a player who does things in another order — sets three cards, moves
  * before attacking — is met where they are rather than told they are wrong.
  *
- * Two kinds of step. A **lesson** applies once, in order, and is done when
+ * Three kinds of step. A **lesson** applies once, in order, and is done when
  * the board shows it happened (or when the player clicks Next). A
  * **reaction** applies the first time something new turns up — a Quick
- * window, a card asking a question — wherever the lesson is. Once the loop
- * has been played through, the coach says so and stays quiet except for
- * reactions.
+ * window, a card asking a question — wherever the lesson is. And on Femto's
+ * turn every one of its moves is **narrated**: Femto acts, the coach says
+ * what it did, the player reads it, Femto acts again — the server holds
+ * Femto while anything is on screen (`tutorial:hold`), so that alternation
+ * is strict.
  */
 
 interface Step {
@@ -101,14 +104,6 @@ const STEPS: readonly Step[] = [
     spot: () => ['.turn-button'],
     when: (view, me) => myTurn(view, me) && view.turn.turnNumber === 1 && phase(view) === 'main',
     done: (view, me) => !myTurn(view, me),
-  },
-  {
-    id: 'femto',
-    title: "Femto's turn",
-    body: 'Femto sets cards of its own now. Watch where they land — a face-down card in an area is a claim you may want to answer. The banner names each phase as the turn goes by.',
-    rule: '§10',
-    when: (view, me) => view.status.kind === 'playing' && !myTurn(view, me),
-    done: (view, me) => myTurn(view, me) && view.turn.turnNumber >= 2,
   },
   {
     id: 'open',
@@ -260,8 +255,136 @@ const STEPS: readonly Step[] = [
   },
 ];
 
+/**
+ * What Femto just did, in the coach's words. DesignNotes "Tutorial".
+ *
+ * A batch is Femto's if it turned the table over to Femto (its turn began in
+ * it) or if the first thing in it naming a player names Femto. The player's
+ * own answers during Femto's turn — passing a window, committing a defender
+ * — name the player, and are not narrated.
+ */
+function narrate(
+  events: readonly GameEvent[],
+  view: PlayerView,
+  me: PlayerId,
+): { title: string; body: string; rule?: string } | null {
+  const them = view.seats.find((seat) => seat !== me);
+  if (them === undefined) return null;
+  const theirTurnBegan = events.some((e) => e.type === 'TURN_STARTED' && e.player === them);
+  const actor = events
+    .map((e) => ('player' in e ? e.player : 'attacker' in e ? e.attacker : null))
+    .find((who) => who !== null);
+  if (!theirTurnBegan && actor !== them) return null;
+
+  const area = (index: number): string => {
+    const city = view.cities[index];
+    return city && !isCityHidden(city) ? city.name : `area ${index + 1}`;
+  };
+  const name = (id: string): string => {
+    const card = view.cards[id];
+    return card && !isHidden(card) ? nameOf(card.defId) : 'a card';
+  };
+
+  const lines: string[] = [];
+  let rule: string | undefined;
+  for (const event of events) {
+    switch (event.type) {
+      case 'TURN_STARTED':
+        if (event.player === them) {
+          lines.push(
+            'Femto’s turn. Its Refresh phase unlocked everything it had locked, and its Draw phase gave it a card.',
+          );
+          rule = '§10 ①②';
+        } else if (event.player === me) {
+          lines.push('Femto has ended its turn. Yours begins the same way: Refresh, then Draw.');
+          rule = '§10';
+        }
+        break;
+      case 'CARD_SET':
+        if (event.player !== them) break;
+        lines.push(
+          `Femto set a card face down in ${area(event.city)}. You cannot see what it is — a face-down card is a claim on that area, and a threat you may need to answer.`,
+        );
+        rule ??= '§10 ④(2)';
+        break;
+      case 'CARD_OPENED':
+        if (event.player !== them) break;
+        lines.push(
+          `Femto opened ${name(event.card)} in ${area(event.city)}, paying its cost from hand. That was its one open for the turn.`,
+        );
+        rule ??= '§10 ③';
+        break;
+      case 'ABILITY_RESOLVED':
+        if (event.player !== them) break;
+        lines.push(`Its ability went off: “${event.text}”`);
+        rule ??= '§13';
+        break;
+      case 'CHARACTER_MOVED': {
+        const card = view.cards[event.card];
+        if (card?.controller !== them) break;
+        lines.push(
+          `Femto moved ${name(event.card)} to ${area(event.to)}. Moving locks a character for the turn, so it cannot attack now.`,
+        );
+        rule ??= '§10 ④(1)';
+        break;
+      }
+      case 'BATTLE_DECLARED':
+        if (event.attacker !== them) break;
+        lines.push(
+          `Femto declared battle over ${area(event.city)}. You will be asked whether to open a Set Card there, then which characters defend.`,
+        );
+        rule ??= '§11';
+        break;
+      case 'VANGUARD_DESIGNATED': {
+        const card = view.cards[event.card];
+        if (card?.controller !== them) break;
+        lines.push(
+          `${name(event.card)} leads the attack as vanguard, and the city has turned face up.`,
+        );
+        rule ??= '§11 ①';
+        break;
+      }
+      case 'CHARACTER_COMMITTED':
+        if (event.player !== them) break;
+        lines.push(`Femto committed ${name(event.card)} to the battle.`);
+        rule ??= '§11 ③';
+        break;
+      case 'CITY_OCCUPIED':
+        if (event.player === them) {
+          lines.push(`Femto now occupies ${area(event.city)}, and drew two cards for it.`);
+          rule ??= '§12';
+        }
+        break;
+      case 'BATTLE_ENDED':
+        if (event.result === 'stalemate') lines.push('The battle was called off.');
+        else if (event.result === 'repelled') lines.push('The attack was repelled.');
+        break;
+      case 'QUICK_DECLINED':
+        if (event.player === them) lines.push('Femto passed on playing a Quick.');
+        break;
+      case 'DAMAGE_DEALT':
+        lines.push(`${name(event.target)} took ${event.amount} damage.`);
+        rule ??= '§11 ④';
+        break;
+      case 'CHARACTER_DESTROYED':
+        lines.push(`${name(event.card)} was destroyed.`);
+        break;
+      default:
+        break;
+    }
+  }
+  if (lines.length === 0) return null;
+  return {
+    title: theirTurnBegan ? 'Femto’s turn' : 'Femto acts',
+    body: lines.join(' '),
+    ...(rule !== undefined ? { rule } : {}),
+  };
+}
+
 interface Props {
   readonly view: PlayerView;
+  /** The last batch of events, to narrate Femto's moves from. */
+  readonly events: readonly GameEvent[];
   /** The payment dialog is up: a lesson about paying applies. */
   readonly paying: boolean;
   /** Something is being shown; the coach waits for it. */
@@ -274,15 +397,39 @@ interface Props {
   readonly onQuit: () => void;
 }
 
-export function Tutorial({ view, paying, busy, onHold, onQuit }: Props): JSX.Element | null {
+export function Tutorial({
+  view,
+  events,
+  paying,
+  busy,
+  onHold,
+  onQuit,
+}: Props): JSX.Element | null {
   const me = view.viewer;
   const [done, setDone] = useState<ReadonlySet<string>>(new Set());
   const [quit, setQuit] = useState(false);
+  // Batches already narrated and read, by identity.
+  const narrated = useRef(new WeakSet<readonly GameEvent[]>());
+  const [, bump] = useState(0);
 
-  // The first lesson not yet done whose condition holds — or, before that, a
-  // reaction that has just become true for the first time.
-  const current = useMemo(() => {
+  // What Femto just did comes first; then a reaction that has just become
+  // true for the first time; then the first lesson not yet done whose
+  // condition holds.
+  const current = useMemo((): Step | null => {
     if (quit) return null;
+    if (events.length > 0 && !narrated.current.has(events)) {
+      const story = narrate(events, view, me);
+      if (story) {
+        return {
+          id: 'narration',
+          title: story.title,
+          body: story.body,
+          ...(story.rule !== undefined ? { rule: story.rule } : {}),
+          when: () => true,
+          reaction: true,
+        };
+      }
+    }
     const reaction = STEPS.find(
       (step) => step.reaction && !done.has(step.id) && step.when(view, me, paying),
     );
@@ -291,7 +438,18 @@ export function Tutorial({ view, paying, busy, onHold, onQuit }: Props): JSX.Ele
       STEPS.find((step) => !step.reaction && !done.has(step.id) && step.when(view, me, paying)) ??
       null
     );
-  }, [view, me, paying, done, quit]);
+  }, [view, events, me, paying, done, quit]);
+
+  /** Read: a narration is put behind us by batch, a step by id. */
+  const dismiss = (): void => {
+    if (!current) return;
+    if (current.id === 'narration') {
+      narrated.current.add(events);
+      bump((n) => n + 1);
+      return;
+    }
+    setDone((now) => new Set([...now, current.id]));
+  };
 
   // While a step is up, Femto waits. Released when it is read or done, and
   // when the coach goes away for good.
@@ -360,7 +518,11 @@ export function Tutorial({ view, paying, busy, onHold, onQuit }: Props): JSX.Ele
       <aside className={current.reaction ? 'coach coach--reaction' : 'coach'} role="complementary">
         <div className="coach__head">
           <span className="coach__kicker">
-            {current.reaction ? 'Something new' : `Tutorial · ${index + 1} of ${total}`}
+            {current.id === 'narration'
+              ? 'Femto'
+              : current.reaction
+                ? 'Something new'
+                : `Tutorial · ${index + 1} of ${total}`}
           </span>
           {current.rule && <span className="coach__rule">Rules {current.rule}</span>}
         </div>
@@ -370,12 +532,14 @@ export function Tutorial({ view, paying, busy, onHold, onQuit }: Props): JSX.Ele
           {/* Every step can be read and dismissed; one with something to do
            * on the table finishes itself when that happens. Femto waits for
            * either. */}
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => setDone((now) => new Set([...now, current.id]))}
-          >
-            {current.reaction ? 'Got it' : current.done ? 'Got it — I’ll do it' : 'Next'}
+          <button type="button" className="btn btn--primary" onClick={dismiss}>
+            {current.id === 'narration'
+              ? 'Next'
+              : current.reaction
+                ? 'Got it'
+                : current.done
+                  ? 'Got it — I’ll do it'
+                  : 'Next'}
           </button>
           {current.done && !current.reaction && (
             <span className="coach__wait">or do it on the table</span>

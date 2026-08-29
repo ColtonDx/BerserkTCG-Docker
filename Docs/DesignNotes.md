@@ -142,3 +142,8 @@ reactions. Skip is always available; the match carries on without the coach.
 server (`tutorial:hold`), and Femto does nothing until it is read — Got it —
 or done on the table. Nothing may move under an explanation. Only a tutorial
 match honours the message.
+
+**Femto's turn is narrated, one move at a time.** Each of Femto's actions
+arrives as one batch of events; the coach says what it did — set a card in
+area 3, opened Guts, declared battle — and holds Femto until Next. So its
+turn reads as action, explanation, action, explanation, never a blur.
