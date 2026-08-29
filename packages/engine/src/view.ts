@@ -19,6 +19,7 @@ import type {
   GameState,
   MatchStatus,
   PendingChoice,
+  PendingEffect,
   PhaseDef,
   PlayerState,
   QuickWindow,
@@ -134,6 +135,12 @@ export interface PlayerView {
   /** Set while somebody is being asked whether to open a Quick. Rules.md §13. */
   readonly quick: QuickWindow | null;
   /**
+   * Effects waiting to resolve, top last. Rules.md §14. Public: every source
+   * is a face-up card that was just opened or used, and what it is about to
+   * do is the whole reason a response window is open.
+   */
+  readonly stack: readonly PendingEffect[];
+  /**
    * Set while an effect is waiting on somebody to name cards. Rules.md §13.
    *
    * Sent to both seats: an opponent can see that a card has stopped the game
@@ -190,6 +197,7 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
     handTarget: state.handTarget[viewer] ?? 0,
     battle: state.battle,
     quick: state.quick,
+    stack: state.stack,
     // Public in full: an unfinished effect is on the table, and *that* a
     // player is picking two cards to pitch is something their opponent can
     // see. What they are picking from is redacted above, not here.

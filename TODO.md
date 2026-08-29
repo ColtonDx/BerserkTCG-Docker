@@ -57,12 +57,12 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    defending too?), and BK1-154's "characters that are not in this area"
    (both sides again).
 
-2. **The priority stack** (`Rules.md` §14). Quick _windows_ are built — the
-   six moments in `DesignNotes` "When to offer a Quick" — and a Quick set on
-   the table can be opened out of turn at each of them. What is missing is
-   §14 proper: a stack of pending effects, interrupting an interrupt, and a
-   Quick resolving _before_ the thing it answered. Today a Quick opened in a
-   window resolves at once and the window stays open for another.
+2. **The priority stack** (`Rules.md` §14) is built for what a player does —
+   an open, an ability used — with two narrowings noted in `DesignNotes`
+   "When to offer a Quick": a player is not asked about their own pending
+   effect outside a battle, and triggered abilities resolve at once. Stacking
+   triggers too would need `settle` to stop and resume around the End phase
+   without running it twice.
 3. **Creature subtypes** for the rest of the set. 84 characters have them;
    the other 163 have an empty column. `build-catalogue.py` splits the line
    into tokens, and `NeoHawk` is deliberately not a kind of `Hawk`.

@@ -576,9 +576,24 @@ export function quickRelevant(
     if (ability.area !== 'adjacent') return false;
   }
 
-  const inBattle = state.battle !== null;
+  // A boost or a shield is worth spending inside a battle — or in answer to
+  // an effect about to do harm (Rules.md §14): Magical Barrier is for
+  // exactly the moment Schierke's damage is pending.
+  const inBattle = state.battle !== null || respondingToHarm(ctx, state);
   const effects = [ability.effect, ...(ability.then ?? [])];
   return effects.some((effect) => effectRelevant(ctx, state, source, ability, effect, inBattle));
+}
+
+/** Is the window being asked about a pending effect that deals damage or destroys? */
+function respondingToHarm(ctx: EngineContext, state: GameState): boolean {
+  if (state.quick?.trigger !== 'response') return false;
+  const top = state.stack[state.stack.length - 1];
+  const source = top ? state.cards[top.source] : undefined;
+  const ability = source ? definitionOf(ctx, source).abilities?.[top?.ability ?? -1] : undefined;
+  if (!ability) return false;
+  return [ability.effect, ...(ability.then ?? [])].some(
+    (effect) => effect.do === 'damage' || effect.do === 'destroy',
+  );
 }
 
 /**

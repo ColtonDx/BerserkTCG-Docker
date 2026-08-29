@@ -111,7 +111,51 @@ export interface QuickWindow {
  * "deal 3 damage to a character in combat" — is written for it.
  */
 export type QuickTrigger =
-  'turnStart' | 'cardOpened' | 'mainPhase' | 'combat' | 'attack' | 'beforeDamage' | 'turnEnd';
+  | 'turnStart'
+  | 'cardOpened'
+  | 'mainPhase'
+  | 'combat'
+  | 'attack'
+  | 'beforeDamage'
+  | 'turnEnd'
+  /**
+   * A priority round over a pending effect. Rules.md §14 — an opened card's
+   * effect (or a used ability's) goes pending, and each player in turn,
+   * turn player first, may interrupt it with a Quick or pass. Two passes
+   * resolve it; a Quick played here resolves *before* it.
+   */
+  | 'response';
+
+/**
+ * An effect waiting to resolve. Rules.md §14 — "cards/rules effects go into
+ * a pending resolution state before resolving". The top of `GameState.stack`
+ * resolves first, so a Quick played in response comes down ahead of what it
+ * answered.
+ *
+ * Only what a player *did* is stacked — an open or an ability used. Triggered
+ * abilities (at a turn's edges, on attack, on death) resolve at once: they
+ * arrive in the middle of something else resolving, and §14 has no
+ * interrupts mid-resolution. That is a narrowing, noted in `DesignNotes`.
+ */
+export interface PendingEffect {
+  readonly source: CardInstanceId;
+  readonly controller: PlayerId;
+  /** Index of the ability on its card, as `abilityKey` names it. */
+  readonly ability: number;
+  readonly chosen?: CardInstanceId;
+  readonly area?: number;
+}
+
+/**
+ * The moment-window a priority round interrupted, to return to once the
+ * stack has drained — so a Quick played at the start of the opponent's turn
+ * does not cost the chance to play another there.
+ */
+export interface QuickResume {
+  readonly trigger: QuickTrigger;
+  readonly waitingOn: PlayerId;
+  readonly then?: PlayerId;
+}
 
 /**
  * An effect that has stopped mid-resolution because it owes a player a choice.
@@ -346,6 +390,10 @@ export interface GameState {
    * that is the whole point of an interrupt. Rules.md §13.
    */
   readonly quick: QuickWindow | null;
+  /** Effects waiting to resolve, top last. Rules.md §14. */
+  readonly stack: readonly PendingEffect[];
+  /** The window to reopen once the stack drains, if a round interrupted one. */
+  readonly resume: QuickResume | null;
   /**
    * An effect waiting on a player to say which cards, or null when none is.
    * Like a Quick window it stops everything else; unlike one it is not
@@ -481,6 +529,17 @@ export type GameEvent =
       readonly trigger: QuickTrigger;
     }
   | { readonly type: 'QUICK_DECLINED'; readonly player: PlayerId }
+  /**
+   * A card's effect has gone pending and waits for both players to pass.
+   * Rules.md §14. Carries the printed line, so the table can say what is
+   * about to happen.
+   */
+  | {
+      readonly type: 'EFFECT_PENDING';
+      readonly player: PlayerId;
+      readonly card: CardInstanceId;
+      readonly text: string;
+    }
   /**
    * A card shown to both players on its way somewhere hidden — a search that
    * says "reveal it". Rules.md §13. The card id is public for the moment of

@@ -61,7 +61,9 @@ import type {
   GameEvent,
   GameState,
   PendingChoice,
+  PendingEffect,
   PhaseDef,
+  QuickResume,
   QuickTrigger,
   QuickWindow,
 } from './types.js';
@@ -397,6 +399,12 @@ function applyAction(
       draft.quick = null;
       // Rules.md §13 — the turn player was asked first; now the other one.
       if (next !== undefined) offerQuickTo(ctx, draft, next, trigger, events);
+      // Rules.md §14 — both passed on the pending effect: it resolves, and
+      // whatever is left on the stack gets its own round.
+      if (!draft.quick && trigger === 'response') {
+        resolveTop(ctx, draft, events);
+        startRound(ctx, draft, events, draft.resume);
+      }
       // Play was frozen where the window opened; let it carry on.
       settleBattle(ctx, draft, events);
       settle(ctx, draft, events);
@@ -1166,14 +1174,14 @@ function openCard(
   if (!inBattle && !inWindow) draft.turn.openedThisTurn = true;
   events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
 
-  // Rules.md §13 — an ability that goes off on opening does so now, while
-  // the card is still on the field. A Normal Effect leaves straight after.
+  // Rules.md §14 — what the card does goes *pending*, and resolves once both
+  // players have passed on it (or at once, if neither can respond). A Normal
+  // Effect leaves for the Trash after its last effect has resolved.
   const chosen = checkTargets(ctx, draft, card as CardInstance, targets, areas);
   if (!chosen.ok) return chosen;
-  fireAbilities(ctx, draft, card as CardInstance, 'open', events, chosen.value);
-
-  // Rules.md §3 — a Normal Effect resolves once and goes to the Trash.
-  if (def.kind === 'effect' && def.duration === 'normal') {
+  const stacked = stackEffects(ctx, draft, card as CardInstance, chosen.value, events);
+  if (!stacked && def.kind === 'effect' && def.duration === 'normal') {
+    // Nothing to do: a Normal with no built behaviour resolves to nothing.
     moveToZone(draft, cardId, { player: actor, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
   }
@@ -1188,10 +1196,16 @@ function openCard(
     advanceOpens(ctx, draft, events);
   }
 
-  // The other player may want to answer that. DesignNotes "When to offer a
-  // Quick" — including when the opener was the defender in a combat open,
-  // because "the opponent" is whoever did not do it.
-  offerQuick(ctx, draft, actor, 'cardOpened', events);
+  if (stacked) {
+    // A round of priority over what was just stacked. Rules.md §14 — turn
+    // player first. If this open was itself a response, the window it was
+    // played in is remembered and comes back once the stack has drained.
+    startRound(ctx, draft, events, inWindow ? resumeOf(draft) : null);
+  } else if (!inWindow) {
+    // A card with nothing pending: the other player may still want to
+    // answer the open itself. DesignNotes "When to offer a Quick".
+    offerQuick(ctx, draft, actor, 'cardOpened', events);
+  }
 
   return ok(true);
 }
@@ -1622,6 +1636,156 @@ function offerQuickTo(
   events.push({ type: 'QUICK_OFFERED', player: responder, trigger });
 }
 
+/* --------------------------------------------------------- the stack (§14)
+ *
+ * Rules.md §14: an opened card's effect, or a used ability's, goes pending;
+ * priority passes turn player first, then opponent; a player may interrupt
+ * with a Quick, which goes pending on top; two passes in a row resolve the
+ * most recent. Only what a player *did* is stacked — see `PendingEffect`.
+ */
+
+/**
+ * Puts a card's on-open abilities on the stack, in printed order, with the
+ * choices made for them. Returns whether anything was stacked.
+ */
+function stackEffects(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  choices: Choices,
+  events: GameEvent[],
+): boolean {
+  let asked = 0;
+  let stacked = 0;
+  (definitionOf(ctx, source).abilities ?? []).forEach((ability, index) => {
+    if (ability.trigger !== 'open') return;
+    const asks = ability.target !== undefined || ability.area !== undefined;
+    const at = asks ? asked++ : -1;
+    const chosen = at >= 0 ? choices.cards[at] : undefined;
+    const area = at >= 0 ? choices.areas[at] : undefined;
+    // Conditions are read now, as printed: "when this card is opened, if …".
+    if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) return;
+    if (ability.target && chosen === undefined) return;
+    if (ability.area && area === undefined) return;
+    const entry: PendingEffect = {
+      source: source.instanceId,
+      controller: source.controller,
+      ability: index,
+      ...(chosen !== undefined ? { chosen } : {}),
+      ...(area !== undefined ? { area } : {}),
+    };
+    draft.stack = toDraft([...draft.stack, entry]);
+    events.push({
+      type: 'EFFECT_PENDING',
+      player: source.controller,
+      card: source.instanceId,
+      text: ability.text,
+    });
+    stacked++;
+  });
+  return stacked > 0;
+}
+
+/** The window a round is interrupting, to come back to. */
+function resumeOf(draft: Draft<GameState>): QuickResume | null {
+  const window = draft.quick;
+  if (!window) return draft.resume;
+  if (window.trigger === 'response') return draft.resume;
+  return {
+    trigger: window.trigger,
+    waitingOn: window.waitingOn,
+    ...(window.then ? { then: window.then } : {}),
+  };
+}
+
+/**
+ * A round of priority over the top of the stack. Rules.md §14.
+ *
+ * Asked of the turn player first and then the opponent — and only of a
+ * player with a relevant Quick to play, which is what keeps a match from
+ * stopping on every open. With nobody to ask, the top resolves at once and
+ * the next entry gets its own round; when the stack has drained, whatever
+ * moment-window the round interrupted is offered again.
+ */
+function startRound(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  events: GameEvent[],
+  after: QuickResume | null,
+): void {
+  draft.resume = after ? toDraft(after) : null;
+  for (let guard = 0; guard < 64; guard++) {
+    // An effect stopped to ask: the stack waits for the answer, and
+    // `finishChoice` comes back here.
+    if (draft.pending || draft.status.kind === 'finished') return;
+    if (draft.stack.length === 0) {
+      const resume = draft.resume;
+      draft.resume = null;
+      draft.quick = null;
+      if (resume) offerQuickTo(ctx, draft, resume.waitingOn, resume.trigger, events, resume.then);
+      return;
+    }
+    draft.quick = null;
+    // Turn player first, then the opponent (§14) — but not the player whose
+    // own effect this is, outside a battle: responding to your own draw
+    // with another draw is just two opens, and asking every time is the
+    // dialogue box DesignNotes forbids. Inside a battle the order of your own
+    // tricks can matter, so both are asked.
+    const top = draft.stack[draft.stack.length - 1];
+    const askers = [draft.turn.activePlayer, opponentOf(draft, draft.turn.activePlayer)].filter(
+      (player) => draft.battle !== null || player !== top?.controller,
+    );
+    const [first, second] = askers;
+    if (first !== undefined) offerQuickTo(ctx, draft, first, 'response', events, second);
+    if (draft.quick) return;
+    resolveTop(ctx, draft, events);
+  }
+}
+
+/**
+ * Resolves the most recently stacked effect. Rules.md §14.
+ *
+ * The source has to still be on the field, face up, and a chosen target
+ * still standing — a Quick played in response may have removed either, in
+ * which case the effect fizzles. A Normal Effect goes to the Trash once its
+ * last effect has come off the stack (§3).
+ */
+function resolveTop(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
+  const top = draft.stack[draft.stack.length - 1];
+  if (!top) return;
+  draft.stack = toDraft(draft.stack.slice(0, -1));
+
+  const source = draft.cards[top.source];
+  const ability = source
+    ? definitionOf(ctx, source as CardInstance).abilities?.[top.ability]
+    : undefined;
+  const chosenGone =
+    top.chosen !== undefined &&
+    (draft.cards[top.chosen]?.zone !== 'city' || draft.cards[top.chosen]?.faceUp !== true);
+  if (source && source.zone === 'city' && source.faceUp && ability && !chosenGone) {
+    resolveEffect(ctx, draft, source as CardInstance, ability, events, top.chosen, top.area);
+  } else if (source && ability) {
+    events.push({
+      type: 'ABILITY_FIZZLED',
+      card: top.source,
+      player: top.controller,
+      text: ability.text,
+    });
+  }
+
+  // Rules.md §3 — a Normal Effect resolves once and goes to the Trash, once
+  // nothing of it is still pending.
+  if (source && source.zone === 'city' && !draft.stack.some((e) => e.source === top.source)) {
+    const def = definitionOf(ctx, source as CardInstance);
+    if (def.kind === 'effect' && def.duration === 'normal') {
+      moveToZone(draft, top.source, { player: source.owner, zone: 'trash' });
+      events.push({ type: 'CARD_TRASHED', player: source.owner, card: top.source });
+    }
+  }
+  refreshBoard(ctx, draft, events);
+  checkWinConditions(draft, events);
+}
+
 /* --------------------------------------------------------------- abilities
  *
  * Rules.md §13. A triggered ability fires once and writes its result into the
@@ -1807,11 +1971,24 @@ function useAbility(
   }
 
   events.push({ type: 'ABILITY_USED', player: actor, card: action.card, ability: action.ability });
-  resolveEffect(ctx, draft, card as CardInstance, entry.ability, events, chosen);
-
-  // An open Quick window is left open, exactly as opening a Quick card leaves
-  // it open: §13 lets a Quick interrupt another effect, so the responder may
-  // answer again and closes the window themselves by passing.
+  // Rules.md §14 — paid for, and now pending: both players may respond
+  // before it resolves. A Quick ability used inside a window remembers that
+  // window and returns to it once the stack has drained.
+  const inWindow = draft.quick !== null;
+  const pendingEffect: PendingEffect = {
+    source: card.instanceId,
+    controller: actor,
+    ability: entry.index,
+    ...(chosen !== undefined ? { chosen } : {}),
+  };
+  draft.stack = toDraft([...draft.stack, pendingEffect]);
+  events.push({
+    type: 'EFFECT_PENDING',
+    player: actor,
+    card: card.instanceId,
+    text: entry.ability.text,
+  });
+  startRound(ctx, draft, events, inWindow ? resumeOf(draft) : null);
   return ok(true);
 }
 
@@ -2456,6 +2633,11 @@ function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameE
       text,
       rest.area,
     );
+  } // The choice may have come out of an effect resolving off the stack
+  // (Rules.md §14); whatever is still pending there gets its round now, and
+  // the window the round interrupted comes back once it has drained.
+  if (!draft.pending && (draft.stack.length > 0 || draft.resume)) {
+    startRound(ctx, draft, events, draft.resume);
   }
 }
 

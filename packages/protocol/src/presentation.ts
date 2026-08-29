@@ -336,7 +336,17 @@ export function planBeats(events: readonly GameEvent[], viewer: PlayerId): Beat[
         );
         const fired = firedAt >= 0 ? events[firedAt] : undefined;
         if (firedAt >= 0) folded.add(firedAt);
-        const ability = fired && fired.type === 'ABILITY_RESOLVED' ? fired.text : undefined;
+        // Resolved in this batch, or merely pending (Rules.md §14): either
+        // way the card is held up once, with its line.
+        const pendingLine = events.find(
+          (later, at) => at > index && later.type === 'EFFECT_PENDING' && later.card === event.card,
+        );
+        const ability =
+          fired && fired.type === 'ABILITY_RESOLVED'
+            ? fired.text
+            : pendingLine && pendingLine.type === 'EFFECT_PENDING'
+              ? pendingLine.text
+              : undefined;
         made.push({
           anchor: index,
           beat: {

@@ -73,8 +73,16 @@ function set(
     locked: false,
     damage: 0,
   };
+  // Out of the hand's order too, or a payment could pick a card that is
+  // really on the table.
+  const zoneOrder = Object.fromEntries(
+    Object.entries(state.zoneOrder).map(([key, order]) => [
+      key,
+      order.filter((id) => id !== spare.instanceId),
+    ]),
+  );
   return {
-    state: { ...state, cards: { ...state.cards, [spare.instanceId]: placed } },
+    state: { ...state, cards: { ...state.cards, [spare.instanceId]: placed }, zoneOrder },
     card: spare.instanceId,
   };
 }
@@ -360,11 +368,132 @@ describe('what a window offers (DesignNotes "When to offer a Quick")', () => {
       );
     expect(open, 'the buff should be offered on the vanguard').toBeDefined();
     state = apply(state, active, open as GameAction);
-    state = apply(state, active, { type: 'PASS_PRIORITY' });
+    // Nobody can respond, so the buff resolved at once and the window it
+    // was played in came back only if there was anything left to offer.
+    if (state.quick) state = declineWindows(state);
 
     expect(state.battle).toBeNull();
     expect(state.cards[lead]?.zone).toBe('city');
     expect(state.cards[guard]?.zone).toBe('trash');
+  });
+});
+
+describe('the priority stack (Rules.md §14)', () => {
+  // BK1-053 Schierke: "deal 4 damage to each enemy character in this area";
+  // BK1-071 Magical Barrier: Quick, "reduce damage … by 2 this turn".
+  const SCHIERKE = 'BK1-053';
+  const BARRIER = 'BK1-071';
+
+  /** A green board: Level 3 available, and a green hand to pay with. */
+  function green(): { state: GameState; active: PlayerId; other: PlayerId } {
+    const match = engine.createMatch({
+      matchId: asMatchId('stack'),
+      seed: 9,
+      decks: [
+        { playerId: ALICE, name: 'Alice', cards: deckOf('BK1-041').map(asCardDefId) },
+        { playerId: BOB, name: 'Bob', cards: deckOf('BK1-041').map(asCardDefId) },
+      ],
+    });
+    const result = engine.reduceAll(match, [
+      { actor: ALICE, action: { type: 'KEEP_HAND' } },
+      { actor: BOB, action: { type: 'KEEP_HAND' } },
+    ]);
+    if (!result.ok) throw new Error(result.error.message);
+    const state = withLevel(result.value.state, 3);
+    const active = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== active) as PlayerId;
+    return { state, active, other };
+  }
+
+  it('lets a Quick played in response resolve before the effect it answers', () => {
+    let { state, active, other } = green();
+    // The opponent's Mercenary stands where Schierke will be opened; they
+    // hold a Barrier there too.
+    state = faceUp(state, other, 'BK1-041', 2);
+    const victim = standing(state, other);
+    const barrier = set(state, other, BARRIER, 2);
+    state = barrier.state;
+    const schierke = set(state, active, SCHIERKE, 2);
+    state = atPhase(schierke.state, 'open');
+
+    const open = engine
+      .legalActions(state, active)
+      .find((action) => action.type === 'OPEN_CARD' && action.card === schierke.card);
+    expect(open).toBeDefined();
+    state = apply(state, active, open as GameAction);
+
+    // Pending, not resolved: the round asks the defender (the turn player
+    // has nothing to respond with), and the Mercenary is untouched so far.
+    expect(state.stack).toHaveLength(1);
+    expect(windowOf(state)).toBe('response');
+    expect(state.quick?.waitingOn).toBe(other);
+    expect(state.cards[victim]?.damage).toBe(0);
+
+    const respond = engine
+      .legalActions(state, other)
+      .find(
+        (action): action is Extract<GameAction, { type: 'OPEN_CARD' }> =>
+          action.type === 'OPEN_CARD' &&
+          action.card === barrier.card &&
+          action.targets?.[0] === victim,
+      );
+    expect(respond, 'the Barrier should be offered on the Mercenary').toBeDefined();
+    state = apply(state, other, respond as GameAction);
+
+    // The Barrier resolved first (nobody could respond to it), then a fresh
+    // round over Schierke found nobody either: 4 damage less 2 still kills
+    // a 1/1, and both Normals are in the Trash.
+    expect(state.stack).toHaveLength(0);
+    expect(state.quick).toBeNull();
+    expect(state.cards[victim]?.zone).toBe('trash');
+    expect(state.cards[barrier.card]?.zone).toBe('trash');
+    expect(state.cards[schierke.card]?.zone).toBe('city');
+  });
+
+  it('does not ask a player about their own effect outside a battle, and resolves on a pass', () => {
+    let { state, active, other } = green();
+    state = faceUp(state, other, 'BK1-041', 2);
+    state = faceUp(state, active, 'BK1-041', 2);
+    // Both hold a Barrier in the area; the turn player opens Schierke.
+    const mine = set(state, active, BARRIER, 2);
+    state = set(mine.state, other, BARRIER, 2).state;
+    const schierke = set(state, active, SCHIERKE, 2);
+    state = atPhase(schierke.state, 'open');
+    const open = engine
+      .legalActions(state, active)
+      .find((action) => action.type === 'OPEN_CARD' && action.card === schierke.card);
+    state = apply(state, active, open as GameAction);
+    // The opener is not asked about their own card (DesignNotes narrowing of
+    // §14); the defender is, and is the only one.
+    expect(windowOf(state)).toBe('response');
+    expect(state.quick?.waitingOn).toBe(other);
+    expect(state.quick?.then).toBeUndefined();
+
+    state = apply(state, other, { type: 'PASS_PRIORITY' });
+    // Passed: resolved, and the turn player's own Mercenary is untouched.
+    expect(state.stack).toHaveLength(0);
+    expect(state.quick).toBeNull();
+    expect(state.cards[standing(state, active)]?.zone).toBe('city');
+  });
+
+  it('comes back to the moment it interrupted once the stack has drained', () => {
+    // A draw-two Quick played at the start of the opponent's turn, with a
+    // second one set beside it: the turnStart window returns for the other.
+    let state = withLevel(started());
+    const active = state.turn.activePlayer;
+    state = set(state, active, QUICK, 1).state;
+    state = set(state, active, QUICK, 3).state;
+    let next = runOut(state, active);
+    expect(windowOf(next)).toBe('turnStart');
+    expect(next.quick?.waitingOn).toBe(active);
+
+    const first = engine.legalActions(next, active).find((a) => a.type === 'OPEN_CARD');
+    next = apply(next, active, first as GameAction);
+    // Nobody could respond, so it resolved — and the turnStart window is
+    // open again for the second copy.
+    expect(next.stack).toHaveLength(0);
+    expect(windowOf(next)).toBe('turnStart');
+    expect(engine.legalActions(next, active).some((a) => a.type === 'OPEN_CARD')).toBe(true);
   });
 });
 

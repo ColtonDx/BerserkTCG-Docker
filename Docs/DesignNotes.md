@@ -107,6 +107,14 @@ narrowing of §13 for the sake of the game being playable, not a reading of the
 rule — if a card ever needs a window this misses, widen the list here rather
 than prompting everywhere.
 
-The window is **not** the full priority stack of §14: there is no stack of
-pending effects and no interrupting an interrupt. A Quick opened in a window
-resolves at once, and the window stays open so another can follow it.
+The stack of §14 is built on top of these windows. An opened card's effect,
+or a used ability's, goes **pending**: each player who holds a relevant Quick
+is asked in turn — turn player first — and may interrupt with one, which goes
+pending on top and resolves first; when everyone asked has passed, the most
+recent effect resolves. Two narrowings, both for playability: a player is
+not asked about their **own** pending effect outside a battle (answering your
+own draw with another draw is just two opens), and **triggered** abilities —
+at a turn's edges, on attack, on death — resolve at once rather than
+stacking, since they arrive in the middle of something else resolving and
+§14 has no interrupts mid-resolution. A round that interrupted one of the
+moments above returns to it once the stack has drained.

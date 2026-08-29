@@ -170,6 +170,8 @@ export function createMatch(config: MatchConfig): GameState {
     handTarget: Object.fromEntries(seats.map((seat) => [seat, STARTING_HAND_SIZE])),
     battle: null,
     quick: null,
+    stack: [],
+    resume: null,
     pending: null,
     rng,
     log: [{ type: 'MATCH_STARTED', firstPlayer }],

@@ -459,8 +459,8 @@ ask. A window offers exactly what `quickOpens` lists and `openCard` /
 attacker and then the defender (`QuickWindow.then`), once, before the first
 band. `state.quick` outranks both priority and a running battle, because that
 is what an interrupt is; `PASS_PRIORITY` closes it — or hands it to `then` —
-and play resumes where it froze. It is _not_ §14: no stack, no interrupting an
-interrupt.
+and play resumes where it froze — or hands the question on to the stack (§14,
+below).
 
 How the question is _put_ is the client's: `QuickPrompt` sits along the bottom
 edge over an undimmed board, a hard stop inside a battle and a countdown
@@ -488,8 +488,19 @@ card in the set wants.
 
 **Not implemented.** The list of what is left lives in `TODO.md`. Green is
 complete; three transcribed lines still want a ruling before they are built.
-The **priority stack** (§14) is still unbuilt. Recovering a _forgotten_
-password is not built — that needs a channel the server does not have.
+Recovering a _forgotten_ password is not built — that needs a channel the
+server does not have.
+
+**The priority stack** (§14) is built on top of the Quick windows. An opened
+card's effect or a used ability's goes on `state.stack` (`stackEffects`,
+`useAbility`) and `startRound` asks each player holding a relevant Quick,
+turn player first, with a `'response'` window; a Quick played there stacks
+on top and resolves first; `PASS_PRIORITY` with nobody left to ask resolves
+the top (`resolveTop`), which fizzles if its source or chosen target has
+gone. `state.resume` remembers the moment-window a round interrupted and
+reopens it when the stack drains. Two narrowings, noted in `DesignNotes`: a
+player is not asked about their own pending effect outside a battle, and
+triggered abilities resolve at once rather than stacking.
 
 **Rooms.** `DesignNotes` 2 and 3 are built: a match made with a password is
 private — listed with a lock, joined only with the word, never handed out as

@@ -38,6 +38,7 @@ const BECAUSE: Record<QuickTrigger, string> = {
   attack: 'Their vanguard has stepped forward',
   beforeDamage: 'Damage is about to be dealt',
   turnEnd: 'They are ending their turn',
+  response: 'An effect is about to resolve',
 };
 
 /** How long a soft window waits before passing on the player's behalf. */
@@ -123,6 +124,13 @@ export function QuickPrompt({
 
   const classes = ['quickbar', `quickbar--${manner}`];
 
+  // Rules.md §14 — what is on top of the stack, which is what a response
+  // would resolve ahead of.
+  const top = view.stack[view.stack.length - 1];
+  const topCard = top ? view.cards[top.source] : undefined;
+  const topDefId = topCard && !isHidden(topCard) ? String(topCard.defId) : null;
+  const topLine = topDefId ? (abilityLine(topDefId, top?.ability ?? 0) ?? textOf(topDefId)) : null;
+
   if (manner === 'auto') {
     return (
       <div className={classes.join(' ')} role="status">
@@ -141,9 +149,25 @@ export function QuickPrompt({
         <span className="quickbar__quick">Quick</span>
         {BECAUSE[trigger]}
         <span className="quickbar__hint">
-          {view.battle ? 'You may act before the battle goes on.' : 'You may act out of turn.'}
+          {trigger === 'response'
+            ? 'A Quick played now resolves first.'
+            : view.battle
+              ? 'You may act before the battle goes on.'
+              : 'You may act out of turn.'}
         </span>
       </span>
+
+      {trigger === 'response' && topDefId && (
+        <div className="quickbar__pending" title="About to resolve">
+          <CardImage defId={topDefId} className="quickbar__pending-art" />
+          <span className="quickbar__about">
+            <span className="quickbar__name">
+              {top?.controller === view.viewer ? 'Your' : 'Their'} {nameOf(topDefId)}
+            </span>
+            {topLine && <span className="quickbar__line">{topLine}</span>}
+          </span>
+        </div>
+      )}
 
       <div className="quickbar__cards">
         {opens.map((action) => {
@@ -196,6 +220,11 @@ export function QuickPrompt({
       </div>
     </div>
   );
+}
+
+/** The printed line of one ability, by its index on the card. */
+function abilityLine(defId: string, index: number): string | null {
+  return abilityOf(defId, String(index))?.text ?? null;
 }
 
 /**

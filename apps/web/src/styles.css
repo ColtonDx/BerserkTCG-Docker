@@ -3997,6 +3997,26 @@ button.card:hover {
   gap: 6px;
 }
 
+/* Rules.md §14 — what a response would resolve ahead of. */
+.quickbar__pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding-right: 14px;
+  border-right: 1px solid var(--border);
+}
+
+.quickbar__pending-art {
+  flex: none;
+  width: 44px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  opacity: 0.85;
+}
+
 /* A soft window counts down to a pass; the bar drains under the button. */
 .quickbar__timer {
   display: block;

@@ -55,6 +55,12 @@ export function isCombatWindow(trigger: QuickTrigger, view: PlayerView): boolean
       return true;
     case 'cardOpened':
       return view.battle !== null;
+    case 'response': {
+      // Answering something the opponent did is the classic use of a Quick;
+      // a round over your own effect is rarely worth stopping for.
+      const top = view.stack[view.stack.length - 1];
+      return view.battle !== null || (top !== undefined && top.controller !== view.viewer);
+    }
     case 'turnStart':
     case 'mainPhase':
     case 'turnEnd':
