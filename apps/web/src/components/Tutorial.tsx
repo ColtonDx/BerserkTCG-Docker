@@ -1,6 +1,14 @@
 import type { GameAction, GameEvent, PlayerId, PlayerView } from '@berserk/engine';
 import { isCityHidden, isHidden } from '@berserk/engine';
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+} from 'react';
 import { nameOf } from '../state/useCardNames.js';
 
 /**
@@ -38,7 +46,23 @@ interface Step {
   readonly done?: (view: PlayerView, me: PlayerId, paying: boolean) => boolean;
   /** A reaction rather than a lesson: fires once, whenever it first applies. */
   readonly reaction?: boolean;
+  /**
+   * Which actions the table offers while this step is up. Absent on a
+   * reaction, which explains something already on offer, and means "all".
+   * A lesson without it offers nothing — the player reads first. `CONCEDE`
+   * is always allowed; a tutorial must never trap anyone.
+   */
+  readonly allow?: (action: GameAction, view: PlayerView, me: PlayerId) => boolean;
 }
+
+const only =
+  (...types: readonly GameAction['type'][]) =>
+  (action: GameAction): boolean =>
+    types.includes(action.type);
+const isMercenary = (view: PlayerView, id: string): boolean => {
+  const card = view.cards[id];
+  return card !== undefined && 'defId' in card && card.defId === 'BK1-001';
+};
 
 const mine = (view: PlayerView, me: PlayerId) =>
   Object.values(view.cards).filter((card) => card.controller === me && card.zone === 'city');
@@ -62,6 +86,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'keep',
+    allow: only('KEEP_HAND'),
     title: 'Your opening hand',
     body: 'Seven cards. You could shuffle them back and draw one fewer, but this hand is worth keeping: the Mercenaries in it are Level 0, and Level 0 is the only thing you can open before any city is awake. Click Keep.',
     rule: '§9.4',
@@ -71,6 +96,8 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'firstSet',
+    allow: (action, view) =>
+      action.type === 'SET_CARD' && isMercenary(view, action.card) && action.city === 2,
     title: 'Set a card',
     body: 'You go first, so there is no draw and no open this turn — only setting. Drag a Mercenary from your hand into the middle area: it lies face down there, hidden from Femto, until you open it on a later turn.',
     rule: '§10 ④(2)',
@@ -89,6 +116,10 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'secondSet',
+    allow: (action, view, me) =>
+      action.type === 'SET_CARD' &&
+      isMercenary(view, action.card) &&
+      !setCardsOf(view, me).some((card) => card.cityIndex === action.city),
     title: 'Set another',
     body: 'You may set as many cards as you like in a turn. Spread out — put a second Mercenary in a different area, so you have two claims to open over the coming turns. Cards in hand also pay for opens, so keep a couple back.',
     rule: '§10 ④(2), §7',
@@ -98,6 +129,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'endTurn',
+    allow: only('END_PHASE'),
     title: 'End your turn',
     body: 'That is the first turn. Click Next to end it. In the End phase you must discard down to seven cards if you are over — you are not.',
     rule: '§10 ⑤',
@@ -107,6 +139,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'open',
+    allow: only('OPEN_CARD'),
     title: 'The Open step',
     body: 'Your turn again: you drew a card, and now you may open one Set Card — just one per turn, the whole game turns on that. A Mercenary costs one white card from your hand. Click one of your set Mercenaries.',
     rule: '§10 ③, §7',
@@ -122,6 +155,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'pay',
+    allow: () => true,
     title: 'Pay the cost',
     body: 'Every open is paid from hand: the cost on the card, in colours. A W is any white card. Click the card you will spend, then confirm.',
     rule: '§7',
@@ -131,6 +165,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'attack',
+    allow: only('DECLARE_BATTLE'),
     title: 'Declare battle',
     body: 'Main phase. Your character stands in an area; the city there is still face down. Attack it: click the area. Nobody defends an area with no one standing in it, so you take the city — and taking one turns it face up, which raises City Level for both players and unlocks higher-Level cards.',
     rule: '§10 ④(4), §5, §12',
@@ -150,6 +185,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'vanguard',
+    allow: only('DESIGNATE_VANGUARD'),
     title: 'Name the vanguard',
     body: 'The character leading the attack. Click it: it locks — turned on its side — and the city turns face up. Until you name one you can still call the attack off for nothing.',
     rule: '§11 ①',
@@ -165,6 +201,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'opens',
+    allow: only('OPEN_CARD', 'BATTLE_PASS'),
     title: 'The combat open',
     body: 'Each side may open one Set Card in this area — the defender first — and it does not count against the one open per turn. Nothing to open here? Click Open nothing.',
     rule: '§11 ②',
@@ -174,6 +211,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'commit',
+    allow: only('COMMIT_CHARACTER', 'BATTLE_PASS'),
     title: 'Commit characters',
     body: 'Players take turns adding characters to the fight, one at a time, until both are done. A defender who occupies the city must commit everyone standing there. Click a character to add it, or Done.',
     rule: '§11 ③',
@@ -183,6 +221,7 @@ const STEPS: readonly Step[] = [
   },
   {
     id: 'damage',
+    allow: only('ASSIGN_DAMAGE'),
     title: 'Assign damage',
     body: 'The highest Range strikes first. A striker spends all of its Power among the enemies in the battle — click an enemy once per point. A character with damage equal to its HP is destroyed.',
     rule: '§11 ④',
@@ -384,42 +423,39 @@ function narrate(
   };
 }
 
-interface Props {
-  readonly view: PlayerView;
-  /** The last batch of events, to narrate Femto's moves from. */
-  readonly events: readonly GameEvent[];
-  /** The payment dialog is up: a lesson about paying applies. */
-  readonly paying: boolean;
-  /** Something is being shown; the coach waits for it. */
-  readonly busy: boolean;
-  /**
-   * A step is on screen (true) or has been read (false). Femto does nothing
-   * while it is true — the table must not move under an explanation.
-   */
-  readonly onHold: (hold: boolean) => void;
-  readonly onQuit: () => void;
+/**
+ * The coach's state, for the app: what step is up, what the table may offer
+ * while it is, and how the player moves on. The rendering is `TutorialCoach`.
+ */
+export interface Coach {
+  readonly current: Step | null;
+  /** The table only offers what the step allows. Rules are untouched. */
+  readonly allows: (action: GameAction) => boolean;
+  readonly dismiss: () => void;
+  readonly quit: () => void;
+  readonly quitted: boolean;
 }
 
-export function Tutorial({
-  view,
-  events,
-  paying,
-  busy,
-  onHold,
-  onQuit,
-}: Props): JSX.Element | null {
-  const me = view.viewer;
+export function useTutorial(
+  view: PlayerView | null,
+  events: readonly GameEvent[],
+  paying: boolean,
+  enabled: boolean,
+): Coach {
+  const me = view?.viewer;
   const [done, setDone] = useState<ReadonlySet<string>>(new Set());
-  const [quit, setQuit] = useState(false);
-  // Batches already narrated and read, by identity.
+  const [quitted, setQuitted] = useState(false);
+  // Batches already narrated and read, by identity — and a count in state,
+  // because a ref changing is not a reason for React to look again.
   const narrated = useRef(new WeakSet<readonly GameEvent[]>());
-  const [, bump] = useState(0);
+  const [read, setRead] = useState(0);
 
   // What Femto just did comes first; then a reaction that has just become
   // true for the first time; then the first lesson not yet done whose
   // condition holds.
   const current = useMemo((): Step | null => {
-    if (quit) return null;
+    void read;
+    if (!enabled || quitted || !view || me === undefined) return null;
     if (events.length > 0 && !narrated.current.has(events)) {
       const story = narrate(events, view, me);
       if (story) {
@@ -430,6 +466,8 @@ export function Tutorial({
           ...(story.rule !== undefined ? { rule: story.rule } : {}),
           when: () => true,
           reaction: true,
+          // Femto's move is read before anything is answered.
+          allow: () => false,
         };
       }
     }
@@ -441,18 +479,61 @@ export function Tutorial({
       STEPS.find((step) => !step.reaction && !done.has(step.id) && step.when(view, me, paying)) ??
       null
     );
-  }, [view, events, me, paying, done, quit]);
+  }, [enabled, view, events, me, paying, done, quitted, read]);
 
   /** Read: a narration is put behind us by batch, a step by id. */
-  const dismiss = (): void => {
+  const dismiss = useCallback((): void => {
     if (!current) return;
     if (current.id === 'narration') {
       narrated.current.add(events);
-      bump((n) => n + 1);
+      setRead((n) => n + 1);
       return;
     }
     setDone((now) => new Set([...now, current.id]));
+  }, [current, events]);
+
+  // Lessons finish themselves when the board shows they happened.
+  useEffect(() => {
+    if (!current?.done || !view || me === undefined) return;
+    if (current.done(view, me, paying)) setDone((now) => new Set([...now, current.id]));
+  }, [current, view, me, paying]);
+
+  const allows = useCallback(
+    (action: GameAction): boolean => {
+      if (action.type === 'CONCEDE') return true;
+      if (!current || !view || me === undefined) return true;
+      if (current.allow) return current.allow(action, view, me);
+      // A reaction explains something on offer; a lesson without an allow
+      // list is read before anything is done.
+      return current.reaction === true;
+    },
+    [current, view, me],
+  );
+
+  return {
+    current,
+    allows,
+    dismiss,
+    quit: useCallback(() => setQuitted(true), []),
+    quitted,
   };
+}
+
+interface Props {
+  readonly view: PlayerView;
+  readonly coach: Coach;
+  /** Something is being shown; the coach waits for it. */
+  readonly busy: boolean;
+  /**
+   * A step is on screen (true) or has been read (false). Femto does nothing
+   * while it is true — the table must not move under an explanation.
+   */
+  readonly onHold: (hold: boolean) => void;
+}
+
+export function TutorialCoach({ view, coach, busy, onHold }: Props): JSX.Element | null {
+  const me = view.viewer;
+  const { current } = coach;
 
   // While a step is up, Femto waits. Released when it is read or done, and
   // when the coach goes away for good.
@@ -460,12 +541,6 @@ export function Tutorial({
     onHold(current !== null);
   }, [current, onHold]);
   useEffect(() => () => onHold(false), [onHold]);
-
-  // Lessons finish themselves when the board shows they happened.
-  useEffect(() => {
-    if (!current?.done) return;
-    if (current.done(view, me, paying)) setDone((now) => new Set([...now, current.id]));
-  }, [current, view, me, paying]);
 
   // Where to ring. Measured after each render and on resize, so the rings
   // follow the hand rising and the board reflowing.
@@ -535,7 +610,7 @@ export function Tutorial({
           {/* Every step can be read and dismissed; one with something to do
            * on the table finishes itself when that happens. Femto waits for
            * either. */}
-          <button type="button" className="btn btn--primary" onClick={dismiss}>
+          <button type="button" className="btn btn--primary" onClick={coach.dismiss}>
             {current.id === 'narration'
               ? 'Next'
               : current.reaction
@@ -547,14 +622,7 @@ export function Tutorial({
           {current.done && !current.reaction && (
             <span className="coach__wait">or do it on the table</span>
           )}
-          <button
-            type="button"
-            className="coach__quit"
-            onClick={() => {
-              setQuit(true);
-              onQuit();
-            }}
-          >
+          <button type="button" className="coach__quit" onClick={coach.quit}>
             Skip tutorial
           </button>
         </div>

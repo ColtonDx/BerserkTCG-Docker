@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { GameMenu } from './components/GameMenu.js';
 import { MatchOver } from './components/MatchOver.js';
 import { TurnButton } from './components/TurnButton.js';
-import { Tutorial } from './components/Tutorial.js';
+import { TutorialCoach, useTutorial } from './components/Tutorial.js';
 import { Aim } from './components/Aim.js';
 import { AssignDamage } from './components/AssignDamage.js';
 import { Banner } from './components/Banner.js';
@@ -120,6 +120,14 @@ export function App(): JSX.Element {
   // cards out of hand (Rules.md §7) and so does a cost-bearing ability (§13),
   // and which cards is their choice, so it is asked before anything is sent.
   const [opening, setOpening] = useState<PayableAction | null>(null);
+  // The coach, for the guided game: which step is up, and what the table may
+  // offer while it is. DesignNotes "Tutorial".
+  const coach = useTutorial(
+    shown ?? match.view,
+    match.recentEvents,
+    opening !== null,
+    match.tutorial,
+  );
   // A paid-for card waiting to be pointed at somebody. Rules.md §13 — the
   // choice is made on the board, after the cost is settled, so the player can
   // see where everybody is standing while they make it.
@@ -276,7 +284,13 @@ export function App(): JSX.Element {
 
   // The board as the beats have told it so far — see `usePresentation`. The
   // authoritative view is `match.view`; this is the picture of it to draw.
-  const table = shown ?? match.view;
+  // In the tutorial the table offers only what the current lesson allows —
+  // a picture, like `shown`: the rules and the server are untouched.
+  const drawn = shown ?? match.view;
+  const table =
+    match.tutorial && !coach.quitted
+      ? { ...drawn, legalActions: drawn.legalActions.filter(coach.allows) }
+      : drawn;
 
   // Mulligan, bottoming and discarding are only about the hand, so the hand
   // comes forward and the table dims behind it.
@@ -508,14 +522,7 @@ export function App(): JSX.Element {
       {/* The coach, for the guided game. It reads the table and rings what
        * to click; it never sends anything. DesignNotes "Tutorial". */}
       {match.tutorial && ceremony === 'playing' && (
-        <Tutorial
-          view={table}
-          events={match.recentEvents}
-          paying={opening !== null}
-          busy={busy}
-          onHold={match.holdForCoach}
-          onQuit={() => undefined}
-        />
+        <TutorialCoach view={table} coach={coach} busy={busy} onHold={match.holdForCoach} />
       )}
       {settings && <Settings auth={auth} onClose={() => setSettings(false)} />}
       {reveal && <Revealed reveal={reveal} />}
