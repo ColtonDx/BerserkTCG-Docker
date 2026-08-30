@@ -357,7 +357,10 @@ function narrate(
         break;
       case 'BATTLE_ENDED':
         if (event.result === 'stalemate') lines.push('The battle was called off.');
-        else if (event.result === 'repelled') lines.push('The attack was repelled.');
+        else if (event.result === 'repel') lines.push('The attack was repelled.');
+        else if (event.result === 'mutual_destruction') {
+          lines.push('Both sides fell: the city stands empty.');
+        }
         break;
       case 'QUICK_DECLINED':
         if (event.player === them) lines.push('Femto passed on playing a Quick.');
