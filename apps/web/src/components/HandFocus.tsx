@@ -32,9 +32,10 @@ export type HandStep =
       readonly kind: 'choose';
       readonly owed: number;
       readonly text: string;
-      readonly from: 'hand' | 'deck';
+      readonly from: 'hand' | 'deck' | 'field';
       /** What happens to a chosen card, which is what the prompt has to say. */
-      readonly action: 'discard' | 'setAndOpen' | 'toHand' | 'toTrash' | 'toCity';
+      readonly action:
+        'discard' | 'setAndOpen' | 'toHand' | 'toTrash' | 'toCity' | 'toCityOpen' | 'destroy';
       /** The player may stop short of the count. Rules.md §13 — "up to". */
       readonly upTo: boolean;
     }
@@ -95,7 +96,11 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
   // exactly the set it offered a `CHOOSE_CARD` for. Reading them off the legal
   // actions rather than off the deck zone is deliberate: the client is never
   // sent the rest of the deck, so this cannot show a card it should not.
-  const searching = step.kind === 'choose' && step.from === 'deck';
+  // A deck search and a choice made on the field are laid out the same way:
+  // from the cards the server actually offered, never from a zone the client
+  // holds. For the field that also keeps a face-down Set Card face-down for
+  // everyone but the player being asked to give one up (BK1-100).
+  const searching = step.kind === 'choose' && (step.from === 'deck' || step.from === 'field');
   const shown =
     step.kind === 'decide'
       ? []
@@ -274,6 +279,7 @@ function title(step: HandStep): string {
   if (step.kind === 'decide') return 'A card asks';
   if (step.kind === 'choose') {
     if (step.from === 'deck') return 'Search your deck';
+    if (step.action === 'destroy') return 'Give up a card';
     return step.action === 'setAndOpen' ? 'Set and open' : 'Discard';
   }
   return 'Discard to seven';
@@ -295,7 +301,9 @@ function hint(step: HandStep): string {
             ? `Click ${many} to set face down in this area — your deck is shuffled afterwards.`
             : step.action === 'setAndOpen'
               ? 'Click a card to set it in this area and open it at once, paying nothing.'
-              : `Click ${many} to discard, or 🔍 to read one first.`;
+              : step.action === 'destroy'
+                ? `Click ${many} of yours to destroy.`
+                : `Click ${many} to discard, or 🔍 to read one first.`;
     return `${step.text} ${what}`;
   }
   if (step.kind === 'mulligan') {

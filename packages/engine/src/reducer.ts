@@ -4,6 +4,7 @@ import {
   selects,
   BOOST_COUNTERS,
   SHIELD,
+  SKIP_REFRESH,
   targetPlayer,
   usedOnTurnCounter,
   type Ability,
@@ -23,6 +24,7 @@ import {
   areasFor,
   askingAbilities,
   battleResult,
+  captureDrawFor,
   canActivate,
   canCommit,
   canVanguard,
@@ -67,7 +69,7 @@ import type {
   QuickTrigger,
   QuickWindow,
 } from './types.js';
-import { cityDistance, moveToCity, moveToZone, zoneKey } from './zones.js';
+import { cardsInZone, cityDistance, moveToCity, moveToZone, zoneKey } from './zones.js';
 
 /**
  * The single entry point for changing game state.
@@ -984,8 +986,9 @@ function endBattle(
       // "If you captured this area this turn" (BK1-039). Rules.md §13.
       draft.turn.capturedCities = toDraft([...draft.turn.capturedCities, battle.city]);
       events.push({ type: 'CITY_OCCUPIED', city: battle.city, player: battle.attacker });
-      // §12 — the city card's own effect: a fresh occupation draws two.
-      drawInto(draft, battle.attacker, 2, events);
+      // §12 — the city card's own effect: a fresh occupation draws two,
+      // unless an attacker present says otherwise (BK1-093).
+      drawInto(draft, battle.attacker, captureDrawFor(ctx, draft, battle), events);
     }
   } else if (result === 'mutual_destruction' && city && city.occupiedBy) {
     city.occupiedBy = null;
@@ -1472,6 +1475,14 @@ function applyRefresh(draft: Draft<GameState>, player: PlayerId, events: GameEve
   let count = 0;
   for (const card of Object.values(draft.cards)) {
     if (card.controller === player && card.zone === 'city' && card.locked) {
+      // BK1-085 — a character may owe this Refresh to a Creeping Nightmare.
+      // One skip is spent per Refresh and the card stays down, so two marks
+      // cost it two turns rather than collapsing into one.
+      const owed = card.counters[SKIP_REFRESH] ?? 0;
+      if (owed > 0) {
+        card.counters = { ...card.counters, [SKIP_REFRESH]: owed - 1 };
+        continue;
+      }
       card.locked = false;
       count++;
     }
@@ -1763,6 +1774,13 @@ function resolveTop(ctx: EngineContext, draft: Draft<GameState>, events: GameEve
     top.chosen !== undefined &&
     (draft.cards[top.chosen]?.zone !== 'city' || draft.cards[top.chosen]?.faceUp !== true);
   if (source && source.zone === 'city' && source.faceUp && ability && !chosenGone) {
+    // "Destroy this card:" — paid now rather than at the moment it was used,
+    // so §14's stack does not fizzle the ability as a source that has gone.
+    // It is paid *before* the effect, as printed, and goes out through
+    // `destroy` so its own death abilities still fire (Rules.md §3).
+    if (ability.cost?.destroySelf === true) {
+      destroy(ctx, draft, source, events);
+    }
     resolveEffect(ctx, draft, source as CardInstance, ability, events, top.chosen, top.area);
   } else if (source && ability) {
     events.push({
@@ -1993,6 +2011,61 @@ function useAbility(
 }
 
 /**
+ * BK1-103's question, put for one character at a time. Rules.md §13.
+ *
+ * "Discard 2 cards for each character … or destroy that card" is a choice per
+ * character, not one covering all of them, so each is asked in turn with the
+ * remainder riding along as the continuation. Accepting pays the discard,
+ * declining loses the character (`PendingChoice.orElse`), and either way the
+ * next character is asked about behind it.
+ *
+ * A player who cannot pay is never asked: §13 resolves the effect regardless,
+ * so the character is simply destroyed and the queue moves on.
+ */
+function askDestroyOrDiscard(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  victims: readonly CardInstanceId[],
+  discard: number,
+  text: string,
+  events: GameEvent[],
+): boolean {
+  const before = events.length;
+  let queue = victims;
+
+  for (;;) {
+    const [next, ...rest] = queue;
+    if (next === undefined) return events.length > before;
+    const card = draft.cards[next];
+    // Already gone — a death rattle earlier in the queue may have taken it.
+    if (!card || card.zone !== 'city') {
+      queue = rest;
+      continue;
+    }
+    if (handSize(draft, card.controller) < discard) {
+      destroy(ctx, draft, card, events);
+      queue = rest;
+      continue;
+    }
+    const carryOn: Effect[] =
+      rest.length > 0 ? [{ do: 'askDestroyOrDiscard', cards: rest, discard }] : [];
+    askFor(draft, events, {
+      waitingOn: card.controller,
+      source: source.instanceId,
+      text,
+      count: 1,
+      upTo: false,
+      kind: { zone: 'decision' },
+      // Accepting is agreeing to pay; declining gives up the character.
+      then: { effects: [{ do: 'discard', player: 'you', count: discard }, ...carryOn] },
+      orElse: { effects: [{ do: 'destroyOne', card: next }, ...carryOn] },
+    });
+    return true;
+  }
+}
+
+/**
  * Fires every ability on `source` that answers to this trigger.
  *
  * Conditions are checked here rather than by the caller so that a trigger
@@ -2153,15 +2226,20 @@ function runEffect(
     }
 
     case 'draw': {
-      const player = targetPlayer(draft, controller, effect.player);
+      const player = targetPlayer(draft, controller, effect.player, source);
       const count = effect.count * scaleOf(ctx, draft, source, effect.per);
       if (player && count > 0) drawInto(draft, player, count, events);
       return pushed();
     }
 
     case 'discard': {
-      const player = targetPlayer(draft, controller, effect.player);
+      const player = targetPlayer(draft, controller, effect.player, source);
       if (!player) return false;
+      // "If they have 3 or more cards in their hand" (BK1-104) — a gate on
+      // the discard, not a number to discard down to.
+      if (effect.ifHandAtLeast !== undefined && handSize(draft, player) < effect.ifHandAtLeast) {
+        return false;
+      }
       // Your opponent's cards go at random; your own are your choice. See the
       // note on the effect in `abilities.ts`, and `forcedDiscard` below.
       if (effect.player === 'opponent') {
@@ -2201,10 +2279,19 @@ function runEffect(
         upTo: effect.upTo === true,
         kind: {
           zone: 'deck',
-          action: to === 'hand' ? 'toHand' : to === 'trash' ? 'toTrash' : 'toCity',
+          action:
+            to === 'hand'
+              ? 'toHand'
+              : to === 'trash'
+                ? 'toTrash'
+                : to === 'setOpen'
+                  ? 'toCityOpen'
+                  : 'toCity',
           named: effect.named,
           characterOnly: effect.characterOnly === true,
-          ...(to === 'set' && source.cityIndex !== undefined ? { city: source.cityIndex } : {}),
+          ...((to === 'set' || to === 'setOpen') && source.cityIndex !== undefined
+            ? { city: source.cityIndex }
+            : {}),
           reveal: effect.reveal === true,
         },
       });
@@ -2278,6 +2365,36 @@ function runEffect(
       return freed > 0;
     }
 
+    case 'lock': {
+      let touched = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        // Unconditional: a character already locked still takes the mark,
+        // because BK1-085 is about the *next* Refresh and not about now.
+        if (!card.locked) touched++;
+        card.locked = true;
+        if (effect.skipRefresh !== undefined && effect.skipRefresh > 0) {
+          const owed = (card.counters[SKIP_REFRESH] ?? 0) + effect.skipRefresh;
+          card.counters = { ...card.counters, [SKIP_REFRESH]: owed };
+          touched++;
+        }
+      }
+      return touched > 0;
+    }
+
+    case 'mill': {
+      const player = targetPlayer(draft, controller, effect.player);
+      if (!player) return false;
+      // The top of the deck, unseen — `cardsInZone` is in deck order, and a
+      // deck too short simply gives what it has. Running dry is not a loss
+      // here: Rules.md §1 loses the match on the *draw*, not on this.
+      const top = cardsInZone(draft as GameState, player, 'deck').slice(0, effect.count);
+      for (const card of top) {
+        moveToZone(draft, card.instanceId, { player: card.owner, zone: 'trash' });
+        events.push({ type: 'CARD_TRASHED', player, card: card.instanceId });
+      }
+      return top.length > 0;
+    }
+
     case 'returnToHand': {
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         moveToZone(draft, card.instanceId, { player: card.owner, zone: 'hand' });
@@ -2323,6 +2440,52 @@ function runEffect(
       return pushed();
     }
 
+    case 'theyDestroy': {
+      // The choice belongs to whoever owns the cards, not to the player who
+      // used the ability (BK1-100). Nothing in reach is not an error — the
+      // effect simply finds nobody, like any other.
+      const reachable = selected(ctx, draft, source, effect.who, chosen);
+      if (reachable.length === 0) return false;
+      const owner = reachable[0]?.controller;
+      if (!owner) return false;
+      // One card, one owner: a selector reaching both sides would be asking
+      // two players one question, which no card in the set does.
+      const theirs = reachable.filter((card) => card.controller === owner);
+      askFor(draft, events, {
+        waitingOn: owner,
+        source: source.instanceId,
+        text,
+        count: Math.min(effect.count, theirs.length),
+        upTo: false,
+        kind: {
+          zone: 'field',
+          action: 'destroy',
+          cards: theirs.map((card) => card.instanceId),
+        },
+      });
+      return pushed();
+    }
+
+    case 'destroyOrDiscard': {
+      // BK1-103 — one question per character they have in the fight here,
+      // asked one at a time because each answer is independent.
+      const victims = selected(ctx, draft, source, effect.who, chosen)
+        .map((card) => card.instanceId)
+        .filter((id): id is CardInstanceId => id !== undefined);
+      if (victims.length === 0) return false;
+      return askDestroyOrDiscard(ctx, draft, source, victims, effect.discard, text, events);
+    }
+
+    case 'askDestroyOrDiscard':
+      return askDestroyOrDiscard(ctx, draft, source, effect.cards, effect.discard, text, events);
+
+    case 'destroyOne': {
+      const victim = draft.cards[effect.card];
+      if (!victim || victim.zone !== 'city') return false;
+      destroy(ctx, draft, victim, events);
+      return pushed();
+    }
+
     case 'moveTo': {
       // Where they end up. "This area" is wherever the card doing the moving
       // stands — an ability whose own card has left the field has nowhere to
@@ -2359,6 +2522,12 @@ function runEffect(
     // Continuous by nature: asked of the board by `cannotAttack`, never run.
     case 'cannotAttack':
       return true;
+
+    case 'captureDraw':
+      // Continuous, like `cannotAttack`: read off the board by
+      // `rules.ts:captureDrawFor` when a city changes hands. There is
+      // nothing to do when it resolves.
+      return true;
   }
 }
 
@@ -2388,7 +2557,7 @@ function selected(
   selector: Selector,
   chosen?: CardInstanceId | undefined,
 ): Draft<CardInstance>[] {
-  return reachedBy(ctx, draft as GameState, source, selector, chosen)
+  return reachedBy(ctx, draft as GameState, source, selector, chosen, draft.battle)
     .map((card) => draft.cards[card.instanceId])
     .filter((card): card is Draft<CardInstance> => card !== undefined);
 }
@@ -2501,11 +2670,21 @@ function chooseCard(
   }
 
   const card = draft.cards[cardId];
-  if (!card || card.controller !== actor || card.zone !== kind.zone) {
+  // A choice made on the field names cards standing in a city, so the zone it
+  // asks about is not the zone they are in.
+  const wantedZone = kind.zone === 'field' ? 'city' : kind.zone;
+  if (!card || card.controller !== actor || card.zone !== wantedZone) {
     return violation('CARD_NOT_IN_ZONE', `That card is not in your ${kind.zone}.`, '§13');
   }
 
-  if (kind.zone === 'hand' && kind.action === 'discard') {
+  if (kind.zone === 'field') {
+    // Exactly what was offered when the question was posed — never re-derived
+    // from a selector against a board that has since moved.
+    if (!kind.cards.includes(cardId)) {
+      return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
+    }
+    destroy(ctx, draft, card, events);
+  } else if (kind.zone === 'hand' && kind.action === 'discard') {
     moveToZone(draft, cardId, { player: actor, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
   } else if (kind.zone === 'hand') {
@@ -2549,6 +2728,16 @@ function chooseCard(
       moveToCity(draft, cardId, city, { controller: actor, faceUp: false });
       events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
       events.push({ type: 'CARD_SET', player: actor, card: cardId, city });
+      if (kind.action === 'toCityOpen') {
+        // "Set that card in this area, and then open it" (BK1-091) — free and
+        // outside the City Level gate, as with BK1-061: the printed line is
+        // what puts it there, not the turn's one open (§10 ③).
+        card.faceUp = true;
+        card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+        events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
+        fireAbilities(ctx, draft, card as CardInstance, 'open', events);
+        refreshBoard(ctx, draft, events);
+      }
     }
   }
 
@@ -2595,7 +2784,13 @@ function answer(
     return violation('NOT_YOUR_PRIORITY', 'That choice is not yours to make.', '§13');
   }
   if (pending.kind.zone === 'decision') {
-    if (!accept) delete pending.then;
+    // A declined "you may" simply does nothing; a declined either/or runs its
+    // other branch instead (BK1-103). See `PendingChoice.orElse`.
+    if (!accept) {
+      if (pending.orElse) pending.then = pending.orElse;
+      else delete pending.then;
+    }
+    delete pending.orElse;
     finishChoice(ctx, draft, events);
     return ok(true);
   }

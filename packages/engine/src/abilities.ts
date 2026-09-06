@@ -15,6 +15,15 @@ import type { CardInstanceId, PlayerId } from './ids.js';
  * the printed line wins — that is the point of keeping them side by side.
  */
 
+/**
+ * Whose cards an effect acts on.
+ *
+ * `occupier` is not a side but a position: the player holding the area the
+ * source sits in, which BK1-104 asks about on *each* player's turn and which
+ * may be nobody. An effect naming it does nothing while the city is unheld.
+ */
+export type EffectPlayer = 'you' | 'opponent' | 'occupier';
+
 /** A change to a character's printed numbers. Absent fields are unchanged. */
 export interface StatLine {
   readonly power?: number;
@@ -62,6 +71,19 @@ export interface Selector {
    * character too.
    */
   readonly faceDown?: boolean;
+  /**
+   * How many cities away the effect reaches. Rules.md §15 "Distance" — 1 is
+   * an adjacent city, counted from the source's own area, which is therefore
+   * always included. Widens `where: 'thisArea'` rather than replacing it,
+   * exactly as {@link TargetSpec.maxDistance} does.
+   */
+  readonly maxDistance?: number;
+  /**
+   * Only characters committed to the battle running right now. Rules.md §11
+   * ③. With no battle on, nothing qualifies — so BK1-103 opened outside a
+   * fight reaches nobody, which is the printed behaviour.
+   */
+  readonly inCombat?: boolean;
 }
 
 /**
@@ -166,7 +188,7 @@ export type Effect =
     }
   | {
       readonly do: 'draw';
-      readonly player: 'you' | 'opponent';
+      readonly player: EffectPlayer;
       readonly count: number;
       readonly per?: Selector;
     }
@@ -183,7 +205,17 @@ export type Effect =
    * `then` runs once the last card has been named, so a card that draws and
    * then discards still reads in printed order.
    */
-  | { readonly do: 'discard'; readonly player: 'you' | 'opponent'; readonly count: number }
+  | {
+      readonly do: 'discard';
+      readonly player: EffectPlayer;
+      readonly count: number;
+      /**
+       * Only discard while the hand is at least this big (BK1-104's "if they
+       * have 3 or more cards in their hand"). A threshold, not a floor: the
+       * card names one card, so a hand of exactly three loses one and stops.
+       */
+      readonly ifHandAtLeast?: number;
+    }
   /**
    * Take cards out of your deck and shuffle. Rules.md §13.
    *
@@ -203,7 +235,13 @@ export type Effect =
       readonly named: string | null;
       readonly characterOnly?: boolean;
       readonly upTo?: boolean;
-      readonly to?: 'hand' | 'trash' | 'set';
+      /**
+       * Where the cards go. `set` puts them face down as Set Cards (BK1-025);
+       * `setOpen` sets and then opens at once, paying nothing and ignoring City
+       * Level (BK1-091) — the printed line names both halves, and a card set but
+       * left face down would be a different card.
+       */
+      readonly to?: 'hand' | 'trash' | 'set' | 'setOpen';
       readonly reveal?: boolean;
     }
   /**
@@ -234,6 +272,25 @@ export type Effect =
    */
   | { readonly do: 'attach'; readonly who: Selector; readonly grants: Grants }
   | { readonly do: 'unlock'; readonly who: Selector }
+  /**
+   * Locks a character, as an effect rather than as a cost. Rules.md §6.
+   *
+   * `skipRefresh` is BK1-085's second half: the target also owes that many
+   * Refresh phases before it stands again. The two travel together because
+   * the printed line does both for one price, and the lock is unconditional
+   * — a character already locked still takes the mark.
+   */
+  | { readonly do: 'lock'; readonly who: Selector; readonly skipRefresh?: number }
+  /**
+   * The top of a deck into the Trash, unseen. Rules.md §1.
+   *
+   * Distinct from `search`, which looks through a player's *own* deck and
+   * stops to ask which card: this takes the top `count` blind, so nothing is
+   * revealed and nothing is chosen. A deck too short to pay simply gives what
+   * it has — running dry is `applyDraw`'s rule and loses the match on the
+   * *draw*, not here.
+   */
+  | { readonly do: 'mill'; readonly player: 'you' | 'opponent'; readonly count: number }
   | { readonly do: 'returnToHand'; readonly who: Selector }
   /**
    * Marks damage, exactly as a battle does — so it accumulates with combat
@@ -289,7 +346,63 @@ export type Effect =
       readonly where: 'sourceArea' | 'chosenArea';
     }
   /** Rules.md §11 — may not lead or join an attack. */
-  | { readonly do: 'cannotAttack'; readonly who: Selector };
+  | { readonly do: 'cannotAttack'; readonly who: Selector }
+  /**
+   * Replaces the number of cards §12's capture pays out, while this card is
+   * among the attackers (BK1-093 draws 1 instead of 2).
+   *
+   * Continuous and read off the board at the moment the city changes hands,
+   * like the other `always` effects — there is nothing to write down and
+   * nothing to undo if the Troll dies before the battle ends. Several such
+   * cards in one fight take the lowest, since each is a card saying the draw
+   * is smaller than the rule allows.
+   */
+  | { readonly do: 'captureDraw'; readonly count: number }
+  /**
+   * Somebody else destroys one of their own cards, of their choosing
+   * (BK1-100). Rules.md §13.
+   *
+   * Distinct from `destroy`, which reaches whatever its selector names and
+   * gives nobody a say: this hands the choice to the card's *owner*, so it
+   * stops and asks them. `who` is read from the source's side as usual —
+   * `side: 'theirs'` is the opponent's cards — and the player asked is
+   * whoever controls what the selector reached.
+   *
+   * Nothing in reach is not an error: the ability resolves having done
+   * nothing, like any other effect that finds nobody.
+   */
+  | { readonly do: 'theyDestroy'; readonly who: Selector; readonly count: number }
+  /**
+   * A choice put to the opponent once for each character they have in the
+   * battle here: lose that character, or pay `discard` cards (BK1-103).
+   * Rules.md §13.
+   *
+   * One effect rather than a loop of smaller ones because the *number* of
+   * questions is read off the board when it resolves, and each answer is
+   * independent — paying for one character says nothing about the next.
+   */
+  | {
+      readonly do: 'destroyOrDiscard';
+      readonly who: Selector;
+      readonly discard: number;
+    }
+  /**
+   * The same question, carried on to the characters that have not been asked
+   * about yet. Not a printed ability: BK1-103 asks once per character, and
+   * this is how the remainder rides along in a {@link Continuation} while the
+   * player answers for the one in front of them.
+   *
+   * The victims are named by instance rather than by selector because the
+   * board moves between questions — a selector would re-reach whoever is
+   * standing there by the time the last answer comes in.
+   */
+  | {
+      readonly do: 'askDestroyOrDiscard';
+      readonly cards: readonly CardInstanceId[];
+      readonly discard: number;
+    }
+  /** One named card to the Trash, for the same continuation. */
+  | { readonly do: 'destroyOne'; readonly card: CardInstanceId };
 
 /**
  * When an ability does its work.
@@ -332,6 +445,15 @@ export interface ActivationCost {
   readonly pay?: string;
   /** "Can only be used once per turn." */
   readonly oncePerTurn?: boolean;
+  /**
+   * "Destroy this card:" — the source goes to the Trash to pay for its own
+   * ability (BK1-092). Rules.md §13.
+   *
+   * Paid *before* the effect resolves, as printed, so a card that locks
+   * somebody is already gone when it does — and its own `death` abilities
+   * fire on the way out like any other destruction.
+   */
+  readonly destroySelf?: boolean;
 }
 
 export interface Ability {
@@ -407,6 +529,16 @@ export const BOOST_MOVE = 'boostMove';
  * a counter could not tell the two apart once it was on the card.
  */
 export const SHIELD = 'shield';
+
+/**
+ * Owed skips of the next Refresh unlock — BK1-085.
+ *
+ * Deliberately *not* a boost: it has to survive to a future turn, so the End
+ * phase must not sweep it. `applyRefresh` spends one and leaves the card
+ * locked, which is why it is a count rather than a flag — two Nightmares
+ * pointed at the same character cost it two Refresh phases.
+ */
+export const SKIP_REFRESH = 'skipRefresh';
 
 export const BOOST_COUNTERS: readonly string[] = [BOOST_POWER, BOOST_HP, BOOST_MOVE, SHIELD];
 
@@ -1059,6 +1191,234 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
     },
   ],
 
+  /* --------------------------------------------------------------- black */
+
+  'BK1-082': [
+    {
+      trigger: 'death',
+      // "All characters in this area" — both sides, and the source is already
+      // on its way out, so `others` rather than `any`: a card cannot be hit
+      // by its own death rattle. Rules.md §3 fires this before it leaves.
+      effect: { do: 'damage', who: { scope: 'others', side: 'any', where: 'thisArea' }, amount: 1 },
+      text: 'When this card is destroyed, all characters in this area take 1 damage.',
+    },
+  ],
+  'BK1-083': [
+    {
+      trigger: 'death',
+      effect: { do: 'damage', who: { scope: 'others', side: 'any', where: 'thisArea' }, amount: 2 },
+      text: 'When this card is destroyed, all characters in this area take 2 damage.',
+    },
+  ],
+  'BK1-084': [
+    {
+      trigger: 'always',
+      condition: { when: 'youOccupyThisArea' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { hp: 2 } },
+      text: 'If you occupy the area this card is in it recieves +0/+2',
+    },
+  ],
+  'BK1-085': [
+    {
+      trigger: 'always',
+      effect: { do: 'cannotAttack', who: { scope: 'self' } },
+      text: 'This card cannot attack.',
+    },
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      // "Any character in this area" — either side's, as printed.
+      target: { where: 'thisArea' },
+      // Locks it if it is standing, and marks it either way: the skip is owed
+      // regardless of whether it was already down when this was pointed at it.
+      effect: { do: 'lock', who: { scope: 'target' }, skipRefresh: 1 },
+      text: 'Tap: Target any character in this area, that character does not unlock during its controllers next refresh phase.',
+    },
+  ],
+  'BK1-086': [
+    {
+      trigger: 'death',
+      effect: { do: 'discard', player: 'opponent', count: 1 },
+      text: 'When this card is destroyed, Your opponent discards 1 card at random.',
+    },
+  ],
+  'BK1-089': [
+    {
+      trigger: 'always',
+      effect: { do: 'cannotAttack', who: { scope: 'self' } },
+      text: 'This character cannot attack.',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      effect: { do: 'mill', player: 'opponent', count: 2 },
+      text: '(Quick) Tap: Your opponent puts the top 2 cards of their deck into the graveyard.',
+    },
+  ],
+  'BK1-090': [
+    {
+      trigger: 'always',
+      effect: { do: 'cannotAttack', who: { scope: 'self' } },
+      text: 'This character cannot attack.',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      // Printed +2/-2: the HP drop is a buff with a negative, not damage —
+      // it is swept at end of turn rather than accumulating (Rules.md §10 ⑤).
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: -2 } },
+      text: '(Quick) Tap: This card gains +2/-2 until end of turn.',
+    },
+  ],
+  'BK1-091': [
+    {
+      trigger: 'death',
+      // "You may (optional)" — the search is declinable, and a deck with no
+      // Snowman left simply finds nothing rather than asking.
+      effect: {
+        do: 'may',
+        effects: [
+          {
+            do: 'search',
+            player: 'you',
+            count: 1,
+            named: 'Snowman',
+            to: 'setOpen',
+          },
+        ],
+      },
+      text: 'When this card is destroyed, you may (optional) search your deck for a card named Snowman, set that card in this area, and then open it. Then shuffle your deck.',
+    },
+  ],
+  'BK1-092': [
+    {
+      trigger: 'activated',
+      quick: true,
+      // "Destroy this card:" — paid on resolution, so §14's stack does not
+      // fizzle the ability as a source that has gone. See `ActivationCost`.
+      cost: { destroySelf: true },
+      // The lock outlives the card that paid for it.
+      target: { where: 'thisArea' },
+      effect: { do: 'lock', who: { scope: 'target' } },
+      text: '(Quick) Destroy this card: Lock 1 character in this area.',
+    },
+  ],
+  'BK1-093': [
+    {
+      trigger: 'always',
+      effect: { do: 'captureDraw', count: 1 },
+      text: 'When you capture an area while attacking with this card, you draw 1 card instead of 2.',
+    },
+  ],
+  'BK1-094': [
+    {
+      trigger: 'death',
+      // "Discard a card of your choice" — your own hand, so it stops and asks.
+      effect: { do: 'discard', player: 'you', count: 1 },
+      text: 'When this card is destroyed, discard a card of your choice.',
+    },
+  ],
+  'BK1-097': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: 'B' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: 1 } },
+      text: '(Quick) B: This card gains +2/+1 until end of turn',
+    },
+  ],
+  'BK1-098': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      // "Level 1 or level 0" is a ceiling, which the selector already spells.
+      target: { where: 'thisArea', maxLevel: 1 },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: 'Tap: Target character in this area that is level 1 or level 0 takes 2 damage.',
+    },
+  ],
+  'BK1-099': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      effect: { do: 'mill', player: 'opponent', count: 3 },
+      text: 'Tap: Your opponent puts the top 3 cards of their deck into the graveyard',
+    },
+  ],
+  'BK1-100': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      condition: { when: 'youOccupyThisArea' },
+      // "In this area, or an adjacent area of their choice": Distance 1 from
+      // this card, which §15 counts from its own area — so this one included.
+      // The opponent picks which, hence `theyDestroy` rather than `destroy`.
+      effect: {
+        do: 'theyDestroy',
+        who: { scope: 'any', side: 'theirs', faceDown: true, maxDistance: 1 },
+        count: 1,
+      },
+      text: 'Tap: If this character is in an occupied area you control, your opponent destroys 1 set card they control in this area, or an adjacent area of their choice.',
+    },
+  ],
+  'BK1-101': [
+    {
+      trigger: 'activated',
+      cost: { pay: '1B' },
+      // The card moves itself, so the area is the only thing to choose.
+      area: 'adjacent',
+      effect: { do: 'moveTo', who: { scope: 'self' }, where: 'chosenArea' },
+      text: '1B: Move this card to an adjacent area',
+    },
+  ],
+  'BK1-102': [
+    {
+      trigger: 'activated',
+      cost: { pay: '1B' },
+      effect: { do: 'unlock', who: { scope: 'self' } },
+      text: '1B: Unlock this card',
+    },
+  ],
+  'BK1-103': [
+    {
+      trigger: 'open',
+      // Per character they have in the fight here: pay 2, or lose it. §11 ③
+      // is what "in battle" means, so with no battle on this reaches nobody.
+      effect: {
+        do: 'destroyOrDiscard',
+        who: { scope: 'any', side: 'theirs', where: 'thisArea', inCombat: true },
+        discard: 2,
+      },
+      text: 'When this card is opened, your opponent must discard 2 cards for each character they control in battle in this area or destroy that card',
+    },
+  ],
+  'BK1-104': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'turnStart',
+      // "Each player's turn", and it hits whoever holds the area — which may
+      // be its own controller. Both halves are printed, so both are said.
+      turns: 'any',
+      effect: { do: 'discard', player: 'occupier', count: 1, ifHandAtLeast: 3 },
+      text: 'At the start of each players turn, if that player occupies this area, they must discard a card if they have 3 or more cards in their hand.',
+    },
+  ],
+  'BK1-105': [
+    {
+      trigger: 'open',
+      // "All characters in this area", both sides. The card is an Effect and
+      // never stands in the area as a character, so nothing excludes itself.
+      effect: { do: 'destroy', who: { scope: 'any', side: 'any', where: 'thisArea' } },
+      text: 'Destroy all characters in this area.',
+    },
+  ],
+
   'BK1-156': [
     {
       trigger: 'always',
@@ -1110,7 +1470,11 @@ export function selects(
   if (side === 'yours' && card.controller !== source.controller) return false;
   if (side === 'theirs' && card.controller === source.controller) return false;
 
-  if ((selector.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
+  if (selector.maxDistance !== undefined) {
+    // Distance widens "this area" outwards; §15 counts from the source.
+    if (source.cityIndex === undefined || card.cityIndex === undefined) return false;
+    if (Math.abs(source.cityIndex - card.cityIndex) > selector.maxDistance) return false;
+  } else if ((selector.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
     return false;
   }
   const facts = factsOf(card);
@@ -1127,10 +1491,17 @@ export function selects(
 
 /** The player an effect's `you`/`opponent` refers to. */
 export const targetPlayer = (
-  state: Pick<GameState, 'seats'>,
+  state: Pick<GameState, 'seats' | 'cities'>,
   controller: PlayerId,
-  which: 'you' | 'opponent',
+  which: EffectPlayer,
+  source?: Pick<CardInstance, 'cityIndex'>,
 ): PlayerId | null => {
   if (which === 'you') return controller;
+  // "That player", meaning whoever holds the area the card sits in — which
+  // may be either side, or nobody at all (BK1-104).
+  if (which === 'occupier') {
+    if (!source || source.cityIndex === undefined) return null;
+    return state.cities[source.cityIndex]?.occupiedBy ?? null;
+  }
   return state.seats.find((seat) => seat !== controller) ?? null;
 };

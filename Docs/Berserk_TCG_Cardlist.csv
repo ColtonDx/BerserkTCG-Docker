@@ -84,30 +84,30 @@ BK1,79,Camp Survey,G,no,3,,,,,no,Effect,Eternal,"When this card is opened, draw 
 (Quick) Lock a character you control in this area: All characters you control in this area gain +2/+1 until end of turn"
 BK1,80,Strength Of The Bond,G,no,2,,,,,no,Effect,Normal,"When this card is opened, destroy 1 black character in this area."
 BK1,81,Mercenary,B,no,0,0,1,1,1,no,character,Mercenary,
-BK1,82,Disgusting Fiend,B,no,1,0,1,1,1,no,character,Spirit Creature,
-BK1,83,Writhing Fiend,B,no,2,0,1,2,2,no,character,Spirit Creature,
-BK1,84,Forest Ghost,B,no,2,0,0,2,4,no,character,Spirit Creature,
-BK1,85,Creeping Nightmare,B,no,1,0,1,0,1,no,character,Spirit Creature,
-BK1,86,Will-'o-the-wisp,B,no,1,0,1,1,2,no,character,Spirit Creature,
+BK1,82,Disgusting Fiend,B,no,1,0,1,1,1,no,character,Spirit Creature,"When this card is destroyed, all characters in this area take 1 damage."
+BK1,83,Writhing Fiend,B,no,2,0,1,2,2,no,character,Spirit Creature,"When this card is destroyed, all characters in this area take 2 damage."
+BK1,84,Forest Ghost,B,no,2,0,0,2,4,no,character,Spirit Creature,If you occupy the area this card is in it recieves +0/+2
+BK1,85,Creeping Nightmare,B,no,1,0,1,0,1,no,character,Spirit Creature,"This card cannot attack. Tap: Target any character in this area, that character does not unlock during its controllers next refresh phase."
+BK1,86,Will-'o-the-wisp,B,no,1,0,1,1,2,no,character,Spirit Creature,"When this card is destroyed, Your opponent discards 1 card at random."
 BK1,87,Insect Elf,B,no,1,0,2,1,2,no,character,Spirit Creature,
 BK1,88,Insect Elf,B,no,1,0,2,2,1,no,character,Spirit Creature,
-BK1,89,Forest Guardian,B,no,2,1,1,4,1,no,character,Spirit Creature,
-BK1,90,Forest Guardian,B,no,2,0,1,1,5,no,character,Spirit Creature,
-BK1,91,Snowman,B,no,1,0,0,1,1,no,character,Spirit Creature,
-BK1,92,Possessing Fiend,B,no,1,0,1,1,2,no,character,Spirit Creature,
-BK1,93,Troll,B,no,1,0,1,2,2,no,character,Spirit Creature,
-BK1,94,Troll,B,no,1,0,1,2,2,no,character,Spirit Creature,
+BK1,89,Forest Guardian,B,no,2,1,1,4,1,no,character,Spirit Creature,This character cannot attack. (Quick) Tap: Your opponent puts the top 2 cards of their deck into the graveyard.
+BK1,90,Forest Guardian,B,no,2,0,1,1,5,no,character,Spirit Creature,This character cannot attack. (Quick) Tap: This card gains +2/-2 until end of turn.
+BK1,91,Snowman,B,no,1,0,0,1,1,no,character,Spirit Creature,"When this card is destroyed, you may (optional) search your deck for a card named Snowman, set that card in this area, and then open it. Then shuffle your deck."
+BK1,92,Possessing Fiend,B,no,1,0,1,1,2,no,character,Spirit Creature,(Quick) Destroy this card: Lock 1 character in this area.
+BK1,93,Troll,B,no,1,0,1,2,2,no,character,Spirit Creature,"When you capture an area while attacking with this card, you draw 1 card instead of 2."
+BK1,94,Troll,B,no,1,0,1,2,2,no,character,Spirit Creature,"When this card is destroyed, discard a card of your choice."
 BK1,95,Ogre,B,no,2,0,1,3,3,no,character,Spirit Creature,
 BK1,96,Ogre,B,no,3,0,1,4,4,no,character,Spirit Creature,
-BK1,97,Kelpie,B,no,3,0,2,3,3,no,character,Spirit Creature,
-BK1,98,Kelpie,B,no,2,0,2,2,2,no,character,Spirit Creature,
-BK1,99,Evil Spirits Of The Wild,B,no,2,0,2,1,4,no,character,Spirit Creature,
-BK1,100,Evil Spirits Of The Wild,B,no,1,0,1,1,1,no,character,Spirit Creature,
-BK1,101,Rosine,B,yes,2,0,1,3,3,no,character,Apostle,
-BK1,102,Rosine,B,yes,3,0,2,5,3,no,character,Apostle,
-BK1,103,Demon Interception,B,no,3,,,,,yes,Effect,Normal,
-BK1,104,Deceased Sun,B,yes,2,,,,,no,Effect,Eternal,
-BK1,105,A Crimson Lake Appears,1B,no,4,,,,,no,Effect,Normal,
+BK1,97,Kelpie,B,no,3,0,2,3,3,no,character,Spirit Creature,(Quick) B: This card gains +2/+1 until end of turn
+BK1,98,Kelpie,B,no,2,0,2,2,2,no,character,Spirit Creature,Tap: Target character in this area that is level 1 or level 0 takes 2 damage.
+BK1,99,Evil Spirits Of The Wild,B,no,2,0,2,1,4,no,character,Spirit Creature,Tap: Your opponent puts the top 3 cards of their deck into the graveyard
+BK1,100,Evil Spirits Of The Wild,B,no,1,0,1,1,1,no,character,Spirit Creature,"Tap: If this character is in an occupied area you control, your opponent destroys 1 set card they control in this area, or an adjacent area of their choice."
+BK1,101,Rosine,B,yes,2,0,1,3,3,no,character,Apostle,1B: Move this card to an adjacent area
+BK1,102,Rosine,B,yes,3,0,2,5,3,no,character,Apostle,1B: Unlock this card
+BK1,103,Demon Interception,B,no,3,,,,,yes,Effect,Normal,"When this card is opened, your opponent must discard 2 cards for each character they control in battle in this area or destroy that card"
+BK1,104,Deceased Sun,B,yes,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. At the start of each players turn, if that player occupies this area, they must discard a card if they have 3 or more cards in their hand."
+BK1,105,A Crimson Lake Appears,1B,no,4,,,,,no,Effect,Normal,Destroy all characters in this area.
 BK1,106,Flight Of The Insect Elves,B,no,3,,,,,yes,Effect,Normal,
 BK1,107,Peekaf's Fairy Tale,B,no,2,,,,,yes,Effect,Normal,
 BK1,108,Innocent Taunt,B,no,2,,,,,yes,Effect,Normal,

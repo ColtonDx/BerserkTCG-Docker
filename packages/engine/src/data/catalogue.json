@@ -1800,7 +1800,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "When this card is destroyed, all characters in this area take 1 damage.",
     "mercenary": false
   },
   {
@@ -1822,7 +1822,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "When this card is destroyed, all characters in this area take 2 damage.",
     "mercenary": false
   },
   {
@@ -1844,7 +1844,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "If you occupy the area this card is in it recieves +0/+2",
     "mercenary": false
   },
   {
@@ -1866,7 +1866,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "This card cannot attack. Tap: Target any character in this area, that character does not unlock during its controllers next refresh phase.",
     "mercenary": false
   },
   {
@@ -1888,7 +1888,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "When this card is destroyed, Your opponent discards 1 card at random.",
     "mercenary": false
   },
   {
@@ -1954,7 +1954,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "This character cannot attack. (Quick) Tap: Your opponent puts the top 2 cards of their deck into the graveyard.",
     "mercenary": false
   },
   {
@@ -1976,7 +1976,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "This character cannot attack. (Quick) Tap: This card gains +2/-2 until end of turn.",
     "mercenary": false
   },
   {
@@ -1998,7 +1998,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "When this card is destroyed, you may (optional) search your deck for a card named Snowman, set that card in this area, and then open it. Then shuffle your deck.",
     "mercenary": false
   },
   {
@@ -2020,7 +2020,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "(Quick) Destroy this card: Lock 1 character in this area.",
     "mercenary": false
   },
   {
@@ -2042,7 +2042,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "When you capture an area while attacking with this card, you draw 1 card instead of 2.",
     "mercenary": false
   },
   {
@@ -2064,7 +2064,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "When this card is destroyed, discard a card of your choice.",
     "mercenary": false
   },
   {
@@ -2130,7 +2130,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "(Quick) B: This card gains +2/+1 until end of turn",
     "mercenary": false
   },
   {
@@ -2152,7 +2152,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "Tap: Target character in this area that is level 1 or level 0 takes 2 damage.",
     "mercenary": false
   },
   {
@@ -2174,7 +2174,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "Tap: Your opponent puts the top 3 cards of their deck into the graveyard",
     "mercenary": false
   },
   {
@@ -2196,7 +2196,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": ["spirit", "creature"],
-    "effect": null,
+    "effect": "Tap: If this character is in an occupied area you control, your opponent destroys 1 set card they control in this area, or an adjacent area of their choice.",
     "mercenary": false
   },
   {
@@ -2218,7 +2218,7 @@
     "cost": "B",
     "unique": true,
     "subtypes": ["apostle"],
-    "effect": null,
+    "effect": "1B: Move this card to an adjacent area",
     "mercenary": false
   },
   {
@@ -2240,7 +2240,7 @@
     "cost": "B",
     "unique": true,
     "subtypes": ["apostle"],
-    "effect": null,
+    "effect": "1B: Unlock this card",
     "mercenary": false
   },
   {
@@ -2262,7 +2262,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, your opponent must discard 2 cards for each character they control in battle in this area or destroy that card",
     "mercenary": false
   },
   {
@@ -2284,7 +2284,7 @@
     "cost": "B",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards. At the start of each players turn, if that player occupies this area, they must discard a card if they have 3 or more cards in their hand.",
     "mercenary": false
   },
   {
@@ -2306,7 +2306,7 @@
     "cost": "1B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Destroy all characters in this area.",
     "mercenary": false
   },
   {

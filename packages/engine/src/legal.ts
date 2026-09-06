@@ -147,7 +147,13 @@ function choosable(
       ? kind.action === 'setAndOpen'
         ? settable(ctx, state, player, kind.maxLevel)
         : cardsInZone(state, player, 'hand')
-      : searchable(ctx, state, player, kind.named, kind.characterOnly);
+      : kind.zone === 'field'
+        ? // Worked out when the question was posed, so the Distance and
+          // occupation checks are not re-run against a board that has moved.
+          kind.cards
+            .map((id) => state.cards[id])
+            .filter((card): card is CardInstance => card !== undefined && card.zone === 'city')
+        : searchable(ctx, state, player, kind.named, kind.characterOnly);
   actions.push(...cards.map((card) => ({ type: 'CHOOSE_CARD' as const, card: card.instanceId })));
   // "Up to": the player may stop here. A choice with nothing left to pick
   // from is stopped by the engine itself, so this is only ever a real option.

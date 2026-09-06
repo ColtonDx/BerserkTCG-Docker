@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { catalogueRegistry } from './data/registry.js';
 import { createEngine, type Engine } from './engine.js';
 import { asCardDefId, asMatchId, asPlayerId, type CardInstanceId, type PlayerId } from './ids.js';
-import { SHIELD } from './abilities.js';
+import { SHIELD, SKIP_REFRESH } from './abilities.js';
 import {
   boostSources,
   rangeOf,
@@ -2220,3 +2220,483 @@ function endTurn(state: GameState, player: PlayerId, collect?: GameEvent[]): Gam
   }
   return next;
 }
+
+describe('the black Spirit Creatures (Rules.md §13)', () => {
+  it('BK1-082 Disgusting Fiend burns the area it dies in, but not itself', () => {
+    // "All characters in this area" — both sides. The source is already on
+    // its way out (Rules.md §3), so it must not be caught by its own rattle.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const fiend = place(state, player, 'BK1-082', 2);
+    state = fiend.state;
+    // A green Mercenary is 1/1, so a single point of splash kills it too.
+    const bystander = place(state, player, GREEN, 2);
+    state = bystander.state;
+    const elsewhere = place(state, player, GREEN, 3);
+    state = elsewhere.state;
+
+    const schierke = place(state, other, 'BK1-053', 2, { faceUp: false });
+    state = openable(schierke.state, other, schierke.card);
+    state = { ...state, turn: { ...state.turn, activePlayer: other, priorityPlayer: other } };
+    state = apply(state, other, openOf(state, other, schierke.card) as GameAction);
+
+    expect(state.cards[fiend.card]?.zone).toBe('trash');
+    // Caught by the death rattle in its own area...
+    expect(state.cards[bystander.card]?.zone).toBe('trash');
+    // ...while a character one city over is untouched.
+    expect(state.cards[elsewhere.card]?.zone).toBe('city');
+  });
+
+  it('BK1-086 Will-o-the-wisp takes a card off the opponent as it dies', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const wisp = place(state, player, 'BK1-086', 2);
+    state = wisp.state;
+    const schierke = place(state, other, 'BK1-053', 2, { faceUp: false });
+    state = openable(schierke.state, other, schierke.card);
+    state = { ...state, turn: { ...state.turn, activePlayer: other, priorityPlayer: other } };
+
+    // "Your opponent" is read from the dying card's side, so it is the player
+    // who killed it that discards.
+    const before = zoneSize(state, other, 'hand');
+    state = apply(state, other, openOf(state, other, schierke.card) as GameAction);
+
+    expect(state.cards[wisp.card]?.zone).toBe('trash');
+    // Schierke left that hand too, hence two cards fewer.
+    expect(zoneSize(state, other, 'hand')).toBe(before - 2);
+  });
+
+  it('BK1-084 Forest Ghost is only tougher while its side holds the city', () => {
+    // Continuous, so it is read off the board and stops the instant the city
+    // changes hands — there is nothing stored to undo.
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const ghost = place(state, player, 'BK1-084', 2);
+    state = ghost.state;
+
+    const held = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: player } : city,
+      ),
+    };
+    // Printed 2/4: +0/+2 shows as 6 HP, and Power is untouched.
+    expect(hp(held, ghost.card)).toBe(6);
+    expect(power(held, ghost.card)).toBe(2);
+
+    const lost = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: other } : city,
+      ),
+    };
+    expect(hp(lost, ghost.card)).toBe(4);
+  });
+
+  it('BK1-090 Forest Guardian cannot attack, and its Quick trades HP for Power', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const guardian = place(state, player, 'BK1-090', 2);
+    state = guardian.state;
+
+    // The first printed line is flat, not conditional on anything.
+    expect(cannotAttack({ registry }, state, cardOf(state, guardian.card))).toBe(true);
+
+    // Printed 1/5. The +2/-2 is a buff with a negative rather than damage, so
+    // it is swept at end of turn instead of accumulating (Rules.md §10 ⑤).
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === guardian.card);
+    expect(use, 'the Quick should be offered').toBeDefined();
+
+    state = apply(atMain(state), player, use as GameAction);
+    expect(power(state, guardian.card)).toBe(3);
+    expect(hp(state, guardian.card)).toBe(3);
+    expect(state.cards[guardian.card]?.damage).toBe(0);
+  });
+
+  it('BK1-105 A Crimson Lake Appears clears the whole area, both sides', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const mine = place(state, player, 'BK1-081', 2);
+    state = mine.state;
+    const theirs = place(state, other, 'BK1-081', 2);
+    state = theirs.state;
+    const spared = place(state, other, 'BK1-081', 3);
+    state = spared.state;
+
+    const lake = place(state, player, 'BK1-105', 2, { faceUp: false });
+    state = openable(lake.state, player, lake.card);
+    const open = openOf(state, player, lake.card);
+    expect(open, 'the lake should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // It destroys indiscriminately — its own controller's characters included.
+    expect(state.cards[mine.card]?.zone).toBe('trash');
+    expect(state.cards[theirs.card]?.zone).toBe('trash');
+    expect(state.cards[spared.card]?.zone).toBe('city');
+  });
+
+  it('BK1-102 Rosine pays to stand back up', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+
+    const rosine = place(state, player, 'BK1-102', 2);
+    state = rosine.state;
+    state = {
+      ...state,
+      cards: { ...state.cards, [rosine.card]: { ...cardOf(state, rosine.card), locked: true } },
+    };
+
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === rosine.card);
+    expect(use, 'unlock should be offered while she is locked').toBeDefined();
+
+    state = apply(atMain(state), player, use as GameAction);
+    expect(state.cards[rosine.card]?.locked).toBe(false);
+  });
+});
+
+describe('black: the lines that needed new machinery (Rules.md §13)', () => {
+  it('BK1-085 Creeping Nightmare locks its target and costs it the next Refresh', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+
+    const nightmare = place(state, player, 'BK1-085', 2);
+    state = nightmare.state;
+    const victim = place(state, player, 'BK1-081', 2);
+    state = victim.state;
+
+    expect(cannotAttack({ registry }, state, cardOf(state, nightmare.card))).toBe(true);
+
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find(
+        (action) =>
+          action.type === 'USE_ABILITY' &&
+          action.card === nightmare.card &&
+          action.targets?.[0] === victim.card,
+      );
+    expect(use, 'the Nightmare should be able to point at somebody').toBeDefined();
+    state = apply(atMain(state), player, use as GameAction);
+
+    // Standing when it was pointed at, so the ability locks it as well.
+    expect(state.cards[victim.card]?.locked).toBe(true);
+    expect(state.cards[victim.card]?.counters[SKIP_REFRESH]).toBe(1);
+  });
+
+  it('BK1-085 marks a character that was already locked, and it misses one Refresh', () => {
+    // The printed line is about the *next* Refresh, so being down already is
+    // not a reason to skip the mark — that was the ruling.
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const nightmare = place(state, player, 'BK1-085', 2);
+    state = nightmare.state;
+    const victim = place(state, player, 'BK1-081', 2);
+    state = victim.state;
+    state = {
+      ...state,
+      cards: { ...state.cards, [victim.card]: { ...cardOf(state, victim.card), locked: true } },
+    };
+
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find(
+        (action) =>
+          action.type === 'USE_ABILITY' &&
+          action.card === nightmare.card &&
+          action.targets?.[0] === victim.card,
+      );
+    expect(use, 'an already-locked character is still a legal target').toBeDefined();
+    state = apply(atMain(state), player, use as GameAction);
+    expect(state.cards[victim.card]?.counters[SKIP_REFRESH]).toBe(1);
+
+    // Round the table once, so this player's own Refresh runs: the mark is
+    // spent there and the character stays down.
+    const next = endTurn(endTurn(state, player), other);
+    expect(next.turn.activePlayer).toBe(player);
+    expect(next.cards[victim.card]?.locked).toBe(true);
+    expect(next.cards[victim.card]?.counters[SKIP_REFRESH]).toBe(0);
+
+    // And the Refresh after that finally stands it up.
+    const later = endTurn(endTurn(next, player), other);
+    expect(later.cards[victim.card]?.locked).toBe(false);
+  });
+
+  it('BK1-099 puts the top of the opponent deck in the graveyard, unseen', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const spirits = place(state, player, 'BK1-099', 2);
+    state = spirits.state;
+
+    const deckBefore = zoneSize(state, other, 'deck');
+    const trashBefore = zoneSize(state, other, 'trash');
+    const handBefore = zoneSize(state, other, 'hand');
+
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === spirits.card);
+    expect(use, 'the mill should be offered').toBeDefined();
+    state = apply(atMain(state), player, use as GameAction);
+
+    expect(zoneSize(state, other, 'deck')).toBe(deckBefore - 3);
+    expect(zoneSize(state, other, 'trash')).toBe(trashBefore + 3);
+    // Off the top of the deck, not out of the hand.
+    expect(zoneSize(state, other, 'hand')).toBe(handBefore);
+  });
+
+  it('BK1-092 Possessing Fiend destroys itself to pay, and the lock outlives it', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const fiend = place(state, player, 'BK1-092', 2);
+    state = fiend.state;
+    const victim = place(state, other, 'BK1-081', 2);
+    state = victim.state;
+
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find(
+        (action) =>
+          action.type === 'USE_ABILITY' &&
+          action.card === fiend.card &&
+          action.targets?.[0] === victim.card,
+      );
+    expect(use, 'the Fiend should be able to point at somebody').toBeDefined();
+    state = apply(atMain(state), player, use as GameAction);
+
+    // Paid on resolution, so the ability still went off rather than fizzling
+    // as a source that had already gone.
+    expect(state.cards[fiend.card]?.zone).toBe('trash');
+    expect(state.cards[victim.card]?.locked).toBe(true);
+  });
+
+  it('BK1-104 Deceased Sun takes a card off whoever holds the area', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const sun = place(state, player, 'BK1-104', 2);
+    state = sun.state;
+    // The *opponent* holds this area, and the card hits whoever does.
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: other } : city,
+      ),
+    };
+
+    const before = zoneSize(state, other, 'hand');
+    expect(before).toBeGreaterThanOrEqual(3);
+
+    // Round to the occupier's own turn, when the trigger fires.
+    const next = endTurn(state, player);
+    expect(next.turn.activePlayer).toBe(other);
+    // Exactly one card, not down to three — and their draw for the turn is
+    // in there too, so compare against the draw rather than the raw count.
+    expect(zoneSize(next, other, 'hand')).toBeLessThan(before + 1);
+  });
+
+  it('BK1-104 leaves a small hand alone', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+
+    const sun = place(state, player, 'BK1-104', 2);
+    state = sun.state;
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: player } : city,
+      ),
+    };
+    // Empty the hand out to below the threshold.
+    const hand = [...(state.zoneOrder[`${player}:hand`] ?? [])];
+    let stripped = state;
+    for (const id of hand) {
+      stripped = {
+        ...stripped,
+        cards: { ...stripped.cards, [id]: { ...cardOf(stripped, id), zone: 'trash' as const } },
+        zoneOrder: Object.fromEntries(
+          Object.entries(stripped.zoneOrder).map(([key, order]) => [
+            key,
+            key === `${player}:hand` ? order.filter((c) => c !== id) : order,
+          ]),
+        ),
+      };
+    }
+    expect(zoneSize(stripped, player, 'hand')).toBe(0);
+
+    // The trigger fires on their next turn and finds nothing to take:
+    // "if they have 3 or more cards in their hand".
+    const other = stripped.seats.find((seat) => seat !== player) as PlayerId;
+    const next = endTurn(endTurn(stripped, player), other);
+    expect(next.turn.activePlayer).toBe(player);
+    // One card drawn for the turn, and nothing taken back off them.
+    expect(zoneSize(next, player, 'hand')).toBe(1);
+  });
+});
+
+describe('black: choices put to the opponent (Rules.md §13)', () => {
+  it('BK1-100 makes the opponent give up a Set Card within one area', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const spirits = place(state, player, 'BK1-100', 2);
+    state = spirits.state;
+    // The ability is gated on holding the area it stands in.
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: player } : city,
+      ),
+    };
+    // One adjacent (Distance 1, legal) and one two cities away (out of reach).
+    const near = place(state, other, 'BK1-081', 3, { faceUp: false });
+    state = near.state;
+    const far = place(state, other, 'BK1-081', 0, { faceUp: false });
+    state = far.state;
+
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === spirits.card);
+    expect(use, 'the ability should be offered while the area is held').toBeDefined();
+    state = apply(atMain(state), player, use as GameAction);
+
+    // The question is put to the *owner* of the cards, not to whoever used it.
+    expect(state.pending?.waitingOn).toBe(other);
+    const offered = engine
+      .legalActions(state, other)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+    // Distance 1 counts from the source's own area, so only the near one.
+    expect(offered).toContain(near.card);
+    expect(offered).not.toContain(far.card);
+
+    state = apply(state, other, { type: 'CHOOSE_CARD', card: near.card });
+    expect(state.cards[near.card]?.zone).toBe('trash');
+    expect(state.cards[far.card]?.zone).toBe('city');
+  });
+
+  it('BK1-103 asks once per character, and a refusal costs that character', () => {
+    // "Discard 2 cards for each character … or destroy that card" — the
+    // ruling is a choice per character, not one covering all of them.
+    let state = started('BK1-081');
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // BK1-103 is Level 3, so three cities must be face up before it can be
+    // opened at all (§7).
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) => (index < 3 ? { ...city, faceUp: true } : city)),
+    };
+
+    const lead = place(state, attacker, 'BK1-081', 2);
+    state = lead.state;
+    const first = place(state, defender, 'BK1-081', 2);
+    state = first.state;
+    const second = place(state, defender, 'BK1-081', 2);
+    state = second.state;
+    const interception = place(state, attacker, 'BK1-103', 2, { faceUp: false });
+    state = interception.state;
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+
+    // The combat open (§11 ②) comes before commitment, and is where a Quick
+    // Effect like this one is played into the fight.
+    const open = openOf(state, attacker, interception.card);
+    expect(open, 'Demon Interception should be openable in the combat open').toBeDefined();
+    state = apply(state, attacker, open as GameAction);
+
+    // Nobody has committed yet, so "characters they control in battle in this
+    // area" is nobody — the card resolves having found no one to ask about.
+    expect(state.pending).toBeNull();
+    expect(state.cards[first.card]?.zone).toBe('city');
+    expect(state.cards[second.card]?.zone).toBe('city');
+  });
+
+  it('BK1-103 puts the question once for each committed defender', () => {
+    let state = started('BK1-081');
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) => (index < 3 ? { ...city, faceUp: true } : city)),
+    };
+
+    const lead = place(state, attacker, 'BK1-081', 2);
+    state = lead.state;
+    const first = place(state, defender, 'BK1-081', 2);
+    state = first.state;
+    const second = place(state, defender, 'BK1-081', 2);
+    state = second.state;
+    const interception = place(state, attacker, 'BK1-103', 2, { faceUp: false });
+    state = interception.state;
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+
+    // Walk the battle to the commitment step and put both defenders in it.
+    for (let guard = 0; guard < 12 && state.battle && !state.pending; guard++) {
+      if (state.battle.step !== 'commit') {
+        const waiting = state.battle.waitingOn;
+        const pass = engine
+          .legalActions(state, waiting)
+          .find((action) => action.type === 'BATTLE_PASS');
+        if (!pass) break;
+        state = apply(state, waiting, pass);
+        continue;
+      }
+      const join = engine
+        .legalActions(state, defender)
+        .find(
+          (action) =>
+            action.type === 'COMMIT_CHARACTER' &&
+            (action.card === first.card || action.card === second.card),
+        );
+      if (!join) break;
+      state = apply(state, defender, join);
+    }
+
+    const committed = state.battle?.participants ?? [];
+    expect(committed).toContain(first.card);
+    expect(committed).toContain(second.card);
+
+    // Open it into the fight now that both are committed.
+    const open = openOf(state, attacker, interception.card);
+    expect(open, 'Demon Interception should be openable').toBeDefined();
+    state = apply(state, attacker, open as GameAction);
+
+    // One question, put to the defender, about the first of the two.
+    expect(state.pending?.waitingOn).toBe(defender);
+    expect(state.pending?.kind.zone).toBe('decision');
+    const handBefore = zoneSize(state, defender, 'hand');
+
+    // Refusing to pay gives up that character, and costs no cards.
+    state = apply(state, defender, { type: 'ANSWER', accept: false });
+    expect(zoneSize(state, defender, 'hand')).toBe(handBefore);
+    const lost = [first.card, second.card].filter((id) => state.cards[id]?.zone === 'trash');
+    expect(lost).toHaveLength(1);
+
+    // And the other is asked about behind it, rather than sharing the answer.
+    expect(state.pending?.waitingOn).toBe(defender);
+  });
+});

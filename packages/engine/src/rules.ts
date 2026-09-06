@@ -514,12 +514,23 @@ export function reachedBy(
   source: CardInstance,
   selector: Selector,
   chosen?: CardInstanceId | undefined,
+  /**
+   * The battle to read `Selector.inCombat` against. Passed rather than taken
+   * off the state because `BoardView` deliberately has no battle on it —
+   * mirroring `conditionHolds`, and for the same reason.
+   */
+  battle?: BattleState | null,
 ): CardInstance[] {
   return Object.values(state.cards).filter((card) => {
     if (card.zone !== 'city') return false;
     if (!card.faceUp) {
       if (selector.faceDown !== true) return false;
     } else if (!isCharacter(ctx, card)) {
+      return false;
+    }
+    // §11 ③ — committed to the fight running right now. With no battle on,
+    // nothing qualifies, so the effect reaches nobody.
+    if (selector.inCombat === true && !battle?.participants.includes(card.instanceId)) {
       return false;
     }
     return selects(selector, source, card, (c) => factsOf(ctx, c), chosen);
@@ -629,12 +640,15 @@ function effectRelevant(
   const reaches = (who: Selector): boolean =>
     (who.scope ?? 'self') === 'target'
       ? ability.target !== undefined
-      : reachedBy(ctx, state, source, who).length > 0;
+      : reachedBy(ctx, state, source, who, undefined, state.battle).length > 0;
 
   switch (effect.do) {
     case 'draw':
       // "For each" of nothing draws nothing.
-      return effect.per === undefined || reachedBy(ctx, state, source, effect.per).length > 0;
+      return (
+        effect.per === undefined ||
+        reachedBy(ctx, state, source, effect.per, undefined, state.battle).length > 0
+      );
     case 'search':
       return (
         searchable(ctx, state, source.controller, effect.named, effect.characterOnly === true)
@@ -663,7 +677,10 @@ function effectRelevant(
       // Continuous, or fighting: a boost that lasts the turn is spent in a
       // battle or not at all. And a scaled boost across nothing is nothing.
       if (ability.trigger !== 'always' && !inBattle) return false;
-      if (effect.per !== undefined && reachedBy(ctx, state, source, effect.per).length === 0) {
+      if (
+        effect.per !== undefined &&
+        reachedBy(ctx, state, source, effect.per, undefined, state.battle).length === 0
+      ) {
         return false;
       }
       return reaches(effect.who);
@@ -677,7 +694,7 @@ function effectRelevant(
           ? ability.target
             ? legalTargets(ctx, state, source, ability.target, state.battle)
             : []
-          : reachedBy(ctx, state, source, effect.who);
+          : reachedBy(ctx, state, source, effect.who, undefined, state.battle);
       if (victims.length === 0) return false;
       if (inBattle) return true;
       // Outside a battle, damage clears at end of turn (§10 ⑤): it is only
@@ -691,6 +708,30 @@ function effectRelevant(
     case 'destroy':
     case 'moveTo':
       return reaches(effect.who);
+    case 'lock':
+      // Unlike a boost, this outlasts the turn — it is worth doing outside a
+      // battle, and against a character that is already locked (BK1-085 is
+      // about the *next* Refresh).
+      return reaches(effect.who);
+    case 'askDestroyOrDiscard':
+    case 'destroyOne':
+      // Continuations, never printed on a card and never offered on their
+      // own — they only ever run from inside a choice already under way.
+      return false;
+    case 'theyDestroy':
+    case 'destroyOrDiscard':
+      // Card advantage either way — §13 counts it wherever it happens.
+      return reaches(effect.who);
+    case 'captureDraw':
+      // Continuous, read off the board when a city changes hands.
+      return ability.trigger === 'always';
+    case 'mill': { // is the only way it does nothing. // Card advantage, which §13 counts wherever it happens; an empty deck
+      const player =
+        effect.player === 'you'
+          ? source.controller
+          : state.seats.find((seat) => seat !== source.controller);
+      return player !== undefined && (state.zoneOrder[zoneKey(player, 'deck')]?.length ?? 0) > 0;
+    }
   }
 }
 
@@ -727,6 +768,33 @@ export const usedThisTurn = (state: BoardView, card: CardInstance, index: number
  * Timing only — what it *costs* is checked against the hand and the board by
  * the caller, which has to choose a payment anyway.
  */
+/**
+ * §12 — a fresh occupation draws two, by the City card's own effect.
+ */
+export const CAPTURE_DRAW = 2;
+
+/**
+ * How many cards §12's capture pays the attacker — normally 2.
+ *
+ * BK1-093 is a card saying the draw is smaller than the rule allows, so the
+ * lowest such number among the attacker's participants wins. Read off the
+ * board at the moment of capture rather than stored, so a Troll that died in
+ * the fight no longer counts: `stillFighting` is what "attacking with this
+ * card" means once the blows have landed (§12).
+ */
+export function captureDrawFor(ctx: EngineContext, state: GameState, battle: BattleState): number {
+  let count = CAPTURE_DRAW;
+  for (const card of stillFighting(state, battle, battle.attacker)) {
+    for (const ability of definitionOf(ctx, card).abilities ?? []) {
+      if (ability.trigger !== 'always') continue;
+      if (ability.effect.do !== 'captureDraw') continue;
+      if (!conditionHolds(ctx, state, card, ability.condition, battle)) continue;
+      count = Math.min(count, ability.effect.count);
+    }
+  }
+  return count;
+}
+
 export function canActivate(
   ctx: EngineContext,
   state: GameState,
@@ -739,6 +807,16 @@ export function canActivate(
   if (card.controller !== player) return false;
   if (usedThisTurn(state, card, entry.index)) return false;
   if (entry.ability.cost?.lockSelf === true && card.locked) return false;
+  // "Destroy this card:" is paid when the ability resolves, not when it is
+  // used, or §14's stack would fizzle it as a source that has gone. So the
+  // card has to be barred here instead: without this it could be sacrificed
+  // again and again while the first use is still pending.
+  if (
+    entry.ability.cost?.destroySelf === true &&
+    state.stack.some((e) => e.source === card.instanceId)
+  ) {
+    return false;
+  }
   if (!conditionHolds(ctx, state, card, entry.ability.condition, state.battle)) return false;
 
   // An ability that must be pointed at somebody, with nobody to point at, is

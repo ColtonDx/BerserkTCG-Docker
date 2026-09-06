@@ -194,6 +194,16 @@ export interface PendingChoice {
    * in the middle of its sentence, and the draw waits here for the answer.
    */
   readonly then?: Continuation;
+  /**
+   * What to run when a `decision` is *declined*. Rules.md §13.
+   *
+   * "You may" needs nothing here: declining means nothing happens, which is
+   * the absence of a continuation. This is for the printed lines that offer
+   * a choice between two outcomes rather than a choice to act — BK1-103's
+   * "discard 2 cards … or destroy that card", where refusing to pay is
+   * itself an instruction.
+   */
+  readonly orElse?: Continuation;
 }
 
 /** What an asking effect left unfinished, and the choices it was made with. */
@@ -233,13 +243,32 @@ export type PendingChoiceKind =
    */
   | {
       readonly zone: 'deck';
-      readonly action: 'toHand' | 'toTrash' | 'toCity';
+      /**
+       * `toCity` sets what is found face down; `toCityOpen` sets it and opens
+       * it at once, paying nothing and ignoring City Level (BK1-091).
+       */
+      readonly action: 'toHand' | 'toTrash' | 'toCity' | 'toCityOpen';
       readonly named: string | null;
       readonly characterOnly: boolean;
       readonly city?: number;
       readonly reveal: boolean;
     }
   /** A yes or no — "you may …" — answered with `ANSWER`. Rules.md §13. */
+  /**
+   * Pick a card that is already on the field, and something happens to it.
+   *
+   * Unlike every other kind, the player being asked is not always the one
+   * whose card asked: BK1-100 makes the *opponent* destroy one of their own
+   * Set Cards. `cards` is therefore the explicit list of what may be picked,
+   * worked out when the question is posed — the alternative, re-deriving it
+   * from a selector at answer time, would have to re-run the source's
+   * Distance and occupation checks against a board that has since moved.
+   */
+  | {
+      readonly zone: 'field';
+      readonly action: 'destroy';
+      readonly cards: readonly CardInstanceId[];
+    }
   | { readonly zone: 'decision' };
 
 /** The five phases of a turn. Rules.md §10. */

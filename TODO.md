@@ -57,6 +57,31 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    defending too?), and BK1-154's "characters that are not in this area"
    (both sides again).
 
+   **Black is 20 of its 20 transcribed lines.** The first eleven needed
+   nothing new. The other nine brought: milling the top of a deck to the
+   Trash (`mill`, BK1-089/099), `lock` as an effect rather than a cost with
+   an owed-Refresh counter that survives to a future turn (`SKIP_REFRESH`,
+   BK1-085), destroying the source to pay for its own ability
+   (`ActivationCost.destroySelf`, BK1-092), a capture that pays out less than
+   §12's two cards (`captureDraw`, BK1-093), a search that sets _and opens_
+   what it finds (`to: 'setOpen'`, BK1-091), a choice made by the player who
+   is losing the cards (`theyDestroy` and the `field` pending kind, BK1-100),
+   an either/or continuation for a declined decision (`PendingChoice.orElse`,
+   BK1-103), and `occupier` as an effect's player so a card can act on
+   whoever holds its area rather than on a side (BK1-104). `Selector` gained
+   `maxDistance` and `inCombat`, which `TargetSpec` already had.
+
+   Four of those read ambiguously and were settled before being built:
+   BK1-085 locks its target as well and the skip is owed however the target
+   was standing; BK1-100's opponent chooses the card, anywhere within
+   Distance 1; BK1-103 asks once per character, each answered on its own; and
+   BK1-104 takes exactly one card from whoever holds the area.
+
+   `destroySelf` is paid when the ability _resolves_ rather than when it is
+   used, because §14 puts it on the stack first and `resolveTop` fizzles an
+   ability whose source has left the field. `canActivate` bars a card that is
+   already pending, or it could sacrifice itself repeatedly.
+
 2. **The priority stack** (`Rules.md` §14) is built for what a player does —
    an open, an ability used — with two narrowings noted in `DesignNotes`
    "When to offer a Quick": a player is not asked about their own pending
