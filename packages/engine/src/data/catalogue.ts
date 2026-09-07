@@ -39,6 +39,13 @@ export interface CatalogueCard {
    * number — the exemption is by *name*, not by the `Mercenaries` faction.
    */
   readonly mercenary: boolean;
+  /**
+   * Not a Mercenary, but counts as one for `Deckbuilding.md`'s two rules —
+   * because the card says so (BK3-002, BK3-050). Kept apart from
+   * `mercenary`, which is the printed identity: the first card of each
+   * colour block, named "Mercenary".
+   */
+  readonly mercenaryForDeckbuilding?: boolean;
 
   readonly name: string | null;
   /** Cost in the database notation from DesignNotes 8, e.g. `1B`, `RGB`. */

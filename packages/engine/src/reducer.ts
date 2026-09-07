@@ -2973,6 +2973,10 @@ function runEffect(
     case 'demonCity':
       return true;
 
+    // A property read off the card elsewhere (`paysAs`), never resolved.
+    case 'noEffect':
+      return false;
+
     case 'ifNotOccupied': {
       // The tail of a printed line, run only where its controller does not
       // hold the area (BK3-007).

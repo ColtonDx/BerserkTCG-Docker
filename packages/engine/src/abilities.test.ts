@@ -22,6 +22,7 @@ import {
   opensLocked,
   subtypesOf,
 } from './rules.js';
+import { isMercenary } from './deck.js';
 import { isCityHidden, isHidden, viewFor } from './view.js';
 import type { CardInstance, GameAction, GameEvent, GameState } from './types.js';
 import { zoneSize } from './zones.js';
@@ -4350,5 +4351,47 @@ describe('BK3 damage divided and control seized (Rules.md §13)', () => {
     expect(state.cards[prize.card]?.controller).toBe(player);
     expect(state.cards[prize.card]?.cityIndex).toBe(2);
     expect(state.cards[prize.card]?.locked).toBe(false);
+  });
+});
+
+describe('Support pays for either colour (Rules.md §7)', () => {
+  it('accepts a Support card wherever either of its colours is wanted', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    // Turn a card in hand into the white Support [Green] card, then open a
+    // green Effect with it — a plain white card could not pay for that.
+    const hand = state.zoneOrder[`${player}:hand`] ?? [];
+    const payer = hand[0] as CardInstanceId;
+    state = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [payer]: { ...cardOf(state, payer), defId: asCardDefId('BK3-002') },
+      },
+    };
+
+    // BK1-080 is a green Normal Effect costing a single green card.
+    const green = place(state, player, 'BK1-080', 2, { faceUp: false });
+    state = openable(green.state, player, green.card);
+
+    const open = openOf(state, player, green.card);
+    expect(open, 'a Support [Green] card should pay a green cost').toBeDefined();
+    expect(open?.pay).toContain(payer);
+
+    // And the reducer accepts the payment `legalActions` suggested.
+    const after = engine.reduce(state, player, open as GameAction);
+    expect(after.ok).toBe(true);
+  });
+
+  it('counts a card that says so as a Mercenary for deckbuilding', () => {
+    // "Treated as a mercenary card during deckbuilding" (BK3-002) is about
+    // Deckbuilding.md's two rules, not about the printed identity — the
+    // Mercenary proper is still the first card of each colour block.
+    expect(isMercenary('BK3-002')).toBe(true);
+    expect(isMercenary('BK3-050')).toBe(true);
+    // BK3-003 is Support but claims no such thing.
+    expect(isMercenary('BK3-003')).toBe(false);
+    expect(isMercenary('BK1-001')).toBe(true);
   });
 });

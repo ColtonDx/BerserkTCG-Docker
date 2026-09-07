@@ -1,4 +1,4 @@
-import type { CardDefinition, CardRegistry, Cost } from './cards.js';
+import type { CardColor, CardDefinition, CardRegistry, Cost } from './cards.js';
 import { costTotal, parseCost } from './cards.js';
 import {
   counterFor,
@@ -331,6 +331,21 @@ export function uniqueConflict(
  * work is never rejected because an any-colour icon greedily consumed the one
  * matching card.
  */
+/**
+ * The colours this card can pay for. Rules.md §7.
+ *
+ * Its own, plus any it Supports (BK3-002's "Support [Green]"). The single
+ * implementation, so `validatePayment` and `choosePayment` cannot disagree
+ * about what a card is worth.
+ */
+export function paysAs(ctx: EngineContext, card: CardInstance): readonly CardColor[] {
+  const def = definitionOf(ctx, card);
+  const supported = abilitiesOf(ctx, card)
+    .map((ability) => ability.supports)
+    .filter((colour): colour is CardColor => colour !== undefined && colour !== def.color);
+  return supported.length > 0 ? [def.color, ...supported] : [def.color];
+}
+
 export function validatePayment(
   ctx: EngineContext,
   cost: Cost,
@@ -348,8 +363,10 @@ export function validatePayment(
   const remaining = [...pay];
   for (const icon of cost) {
     if (icon.color === 'any') continue;
+    const wanted = icon.color;
     for (let i = 0; i < icon.count; i++) {
-      const index = remaining.findIndex((card) => definitionOf(ctx, card).color === icon.color);
+      // A Support card counts as either colour it can pay for (§7).
+      const index = remaining.findIndex((card) => paysAs(ctx, card).includes(wanted));
       if (index === -1) {
         return violation(
           'INSUFFICIENT_RESOURCES',
@@ -1144,6 +1161,9 @@ function effectRelevant(
     case 'untargetable':
     case 'demonCity':
       return ability.trigger === 'always';
+    case 'noEffect':
+      // A property, not an effect — never worth a Quick window of its own.
+      return false;
     case 'ifNotOccupied':
       return effect.effects.some((inner) =>
         effectRelevant(ctx, state, source, ability, inner, inBattle),

@@ -176,6 +176,10 @@ def main() -> int:
                 # ability registry keyed by card id, never parsed from this.
                 "effect": read.get("text"),
                 "mercenary": False,
+                # Cards that are not Mercenaries but count as one for the
+                # 3-copy limit, because they say so (BK3-002, BK3-050).
+                # Deckbuilding.md exempts Mercenaries from that cap.
+                "mercenaryForDeckbuilding": False,
             }
         )
 
@@ -192,6 +196,10 @@ def main() -> int:
             card = group[i * block]
             card["mercenary"] = True
             mercenaries.append(str(card["id"]))
+        for card in group:
+            if "treated as a mercenary" in (card.get("effect") or "").lower():
+                card["mercenaryForDeckbuilding"] = True
+
         counts = {c: sum(1 for x in group if x["color"] == c) for c in COLOUR_ORDER}
         print(f"  {code}: {len(group):>3} cards, blocks of {block}, colours {counts}")
 

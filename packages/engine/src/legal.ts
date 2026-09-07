@@ -22,6 +22,7 @@ import {
   quickRelevant,
   cityLevel,
   openLevelFor,
+  paysAs,
   definitionOf,
   isCharacter,
   isQuickNow,
@@ -659,8 +660,12 @@ function choosePayment(
 
   for (const icon of cost) {
     if (icon.color === 'any') continue;
+    const wanted = icon.color;
     for (let i = 0; i < icon.count; i++) {
-      const index = remaining.findIndex((card) => definitionOf(ctx, card).color === icon.color);
+      // A Support card counts as either colour it can pay for (§7); this
+      // and `validatePayment` both read `paysAs`, so the payment the engine
+      // suggests is always one it will accept.
+      const index = remaining.findIndex((card) => paysAs(ctx, card).includes(wanted));
       if (index === -1) return null;
       const [card] = remaining.splice(index, 1);
       if (card) chosen.push(card.instanceId);

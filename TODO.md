@@ -90,9 +90,14 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    the set is transcription — the cardlist has no effect text for BK4
    onwards, and a card with no entry stays inert rather than approximated.
 
-   **Support is unbuilt and wants a ruling.** BK3-002, BK3-003 and BK3-050
-   print "Support [Green]" / "Support (Black)", which `Rules.md` does not
-   define. Their other clauses are built.
+   **Support** (BK3-002, -003, -050) lets a card be discarded to pay for
+   the colour it supports as well as its own. `rules.ts:paysAs` is the
+   single implementation, read by both `validatePayment` and
+   `choosePayment`, so a payment the engine suggests is always one it will
+   accept. "Treated as a mercenary during deckbuilding" is a _separate_
+   flag (`mercenaryForDeckbuilding`): it governs `Deckbuilding.md`'s copy
+   limit and ten-card minimum without disturbing the printed identity,
+   which is still the first card of each colour block named "Mercenary".
 
    **BK2-047's damage is missing from the source** — "Deal damage to a
    character your opponent controls" has no number in the cardlist.

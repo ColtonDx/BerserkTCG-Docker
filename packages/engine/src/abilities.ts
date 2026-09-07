@@ -737,6 +737,12 @@ export type Effect =
    */
   | { readonly do: 'demonCity' }
   /**
+   * Nothing at all. For a card whose whole ability is a property read off it
+   * elsewhere — Support, which `rules.ts:paysAs` asks about when a cost is
+   * paid (BK3-002). Rules.md §7.
+   */
+  | { readonly do: 'noEffect' }
+  /**
    * The rest of a printed line, run only where its controller does *not*
    * hold the area (BK3-007). Rules.md §12.
    *
@@ -1188,6 +1194,15 @@ export interface Ability {
    * card in the set that has it.
    */
   readonly alteration?: boolean;
+  /**
+   * "Support [Green]" — this card may be discarded to pay for a cost of the
+   * named colour as well as for one of its own (BK3-002, -003, -050).
+   * Rules.md §7.
+   *
+   * Read by `rules.ts:paysAs`, which every colour match goes through, so a
+   * Support card is accepted wherever either colour is wanted.
+   */
+  readonly supports?: CardColor;
   /**
    * "This card gains (Quick) if …" — the card counts as Quick while this
    * ability's condition holds (BK3-042, -044, -046). Rules.md §13.
@@ -4583,6 +4598,34 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         { do: 'draw', player: 'you', count: 2 },
       ],
       text: 'When this card is opened look at all set cards on the field, then move each of your set cards to any areas (distributed any way) of your choice. Draw 2 cards.',
+    },
+  ],
+
+  'BK3-002': [
+    {
+      // Support is not an effect that resolves — it is a property of the
+      // card, read by `rules.ts:paysAs` when a cost is paid (§7). `always`
+      // because it is true for as long as the card exists.
+      trigger: 'always',
+      supports: 'green',
+      effect: { do: 'noEffect' },
+      text: 'Support [Green]. This card is treated as a mercenary card during deckbuilding.',
+    },
+  ],
+  'BK3-003': [
+    {
+      trigger: 'always',
+      supports: 'green',
+      effect: { do: 'noEffect' },
+      text: 'Support [Green]',
+    },
+  ],
+  'BK3-050': [
+    {
+      trigger: 'always',
+      supports: 'black',
+      effect: { do: 'noEffect' },
+      text: 'Support (Black). This card is treated as a mercenary during deckbuilding',
     },
   ],
 

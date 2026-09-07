@@ -19,7 +19,8 @@
     "unique": false,
     "subtypes": ["mercenary"],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-002",
@@ -41,7 +42,8 @@
     "unique": false,
     "subtypes": ["mercenary", "infantry"],
     "effect": "When this character attacks an occupied city, it gains +1/+1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-003",
@@ -63,7 +65,8 @@
     "unique": false,
     "subtypes": ["hawk", "cavalry"],
     "effect": "Return this card to your hand at the end of the turn. (Mandatory)",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-004",
@@ -85,7 +88,8 @@
     "unique": false,
     "subtypes": ["hawk", "cavalry"],
     "effect": "When this card is opened, target 1 character in this area and it gains +1/+1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-005",
@@ -107,7 +111,8 @@
     "unique": false,
     "subtypes": ["hawk", "archer"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-006",
@@ -129,7 +134,8 @@
     "unique": false,
     "subtypes": ["hawk", "archer"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-007",
@@ -151,7 +157,8 @@
     "unique": false,
     "subtypes": ["hawk", "cavalry"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-008",
@@ -173,7 +180,8 @@
     "unique": false,
     "subtypes": ["hawk", "cavalry"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-009",
@@ -195,7 +203,8 @@
     "unique": true,
     "subtypes": ["hawk", "leader"],
     "effect": "1: Target another character with the \"Hawk\" subtype that you control, within 3 spaces. Move that character to this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-010",
@@ -217,7 +226,8 @@
     "unique": true,
     "subtypes": ["hawk", "leader"],
     "effect": "Other \"Hawk\" type characters you own in this area gain +1/+1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-011",
@@ -239,7 +249,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "(Quick) 1: This character gets +1/+1 until end of turn. Use only once per turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-012",
@@ -261,7 +272,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "When this character attacks, if it is the vanguard, it receives +1/+1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-013",
@@ -283,7 +295,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "(Quick) Tap: Target white (color) character in this area gains +1/+1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-014",
@@ -305,7 +318,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "If you control a card named \"Griffith\", this character gains +1/+1 and +1 Movement.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-015",
@@ -327,7 +341,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "(Quick) W: This character deals 1 damage to a target character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-016",
@@ -349,7 +364,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-017",
@@ -371,7 +387,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "When this card is opened, you opponent discards 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-018",
@@ -393,7 +410,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "At the start of your turn, if you occupy the area this card is in, draw one card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-019",
@@ -415,7 +433,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "(Quick) W:This character gains +2/-1 until end of turn. Do this only once per turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-020",
@@ -437,7 +456,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "This character cannot attack the turn its opened.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-021",
@@ -459,7 +479,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "Tap: You may look at all set cards in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-022",
@@ -481,7 +502,8 @@
     "unique": true,
     "subtypes": ["hawk"],
     "effect": "When this card is opened, you reveal the capital to yourself.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-023",
@@ -503,7 +525,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if you captured this area this turn, look at the top 5 cards of your library, select 2 to put into your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-024",
@@ -525,7 +548,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 1 card and your opponent discards 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-025",
@@ -547,7 +571,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Search your deck for up to 2 cards named Mercenary and set them in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-026",
@@ -569,7 +594,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Target character in this area gains +1/+1 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-027",
@@ -591,7 +617,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Target a level 1 or lower character in this area. Until end of turn any damage dealt by that character to any of your characters in this area is instead dealt to itself.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-028",
@@ -613,7 +640,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if the area level is 1 or less, and if a character you control moved to this area this turn. Unlock 1 character you control here, then draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-029",
@@ -635,7 +663,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a character you control in this area, it gains +1/+2 until end of turn. While defending it gains an additional +1/+1.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-030",
@@ -657,7 +686,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card Is opened, open 1 set white character card you have in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-031",
@@ -679,7 +709,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target 1 set card in this area, it cannot be opened this turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-032",
@@ -701,7 +732,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target an enemy character that is level 2 or less in this area. Move it to an adjacent area, then draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-033",
@@ -723,7 +755,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if the area level is 2 or less, return 1 character you control in this area to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-034",
@@ -745,7 +778,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if you occupy this area, deal 3 damage to target attacking character.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-035",
@@ -767,7 +801,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if you opened a character in this area this turn, unlock all characters in this area. Characters unlocked this way cannot participate in battle the rest of the turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-036",
@@ -789,7 +824,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, unlock a character that moved to this area this turn. Then draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-037",
@@ -811,7 +847,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if you captured this area this turn, unlock all characters you control in this area. They receive +2 Movement until end of turn. They cannot participate in battle this turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-038",
@@ -833,7 +870,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Unlock all \"Hawk\" characters. They all gain +1/+1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-039",
@@ -855,7 +893,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if you captured this area this turn. Search your deck for up to 3 Mercenary cards and set them in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-040",
@@ -877,7 +916,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target character in this area gains +2/+2 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-041",
@@ -899,7 +939,8 @@
     "unique": false,
     "subtypes": ["mercenary"],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-042",
@@ -921,7 +962,8 @@
     "unique": false,
     "subtypes": ["magical", "creature"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-043",
@@ -943,7 +985,8 @@
     "unique": false,
     "subtypes": ["magical", "creature"],
     "effect": "When this character dies, draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-044",
@@ -965,7 +1008,8 @@
     "unique": true,
     "subtypes": ["branded"],
     "effect": "Tap: Deal 4 damage to target character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-045",
@@ -987,7 +1031,8 @@
     "unique": true,
     "subtypes": ["branded"],
     "effect": "(Quick) G: This character receives +2/+2 until the end of the turn. Can only be used once per turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-046",
@@ -1009,7 +1054,8 @@
     "unique": true,
     "subtypes": ["branded"],
     "effect": "(Quick) Tap: Target character currently in combat in this area takes 3 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-047",
@@ -1031,7 +1077,8 @@
     "unique": true,
     "subtypes": ["branded"],
     "effect": "When this card is opened, draw 3 cards, then discard 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-048",
@@ -1053,7 +1100,8 @@
     "unique": true,
     "subtypes": ["branded"],
     "effect": "(Quick) 1: Return this card to your hand. Draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-049",
@@ -1075,7 +1123,8 @@
     "unique": true,
     "subtypes": ["noble"],
     "effect": "When this card is opened, draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-050",
@@ -1097,7 +1146,8 @@
     "unique": true,
     "subtypes": ["noble"],
     "effect": "When this card is opened, add 1 Serpico from your deck to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-051",
@@ -1119,7 +1169,8 @@
     "unique": true,
     "subtypes": ["noble"],
     "effect": "During combat reduce damage dealt to this card by 3.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-052",
@@ -1141,7 +1192,8 @@
     "unique": true,
     "subtypes": ["noble"],
     "effect": "During combat reduce damage dealt to this card by 3.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-053",
@@ -1163,7 +1215,8 @@
     "unique": true,
     "subtypes": ["magician"],
     "effect": "When this card is opened, deal 4 damage to each enemy character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-054",
@@ -1185,7 +1238,8 @@
     "unique": true,
     "subtypes": ["magician"],
     "effect": "Tap: Draw 2 cards",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-055",
@@ -1207,7 +1261,8 @@
     "unique": true,
     "subtypes": ["bandit"],
     "effect": "Tap: Deal 1 damage to target character in this area",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-056",
@@ -1229,7 +1284,8 @@
     "unique": true,
     "subtypes": ["bandit"],
     "effect": "Tap: Draw 1 card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-057",
@@ -1251,7 +1307,8 @@
     "unique": true,
     "subtypes": ["elf"],
     "effect": "When this card is opened, add 1 Serpico card from your deck to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-058",
@@ -1273,7 +1330,8 @@
     "unique": true,
     "subtypes": ["magician"],
     "effect": "All characters you control in this area gain +0/+2 and your opponents characters here gain -2/+0",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-059",
@@ -1295,7 +1353,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "All characters you control in this area gain +2/+2 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-060",
@@ -1317,7 +1376,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Target 1 character in this area. It gains +2/+2 for each character your opponent controls in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-061",
@@ -1339,7 +1399,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if an opponent did not move a character to this area this turn, you may set 1 level 4 or lower character from your hand in this area, and immediately open it.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-062",
@@ -1361,7 +1422,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Move 1 character you control from this area to any area that an opponent has a character of level 3 or higher in.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-063",
@@ -1383,7 +1445,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Target character in this area gains +4/+4 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-064",
@@ -1405,7 +1468,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a character in this area, or an area up to 1 distance away. Reduce damage that character receives by 3 this turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-065",
@@ -1427,7 +1491,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Open this card only if a battle was declared in this area this turn by either player. Search your deck for a character, reveal it, and add it to your hand. Then draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-066",
@@ -1449,7 +1514,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. At the start of your turn, you may choose to skip your draw phase and if you do, draw 2 cards at the end of your turn instead.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-067",
@@ -1471,7 +1537,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy all set cards you control in all areas. Draw that many cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-068",
@@ -1493,7 +1560,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, move all your set cards from this area to any other area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-069",
@@ -1515,7 +1583,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, search your deck for any card and add it to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-070",
@@ -1537,7 +1606,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 3 cards",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-071",
@@ -1559,7 +1629,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a character in an area up to 1 distance away and reduce damage that would be dealt to that character by 2.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-072",
@@ -1581,7 +1652,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, all enemy characters level 2 or lower in this area take 3 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-073",
@@ -1603,7 +1675,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw cards equal to the number of characters you have open.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-074",
@@ -1625,7 +1698,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, draw 3 cards.\n\nAs long as this card is on the board, your characters in this area gain +0/+1 and enemy characters gain -1/+0",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-075",
@@ -1647,7 +1721,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, choose 3 cards from your deck and send them to the graveyard. Then draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-076",
@@ -1669,7 +1744,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, attach it to a character. That character gains +1 Range and +3 Power as long as this card remains in play",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-077",
@@ -1691,7 +1767,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, attach it to a character. That character gains +1 Move and +2/+4 as long as this card remains in play",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-078",
@@ -1713,7 +1790,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, all characters you control in this area gain +1/+1 for each character you have open, until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-079",
@@ -1735,7 +1813,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 3 cards.  \n\n(Quick) Lock a character you control in this area: All characters you control in this area gain +2/+1 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-080",
@@ -1757,7 +1836,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy 1 black character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-081",
@@ -1779,7 +1859,8 @@
     "unique": false,
     "subtypes": ["mercenary"],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-082",
@@ -1801,7 +1882,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "When this card is destroyed, all characters in this area take 1 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-083",
@@ -1823,7 +1905,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "When this card is destroyed, all characters in this area take 2 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-084",
@@ -1845,7 +1928,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "If you occupy the area this card is in it recieves +0/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-085",
@@ -1867,7 +1951,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "This card cannot attack. Tap: Target any character in this area, that character does not unlock during its controllers next refresh phase.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-086",
@@ -1889,7 +1974,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "When this card is destroyed, Your opponent discards 1 card at random.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-087",
@@ -1911,7 +1997,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-088",
@@ -1933,7 +2020,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-089",
@@ -1955,7 +2043,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "This character cannot attack. (Quick) Tap: Your opponent puts the top 2 cards of their deck into the graveyard.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-090",
@@ -1977,7 +2066,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "This character cannot attack. (Quick) Tap: This card gains +2/-2 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-091",
@@ -1999,7 +2089,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "When this card is destroyed, you may (optional) search your deck for a card named Snowman, set that card in this area, and then open it. Then shuffle your deck.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-092",
@@ -2021,7 +2112,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "(Quick) Destroy this card: Lock 1 character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-093",
@@ -2043,7 +2135,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "When you capture an area while attacking with this card, you draw 1 card instead of 2.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-094",
@@ -2065,7 +2158,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "When this card is destroyed, discard a card of your choice.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-095",
@@ -2087,7 +2181,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-096",
@@ -2109,7 +2204,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-097",
@@ -2131,7 +2227,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "(Quick) B: This card gains +2/+1 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-098",
@@ -2153,7 +2250,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "Tap: Target character in this area that is level 1 or level 0 takes 2 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-099",
@@ -2175,7 +2273,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "Tap: Your opponent puts the top 3 cards of their deck into the graveyard",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-100",
@@ -2197,7 +2296,8 @@
     "unique": false,
     "subtypes": ["spirit", "creature"],
     "effect": "Tap: If this character is in an occupied area you control, your opponent destroys 1 set card they control in this area, or an adjacent area of their choice.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-101",
@@ -2219,7 +2319,8 @@
     "unique": true,
     "subtypes": ["apostle"],
     "effect": "1B: Move this card to an adjacent area",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-102",
@@ -2241,7 +2342,8 @@
     "unique": true,
     "subtypes": ["apostle"],
     "effect": "1B: Unlock this card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-103",
@@ -2263,7 +2365,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, your opponent must discard 2 cards for each character they control in battle in this area or destroy that card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-104",
@@ -2285,7 +2388,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. At the start of each players turn, if that player occupies this area, they must discard a card if they have 3 or more cards in their hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-105",
@@ -2307,7 +2411,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Destroy all characters in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-106",
@@ -2329,7 +2434,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a character in this area, or an adjacent area, and deal 2 damage to it",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-107",
@@ -2351,7 +2457,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened when an enemy character moved to this area this turn. That card does not unlock during the next refresh phase when it would unlock.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-108",
@@ -2373,7 +2480,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, move an enemy character from an adjacent area to this area, unlock that character. Draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-109",
@@ -2395,7 +2503,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card Is opened, target 1 character you control in this area, unlock it, and deal 2 damage to it.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-110",
@@ -2417,7 +2526,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if a character attacked this area this turn. Lock target character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-111",
@@ -2439,7 +2549,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, move one of your character from this area to any other area you occupy.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-112",
@@ -2461,7 +2572,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "(Quick) B: Search Search your deck for a Forest Guardian card, set it in this area, and then open it. Shuffle your deck.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-113",
@@ -2483,7 +2595,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. Any player who opens a character here or moves a character here while they do not occupy this area, must discard 2 cards or destroy that character.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-114",
@@ -2505,7 +2618,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, if this area is not occupied, lock all characters here.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-115",
@@ -2527,7 +2641,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "At the end of your turn, you may search your deck or your graveyard for an \"Insect Elf\" card, set it in this area, then open it. Shuffle your deck.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-116",
@@ -2549,7 +2664,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. The player who occupies this area can only open cards as if the level were 1 lower.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-117",
@@ -2571,7 +2687,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened your opponent discards 3 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-118",
@@ -2593,7 +2710,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy a level 1 or lower character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-119",
@@ -2615,7 +2733,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, deal 2 damage to target character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-120",
@@ -2637,7 +2756,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if a battle was declared in this area this turn. Your opponent discards 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-121",
@@ -2659,7 +2779,8 @@
     "unique": false,
     "subtypes": ["mercenary"],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-122",
@@ -2681,7 +2802,8 @@
     "unique": false,
     "subtypes": ["neohawk", "infantry"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-123",
@@ -2703,7 +2825,8 @@
     "unique": false,
     "subtypes": ["neohawk", "cavalry"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-124",
@@ -2725,7 +2848,8 @@
     "unique": false,
     "subtypes": ["neohawk", "archer"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-125",
@@ -2747,7 +2871,8 @@
     "unique": false,
     "subtypes": ["neohawk", "cavalry"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-126",
@@ -2769,7 +2894,8 @@
     "unique": false,
     "subtypes": ["neohawk", "beast", "soldiers"],
     "effect": "When this card is opened, it gets +1/+1 until the end of the turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-127",
@@ -2791,7 +2917,8 @@
     "unique": false,
     "subtypes": ["neohawk", "beast", "soldiers"],
     "effect": "When this card is opened it gets -1/-1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-128",
@@ -2813,7 +2940,8 @@
     "unique": true,
     "subtypes": ["neohawk", "leader"],
     "effect": "1: Destroy a set card here. This can only be activated once each turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-129",
@@ -2835,7 +2963,8 @@
     "unique": true,
     "subtypes": ["neohawk", "leader"],
     "effect": "When this card is opened, eliminate all of your characters in play that are level 1 or less. 1: Unlock this character, can only be activated once each turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-130",
@@ -2857,7 +2986,8 @@
     "unique": true,
     "subtypes": ["neohawk", "leader"],
     "effect": "When this card is opened, destroy all set cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-131",
@@ -2879,7 +3009,8 @@
     "unique": true,
     "subtypes": ["neohawk", "apostle"],
     "effect": "3: Move this and another character from this area to another area within distance 2. There must be another character to move for this to be used, but it can be your character or an oppoenents character.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-132",
@@ -2901,7 +3032,8 @@
     "unique": true,
     "subtypes": ["neohawk", "apostle"],
     "effect": "(Quick) Tap: All characters in this area get -2/+0 until end of the turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-133",
@@ -2923,7 +3055,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "(Quick) 1R: Target character in this area takes 2 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-134",
@@ -2945,7 +3078,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "While an enemy character, level 4 or higher, is in this area, this card gets +1/+1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-135",
@@ -2967,7 +3101,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "All cavalry characters you control get +1/+1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-136",
@@ -2989,7 +3124,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "(Quick) 1: This character gets +1/+0 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-137",
@@ -3011,7 +3147,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-138",
@@ -3033,7 +3170,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-139",
@@ -3055,7 +3193,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "(Quick) 2: Target character in this area gets -4/+0 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-140",
@@ -3077,7 +3216,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "(Quick) 2: Destroy a level 2 or lower character in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-141",
@@ -3099,7 +3239,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "When this card Is opened, you may look at all set cards in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-142",
@@ -3121,7 +3262,8 @@
     "unique": true,
     "subtypes": ["neohawk"],
     "effect": "When this card is opened, reveal all enemy set cards in all areas and destroy all effect cards among them.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-143",
@@ -3143,7 +3285,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You can only open this card if you opened a character in this area this turn. Move all your characters to this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-144",
@@ -3165,7 +3308,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened return all set cards you control to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-145",
@@ -3187,7 +3331,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "All characters in this area gain +1/+0. If a player captures this area they draw 3 cards instead of 2.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-146",
@@ -3209,7 +3354,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy a set card in this area",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-147",
@@ -3231,7 +3377,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You can only open this card if you defended this area this turn. Target any number of characters and move them to this area and unlock them.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-148",
@@ -3253,7 +3400,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, until end of turn, all damage dealt in this area  is reduced to 0.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-149",
@@ -3275,7 +3423,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Until end of turn, target character in this area cannot participate in battle.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-150",
@@ -3297,7 +3446,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy target character you control in this area. Then reveal cards from the top of your library until you reveal a character card, set that card in this area, and then open it. If the destroyed character was in battle, the newly opened card joins the battle.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-151",
@@ -3319,7 +3469,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened negate all abilities of normal effects with 1 distance until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-152",
@@ -3341,7 +3492,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy all eternal effect cards in play, then draw that many cards",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-153",
@@ -3363,7 +3515,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy target open card in this area",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-154",
@@ -3385,7 +3538,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Until end of turn, characters that are not in this area have their damage taken reduced to 0.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-155",
@@ -3407,7 +3561,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if you occupy no areas and your opponent occupies at least 2 areas. Look at the top 7 cards of your deck and set them anywhere.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-156",
@@ -3429,7 +3584,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "While an enemy occupies the city in this area, all enemy character in this area get -2/-0",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-157",
@@ -3451,7 +3607,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target an enemy character, that character cannot attack this area. If that character is in this area, destroy it if it were to move to another area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-158",
@@ -3473,7 +3630,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. Whenever your opponent captures an area, set the top card of your library in that area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-159",
@@ -3495,7 +3653,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card as opened, look at the top 4 cards of your deck and put them back in any order. Do not shuffle.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK1-160",
@@ -3517,7 +3676,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, move a target character you control to this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-001",
@@ -3539,7 +3699,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-002",
@@ -3561,7 +3722,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "At the beginning of your turn you may search your deck for a card named Mercenary and set it in any area that you control a \"Hawk\" character in. Then shuffle your deck. Then you may open that card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-003",
@@ -3583,7 +3745,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "While you control no other characters in this area, this card gets +2/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-004",
@@ -3605,7 +3768,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(quick) Destroy this card: Target character in this area takes 2 damage. You can only activate this ability if you control a card named Griffith.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-005",
@@ -3627,7 +3791,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "While this character is unlocked it has +0/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-006",
@@ -3649,7 +3814,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "This character cannot participate in battle while there is an enemy character level 2 or above in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-007",
@@ -3671,7 +3837,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(quick) Tap: Target an enemy character in this area. It takes 1 damage for each other character you control in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-008",
@@ -3693,7 +3860,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When you open this card, draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-009",
@@ -3715,7 +3883,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target 1 ally vanguard character within 1 distance and it gains +3/+2 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-010",
@@ -3737,7 +3906,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, the area level is reduced by 1. Draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-011",
@@ -3759,7 +3929,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Whenever you capture an area, draw 2 additional cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-012",
@@ -3781,7 +3952,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, choose a unique character you control within 1 distance. Until end of turns it gains +1/+1 for every character you control in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-013",
@@ -3803,7 +3975,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "All Mercenaries you control gain +0/+1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-014",
@@ -3825,7 +3998,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened destroy 1 Eternal card within 1 distance.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-015",
@@ -3847,7 +4021,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, reveal all enemy set cards in all areas. Select 1 of them that isn't a character and destroy it. Then draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-016",
@@ -3869,7 +4044,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. All Mercenaries you control are Hawks in addition to their other types.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-017",
@@ -3891,7 +4067,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-018",
@@ -3913,7 +4090,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Alteration. (Quick) Tap: Until end of turn all green characters you control in this area get +0/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-019",
@@ -3935,7 +4113,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "All other characters you control in this area gain +1/+1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-020",
@@ -3957,7 +4136,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "Whenever you capture, or successfully defend this area, draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-021",
@@ -3979,7 +4159,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) 1: Choose one of the following effects: (1) Deal 1 damage to target character in this area. (2) Until end of turn, reduce the next damage this card would take by 1. This ability can only be activated once per turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-022",
@@ -4001,7 +4182,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "Tap: All other characters in this area take 3 damage. This card cannot be used in the Capital.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-023",
@@ -4023,7 +4205,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, put 2 \"Explosive\" counters on it. (Quick) Remove 1 Explosive Counter: Choose 1 character in this area, it takes 2 damage. This ability may only be used once per turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-024",
@@ -4045,7 +4228,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a character you control within 1 distance. The next damage that card would take this turn is reduced to 0. If damage is succesfully prevented this way, draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-025",
@@ -4067,7 +4251,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, choose 3 cards from your graveyard or 3 cards from your opponents graveyard and shuffle them back into their owners deck. Then that player draws 3 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-026",
@@ -4089,7 +4274,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You can only open this card if your opponent does not occupy this area. Choose a character your opponent controls that is involved in combat, and remove it from combat (leave it locked, but not participating in dealing or taking damage).",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-027",
@@ -4111,7 +4297,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. Tap: Draw 1 card and then discard 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-028",
@@ -4133,7 +4320,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You cannot open this card if your opponent controls a card (set or open) in this area. Draw 4 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-029",
@@ -4155,7 +4343,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Target a character you control and a character your opponent controls (must have valid targets for both), move them to the same area within 1 distance.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-030",
@@ -4177,7 +4366,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, deal 3 damage to target character in this area. All other characters in this area take 1 damage.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-031",
@@ -4199,7 +4389,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, reduce the next damage that each character you control would be dealt by 1, until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-032",
@@ -4221,7 +4412,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, reduce damage dealt to your characters in this area to 0 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-033",
@@ -4243,7 +4435,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-034",
@@ -4265,7 +4458,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Whenever this character moves, you may select 1 other character in the area it moved to and deal 1 damage to it.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-035",
@@ -4287,7 +4481,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "At the beginning of your turn, your opponent puts the top 2 cards of their deck in the graveyard.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-036",
@@ -4309,7 +4504,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-037",
@@ -4331,7 +4527,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Whenever an enemy character dies in this area, your opponent must discard 1 card from their hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-038",
@@ -4353,7 +4550,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened your opponent selects and destroys one of their set cards in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-039",
@@ -4375,7 +4573,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Alteration. Whenever this character moves, choose another character in this area and deal 3 damage to it.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-040",
@@ -4397,7 +4596,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Tap: Target a level 2 or lower character you control within 1 distance, move this character and that character to any single area within 2 distance.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-041",
@@ -4419,7 +4619,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Destroy 1 character you control: Until end of turn this card gains +2/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-042",
@@ -4441,7 +4642,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, all players discard cards from their hands until they have 2 or less cards in hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-043",
@@ -4463,7 +4665,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Tap: your opponent must discard a card or destroy a set card they control or destroy a character they control. They choose.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-044",
@@ -4485,7 +4688,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, lock a character in this area and then draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-045",
@@ -4507,7 +4711,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a player. That player must choose one of the following effects 3 times (distributed any way): (1) discard a card (2) destroy a set card they control (3) destroy an open character they control",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-046",
@@ -4529,7 +4734,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "While this card is open, when characters are opened, they become locked.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-047",
@@ -4551,7 +4757,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if a character you control was destroyed within 1 distance this turn. Deal  damage to a character your opponent controls in that area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-048",
@@ -4573,7 +4780,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. At the beginning of your turn if you occupy this area, your opponent puts 3 cards from their deck into the graveyard. Then you may select and destroy 1 of their set cards in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-049",
@@ -4595,7 +4803,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-050",
@@ -4617,7 +4826,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, look at the top 3 cards of your deck, then you may set each of those cards in any 1 area of your choice.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-051",
@@ -4639,7 +4849,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened it gains +2/+2 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-052",
@@ -4661,7 +4872,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Tap: Target character in this area takes 3 damage. This ability can only be used during combat.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-053",
@@ -4683,7 +4895,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "This character gains +3/+0 for every enemy character participating in battle in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-054",
@@ -4705,7 +4918,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-055",
@@ -4727,7 +4941,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Tap: Return this card to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-056",
@@ -4749,7 +4964,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "While this card is open the area level is 1 higher.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-057",
@@ -4771,7 +4987,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Tap: Set this card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-058",
@@ -4793,7 +5010,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, all areas become unoccupied. Draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-059",
@@ -4815,7 +5033,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, select up to 3 set cards within 1 distance and destroy them.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-060",
@@ -4837,7 +5056,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, both players discard their hands and draw 7 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-061",
@@ -4859,7 +5079,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You can only open this card if your opponent controls more characters than you in this area. All characters you control gain +3/+2 until the end of combat.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-062",
@@ -4881,7 +5102,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. Whenever a character you control is destroyed, you may look at the top card of your deck and you may set it in any area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-063",
@@ -4903,7 +5125,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened you gain control of a level 2 or lower character in this area. Unlock that character. If you are in battle, remove that character from battle.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK2-064",
@@ -4925,7 +5148,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, draw 1 card. The Area Level is increased by 1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-001",
@@ -4947,7 +5171,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-002",
@@ -4969,7 +5194,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Support [Green]. This card is treated as a mercenary card during deckbuilding.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": true
   },
   {
     "id": "BK3-003",
@@ -4991,7 +5217,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Support [Green]",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-004",
@@ -5013,7 +5240,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, all Hawk characters you control gain +2/+2 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-005",
@@ -5035,7 +5263,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) 1: This card gains +2/+2 until end of turn. You may only activate this ability if there is an opponents character of level 2 or above in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-006",
@@ -5057,7 +5286,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Qucik) 1, Tap: Search your deck for a level 2 of lower Hawk character and open it in any area that you control a Hawk character in. Shuffle your deck. You can only activate this ability if the area level is 3 or higher.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-007",
@@ -5079,7 +5309,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this character is opened, draw 2 cards. Then if you do not occupy this area, discard 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-008",
@@ -5101,7 +5332,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this character is opened your opponent discards 1 card. When this card is destroyed, you discard 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-009",
@@ -5123,7 +5355,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "Whenever another character you control is opened here, this card gains +1/+1 until end of turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-010",
@@ -5145,7 +5378,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "All other characters you control in this area gain +1 range",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-011",
@@ -5167,7 +5401,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You can only open this card if you captured this area this turn. Unlock a character you control in this area and draw 2 cards. That character cannot battle the rest of this turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-012",
@@ -5189,7 +5424,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You may only open this card if you captured or defended this area this turn. Reveal all enemy set cards within 1 distance and destroy 1 of them. Draw 1 card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-013",
@@ -5211,7 +5447,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "If you control both a Guts and Griffith card in play, they gain +3/+3 until end of turn. Draw 1 card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-014",
@@ -5233,7 +5470,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened look at all set cards on the field, then move each of your set cards to any areas (distributed any way) of your choice.  Draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-015",
@@ -5255,7 +5493,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, search your deck for up to 2 level 1 Hawk characters, reveal them, and then set them in this area. Shuffle your deck.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-016",
@@ -5277,7 +5516,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, search your deck for up to 3 Mercenary cards, reveal them, then set each on in an area in which you control a Hawks character. Shuffle your deck. If you control a Griffith character in this area this card is treated as a quick.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-017",
@@ -5299,7 +5539,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-018",
@@ -5321,7 +5562,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Alteration. When this character is opened, deal 3 damage to an opponents character in this area. Then deal 1 damage to all other characters here (including this one)",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-019",
@@ -5343,7 +5585,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "This character cannot be targetted by abilities. When this card is destroyed, draw 2 cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-020",
@@ -5365,7 +5608,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Tap: Unlock a character you control in this area that moved here this turn. If a character unlocked this way, draw 1 card. That character cannot move again this turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-021",
@@ -5387,7 +5631,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) 1: Deal 2 damage to a character participating in battle in this area. This ability can only be used once per turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-022",
@@ -5409,7 +5654,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this character is opened, draw 2 cards. (Quick) Tap: Deal 2 damage to all level 2 or lower characters in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-023",
@@ -5431,7 +5677,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "While you control a Guts character, this card gains +2/+0",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-024",
@@ -5453,7 +5700,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) 1: Until the end of turn, reduce damage dealt to target character in this area by 2.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-025",
@@ -5475,7 +5723,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, search for 1 \"Sword of Actuation\" card form your deck or graveyard and reveal it. Add that card to your hand. Shuffle your deck.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-026",
@@ -5497,7 +5746,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "(Quick) 1: Set this character.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-027",
@@ -5519,7 +5769,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy all characters your opponent controls in this area. For each character eliminated this way, eliminate 2 characters you control. Set cards from your hand equal to the amount cards you controlled that were destroyed this way.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-028",
@@ -5541,7 +5792,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target a level 3 or higher character in this area and set it.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-029",
@@ -5563,7 +5815,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, deal 3 damage to an opponents character in this area that was already dealt damage this turn (this card cannot be opened if a card was not dealt damage). If this card is discarded from your hand by an oppoenents card effect, deal 5 damage to target character",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-030",
@@ -5585,7 +5838,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "This card can only be opened if you control a Skull Knight character. Target all level 3 or lower enemy characters within 1 distance and set them. Draw 2  cards.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-031",
@@ -5607,7 +5861,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened draw 1 card. While this card is in place all characters you control that are level 2 or lower gain +2/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-032",
@@ -5629,7 +5884,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, shuffle your graveyard back into your deck, then draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-033",
@@ -5651,7 +5907,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-034",
@@ -5673,7 +5930,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this character attacks, it gains +1/+0 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-035",
@@ -5695,7 +5953,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card defends an area, it gains +0/+1 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-036",
@@ -5717,7 +5976,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this character is destroyed, your opponent must destroy 1 set card they control of their choice.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-037",
@@ -5739,7 +5999,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is destroyed, destroy a set card you control (mandatory)",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-038",
@@ -5761,7 +6022,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "B: Search your deck or graveyard for 1  \"City Demonization\" card and set it in this area, then open it. If you searched your deck, shuffle it. This ability can only be activated if you occupy this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-039",
@@ -5783,7 +6045,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Destroy 1 set card you control here: Choose 1 of the following effects, (1) this character gain +1 range until end of turn or (2) this character gains +1/+0 until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-040",
@@ -5805,7 +6068,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick): Choose up to 2 set cards you control within 1 distance and return them to you hand. This ability may be only used once each turn.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-041",
@@ -5827,7 +6091,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, remove all Ogre cards from your graveyard and set them here. All Ogre cards set this way are destroyed at the end of the turn. Draw 1 card",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-042",
@@ -5849,7 +6114,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, destroy 1 of your character or set cards. If you do, your opponent must eliminate 2 of their characters or set cards in this area. This card gains (Quick) if this area is a Demon City.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-043",
@@ -5871,7 +6137,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "While you occupy this area, all characters you control gain +2/+2. This area becomes a Demon City in addition to its other types.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-044",
@@ -5893,7 +6160,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, search your opponents library for 2 cards and send them to their graveyard. Then draw 2 cards. This card gains (Quick) if the area is a Demon City.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-045",
@@ -5915,7 +6183,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "(Quick) B: Search your deck for a \"Daka\" card, reveal it, and set it in this area. Then shuffle. If you occupy this area and this area is a demon city, you may search either your graveyard or deck.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-046",
@@ -5937,7 +6206,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, unlcok all characters and move them to this area. This card gains (Quick) if you occupy this area and it is a demon city.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-047",
@@ -5959,7 +6229,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, target an area within 1 distance. During this turn, all combat damage from level 2 or lower characters in that area is reduced to 0. Draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-048",
@@ -5981,7 +6252,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, deal 4 damage divided amongst any number of characters in this area. If you occupy this area and it is a demon city you may instead target characters within 1 distance.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-049",
@@ -6003,7 +6275,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-050",
@@ -6025,7 +6298,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Support (Black). This card is treated as a mercenary during deckbuilding",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": true
   },
   {
     "id": "BK3-051",
@@ -6047,7 +6321,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Other characters you control in this area have -1/-1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-052",
@@ -6069,7 +6344,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "Whenever this character locks, you may destroy 1 of your set cards. If you don't, destroy this card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-053",
@@ -6091,7 +6367,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this character is opened, return all set cards you control to your hand.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-054",
@@ -6113,7 +6390,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Alteration. When this character is opened, you may lock up to 2 target characters in this area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-055",
@@ -6135,7 +6413,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Alteration. When is character is opened (not as a quick) destroy one of your set cards in this area. When this character is opened using Alteration, it gains +2/+2 permanently",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-056",
@@ -6157,7 +6436,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) Alteration. All cavalry characters you control gain +2/+2",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-057",
@@ -6179,7 +6459,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "1, Tap: Deal 2 Damage to a character within 1 distance.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-058",
@@ -6201,7 +6482,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "(Quick) 1: Set this character.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-059",
@@ -6223,7 +6505,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "Whenever this character locks, you may destroy one of your set cards. If you don't, destroy this card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-060",
@@ -6245,7 +6528,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this character is opened, look at the top 2 cards of your deck, and set each in an area of your choice. All other characters you control that are in the Royal Capital (if revealed) gain +1/+1",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-061",
@@ -6267,7 +6551,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You may only open this card if your opponent occupies the area. This area becomes unoccupied. Draw 1 card.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-062",
@@ -6289,7 +6574,8 @@
     "unique": true,
     "subtypes": [],
     "effect": "When this card is opened, draw 2 cards. Whenever your opponent sets a card from their hand into any area, set the top card of your deck in that area.",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-063",
@@ -6311,7 +6597,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "You may only open this card if your opponent occupies this area. Look at 3 cards from the top of your deck and set each of them in an area of your choice (doesn't have to be the same area)",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK3-064",
@@ -6333,7 +6620,8 @@
     "unique": false,
     "subtypes": [],
     "effect": "When this card is opened, Negate the effects of all level 1 normals until end of turn",
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-001",
@@ -6355,7 +6643,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-002",
@@ -6377,7 +6666,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-003",
@@ -6399,7 +6689,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-004",
@@ -6421,7 +6712,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-005",
@@ -6443,7 +6735,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-006",
@@ -6465,7 +6758,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-007",
@@ -6487,7 +6781,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-008",
@@ -6509,7 +6804,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-009",
@@ -6531,7 +6827,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-010",
@@ -6553,7 +6850,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-011",
@@ -6575,7 +6873,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-012",
@@ -6597,7 +6896,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-013",
@@ -6619,7 +6919,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-014",
@@ -6641,7 +6942,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-015",
@@ -6663,7 +6965,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-016",
@@ -6685,7 +6988,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-017",
@@ -6707,7 +7011,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-018",
@@ -6729,7 +7034,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-019",
@@ -6751,7 +7057,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-020",
@@ -6773,7 +7080,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-021",
@@ -6795,7 +7103,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-022",
@@ -6817,7 +7126,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-023",
@@ -6839,7 +7149,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-024",
@@ -6861,7 +7172,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-025",
@@ -6883,7 +7195,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-026",
@@ -6905,7 +7218,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-027",
@@ -6927,7 +7241,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-028",
@@ -6949,7 +7264,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-029",
@@ -6971,7 +7287,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-030",
@@ -6993,7 +7310,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-031",
@@ -7015,7 +7333,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-032",
@@ -7037,7 +7356,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-033",
@@ -7059,7 +7379,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-034",
@@ -7081,7 +7402,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-035",
@@ -7103,7 +7425,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-036",
@@ -7125,7 +7448,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-037",
@@ -7147,7 +7471,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-038",
@@ -7169,7 +7494,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-039",
@@ -7191,7 +7517,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-040",
@@ -7213,7 +7540,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-041",
@@ -7235,7 +7563,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-042",
@@ -7257,7 +7586,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-043",
@@ -7279,7 +7609,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-044",
@@ -7301,7 +7632,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-045",
@@ -7323,7 +7655,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-046",
@@ -7345,7 +7678,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-047",
@@ -7367,7 +7701,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-048",
@@ -7389,7 +7724,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-049",
@@ -7411,7 +7747,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-050",
@@ -7433,7 +7770,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-051",
@@ -7455,7 +7793,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-052",
@@ -7477,7 +7816,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-053",
@@ -7499,7 +7839,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-054",
@@ -7521,7 +7862,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-055",
@@ -7543,7 +7885,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-056",
@@ -7565,7 +7908,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-057",
@@ -7587,7 +7931,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-058",
@@ -7609,7 +7954,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-059",
@@ -7631,7 +7977,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-060",
@@ -7653,7 +8000,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-061",
@@ -7675,7 +8023,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-062",
@@ -7697,7 +8046,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-063",
@@ -7719,7 +8069,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-064",
@@ -7741,7 +8092,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-065",
@@ -7763,7 +8115,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-066",
@@ -7785,7 +8138,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-067",
@@ -7807,7 +8161,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-068",
@@ -7829,7 +8184,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-069",
@@ -7851,7 +8207,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-070",
@@ -7873,7 +8230,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-071",
@@ -7895,7 +8253,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-072",
@@ -7917,7 +8276,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-073",
@@ -7939,7 +8299,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-074",
@@ -7961,7 +8322,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-075",
@@ -7983,7 +8345,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-076",
@@ -8005,7 +8368,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-077",
@@ -8027,7 +8391,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-078",
@@ -8049,7 +8414,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-079",
@@ -8071,7 +8437,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK4-080",
@@ -8093,7 +8460,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-001",
@@ -8115,7 +8483,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-002",
@@ -8137,7 +8506,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-003",
@@ -8159,7 +8529,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-004",
@@ -8181,7 +8552,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-005",
@@ -8203,7 +8575,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-006",
@@ -8225,7 +8598,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-007",
@@ -8247,7 +8621,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-008",
@@ -8269,7 +8644,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-009",
@@ -8291,7 +8667,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-010",
@@ -8313,7 +8690,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-011",
@@ -8335,7 +8713,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-012",
@@ -8357,7 +8736,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-013",
@@ -8379,7 +8759,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-014",
@@ -8401,7 +8782,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-015",
@@ -8423,7 +8805,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-016",
@@ -8445,7 +8828,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-017",
@@ -8467,7 +8851,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-018",
@@ -8489,7 +8874,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-019",
@@ -8511,7 +8897,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-020",
@@ -8533,7 +8920,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-021",
@@ -8555,7 +8943,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-022",
@@ -8577,7 +8966,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-023",
@@ -8599,7 +8989,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-024",
@@ -8621,7 +9012,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-025",
@@ -8643,7 +9035,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-026",
@@ -8665,7 +9058,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-027",
@@ -8687,7 +9081,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-028",
@@ -8709,7 +9104,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-029",
@@ -8731,7 +9127,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-030",
@@ -8753,7 +9150,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-031",
@@ -8775,7 +9173,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-032",
@@ -8797,7 +9196,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-033",
@@ -8819,7 +9219,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-034",
@@ -8841,7 +9242,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-035",
@@ -8863,7 +9265,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-036",
@@ -8885,7 +9288,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-037",
@@ -8907,7 +9311,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-038",
@@ -8929,7 +9334,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-039",
@@ -8951,7 +9357,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-040",
@@ -8973,7 +9380,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-041",
@@ -8995,7 +9403,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-042",
@@ -9017,7 +9426,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-043",
@@ -9039,7 +9449,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-044",
@@ -9061,7 +9472,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-045",
@@ -9083,7 +9495,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-046",
@@ -9105,7 +9518,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-047",
@@ -9127,7 +9541,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-048",
@@ -9149,7 +9564,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-049",
@@ -9171,7 +9587,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-050",
@@ -9193,7 +9610,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-051",
@@ -9215,7 +9633,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-052",
@@ -9237,7 +9656,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-053",
@@ -9259,7 +9679,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-054",
@@ -9281,7 +9702,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-055",
@@ -9303,7 +9725,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-056",
@@ -9325,7 +9748,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-057",
@@ -9347,7 +9771,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-058",
@@ -9369,7 +9794,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-059",
@@ -9391,7 +9817,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-060",
@@ -9413,7 +9840,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-061",
@@ -9435,7 +9863,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": true
+    "mercenary": true,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-062",
@@ -9457,7 +9886,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-063",
@@ -9479,7 +9909,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-064",
@@ -9501,7 +9932,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-065",
@@ -9523,7 +9955,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-066",
@@ -9545,7 +9978,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-067",
@@ -9567,7 +10001,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-068",
@@ -9589,7 +10024,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-069",
@@ -9611,7 +10047,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-070",
@@ -9633,7 +10070,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-071",
@@ -9655,7 +10093,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-072",
@@ -9677,7 +10116,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-073",
@@ -9699,7 +10139,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-074",
@@ -9721,7 +10162,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-075",
@@ -9743,7 +10185,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-076",
@@ -9765,7 +10208,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-077",
@@ -9787,7 +10231,8 @@
     "unique": true,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-078",
@@ -9809,7 +10254,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-079",
@@ -9831,7 +10277,8 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   },
   {
     "id": "BK5-080",
@@ -9853,6 +10300,7 @@
     "unique": false,
     "subtypes": [],
     "effect": null,
-    "mercenary": false
+    "mercenary": false,
+    "mercenaryForDeckbuilding": false
   }
 ]

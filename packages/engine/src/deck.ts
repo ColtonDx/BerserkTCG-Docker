@@ -46,7 +46,18 @@ export interface DeckSummary {
 
 const lookup = (cardId: string): CatalogueCard | undefined => CATALOGUE_BY_ID.get(cardId);
 
-export const isMercenary = (cardId: string): boolean => lookup(cardId)?.mercenary ?? false;
+/**
+ * Does this card count as a Mercenary for deckbuilding? `Deckbuilding.md`.
+ *
+ * The card named "Mercenary", or one whose printed line says it is treated
+ * as one (BK3-002, BK3-050). Both of that document's rules — any number of
+ * copies, and at least ten in a deck — read this rather than the printed
+ * identity, because that is what "during deckbuilding" means.
+ */
+export const isMercenary = (cardId: string): boolean => {
+  const card = lookup(cardId);
+  return (card?.mercenary ?? false) || (card?.mercenaryForDeckbuilding ?? false);
+};
 
 /** Total cards in a deck, counting copies. */
 export const deckSize = (entries: readonly DeckEntry[]): number =>
@@ -88,7 +99,7 @@ export function validateDeck(entries: readonly DeckEntry[]): DeckError[] {
       });
       continue;
     }
-    if (!card.mercenary && entry.quantity > MAX_COPIES) {
+    if (!isMercenary(entry.cardId) && entry.quantity > MAX_COPIES) {
       errors.push({
         code: 'TOO_MANY_COPIES',
         message: `${entry.cardId}: ${entry.quantity} copies, limit is ${MAX_COPIES}.`,
