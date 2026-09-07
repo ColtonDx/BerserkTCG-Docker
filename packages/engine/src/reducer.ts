@@ -1497,6 +1497,7 @@ function beginTurn(
     declaredCities: [],
     capturedCities: [],
     arrivals: [],
+    deaths: [],
     drawSkipped: false,
     drawAtEnd: 0,
   };
@@ -2204,6 +2205,33 @@ function useAbility(
   });
   startRound(ctx, draft, events, inWindow ? resumeOf(draft) : null);
   return ok(true);
+}
+
+/**
+ * Asks a player to set cards out of hand into areas they choose (BK3-027).
+ * Rules.md §7. Returns false when there is nothing to set.
+ */
+function askToSetFromHand(
+  draft: Draft<GameState>,
+  source: CardInstance,
+  player: PlayerId,
+  count: number,
+  text: string,
+  events: GameEvent[],
+): boolean {
+  const held = handSize(draft, player);
+  if (held === 0 || count === 0) return false;
+  askFor(draft, events, {
+    waitingOn: player,
+    source: source.instanceId,
+    text,
+    // Never ask for more than the hand holds — a player owing four sets from
+    // a hand of two would be stuck on a question with no answer.
+    count: Math.min(count, held),
+    upTo: false,
+    kind: { zone: 'hand', action: 'setAnywhere' },
+  });
+  return true;
 }
 
 /**
@@ -3069,6 +3097,73 @@ function runEffect(
       return pushed();
     }
 
+    case 'darkMagic': {
+      // Every enemy character here goes first (§3), and the toll is read off
+      // what that actually destroyed rather than off what stood there.
+      const enemies = selected(
+        ctx,
+        draft,
+        source,
+        { scope: 'any', side: 'theirs', where: 'thisArea' },
+        chosen,
+        chosen2,
+      );
+      const felled = enemies.length;
+      for (const enemy of enemies) destroy(ctx, draft, enemy, events);
+      if (felled === 0) return pushed();
+      return (
+        runEffect(
+          ctx,
+          draft,
+          source,
+          { do: 'darkMagicToll', count: felled * effect.perEnemy },
+          events,
+          chosen,
+          chosen2,
+          text,
+          area,
+        ) || pushed()
+      );
+    }
+
+    case 'darkMagicToll': {
+      const mine = selected(
+        ctx,
+        draft,
+        source,
+        { scope: 'any', side: 'yours', where: 'anywhere' },
+        chosen,
+        chosen2,
+      );
+      // Fewer than the toll means they all go, which the printed line allows
+      // — "eliminate 2 for each" is a debt, not a choice to decline.
+      const owed = Math.min(effect.count, mine.length);
+      if (owed === 0) return pushed();
+      if (owed === mine.length) {
+        // No choice left to make: everybody goes, and the setting follows.
+        for (const card of mine) destroy(ctx, draft, card, events);
+        return askToSetFromHand(draft, source, controller, owed, text, events) || pushed();
+      }
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: owed,
+        upTo: false,
+        kind: {
+          zone: 'field',
+          action: 'destroy',
+          cards: mine.map((card) => card.instanceId),
+        },
+        // Set as many as were lost, once the last one is named.
+        then: { effects: [{ do: 'setFromHandCount', count: owed }] },
+      });
+      return pushed();
+    }
+
+    case 'setFromHandCount':
+      return askToSetFromHand(draft, source, controller, effect.count, text, events);
+
     case 'divideDamage': {
       const victims = selected(ctx, draft, source, effect.who, chosen, chosen2);
       if (victims.length === 0) return false;
@@ -3383,6 +3478,11 @@ function destroy(
   // read off cards that are on it.
   const fellIn = card.cityIndex;
   const fallen = card.controller;
+  // Recorded for cards that ask whether somebody died nearby (BK2-047):
+  // the body is in the Trash by the time anything asks.
+  if (fellIn !== undefined) {
+    draft.turn.deaths = toDraft([...draft.turn.deaths, { player: fallen, city: fellIn }]);
+  }
   moveToZone(draft, card.instanceId, { player: card.owner, zone: 'trash' });
   events.push({ type: 'CHARACTER_DESTROYED', card: card.instanceId });
   if (fellIn !== undefined) fireEnemyDeath(ctx, draft, fallen, fellIn, events);
@@ -3610,6 +3710,13 @@ function chooseCard(
   } else if (kind.zone === 'hand' && kind.action === 'discard') {
     moveToZone(draft, cardId, { player: actor, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
+  } else if (kind.zone === 'hand' && kind.action === 'setAnywhere') {
+    // Out of hand, face down, into the area named on the answer (BK3-027).
+    if (chosenCity === undefined || !draft.cities[chosenCity]) {
+      return violation('ILLEGAL_TARGET', 'That card needs an area to go to.', '§7');
+    }
+    moveToCity(draft, cardId, chosenCity, { controller: actor, faceUp: false });
+    events.push({ type: 'CARD_SET', player: actor, card: cardId, city: chosenCity });
   } else if (kind.zone === 'hand') {
     // Set and open at once, paying nothing (BK1-061). The level ceiling is
     // re-checked here rather than trusted from the client.

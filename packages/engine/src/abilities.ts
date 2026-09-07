@@ -314,7 +314,12 @@ export type Condition =
   /** A card of this name stands in its *own area* (BK3-016). Rules.md §8. */
   | { readonly when: 'youControlNameHere'; readonly name: string }
   /** City Level is at least this (BK3-006). Rules.md §5. */
-  | { readonly when: 'cityLevelAtLeast'; readonly level: number };
+  | { readonly when: 'cityLevelAtLeast'; readonly level: number }
+  /**
+   * A character its controller owns was destroyed this turn, within
+   * `maxDistance` of its own area (BK2-047). Rules.md §3, §15.
+   */
+  | { readonly when: 'allyDiedNear'; readonly maxDistance: number };
 
 /**
  * What the ability does when it applies.
@@ -794,6 +799,30 @@ export type Effect =
    * reaches whoever the selector names rather than only combat participants.
    */
   | { readonly do: 'divideDamage'; readonly who: Selector; readonly amount: number }
+  /**
+   * BK3-027's whole printed line, which no combination of the other effects
+   * can express. Rules.md §13.
+   *
+   * Every enemy character in this area is destroyed; then *twice that many*
+   * of your own, wherever they stand — you choose which, and if you have
+   * fewer than that they all go. Then you set as many cards out of your hand
+   * as you lost, into areas you choose. Each count depends on what the step
+   * before it actually did, which is why this is one effect rather than a
+   * chain: a `then` would be counted against a board that had already moved.
+   */
+  | { readonly do: 'darkMagic'; readonly perEnemy: number }
+  /**
+   * The second half of BK3-027, once the toll is known: give up `count` of
+   * your own characters, then set that many cards out of hand. Not printed
+   * on any card — it is how the first half hands the count on, since each
+   * step is counted against what the one before it actually did.
+   */
+  | { readonly do: 'darkMagicToll'; readonly count: number }
+  /**
+   * Set `count` cards out of hand into areas you choose. The tail of
+   * BK3-027, carried on the pending choice its toll opened.
+   */
+  | { readonly do: 'setFromHandCount'; readonly count: number }
   /**
    * "Move each of your set cards to any areas (distributed any way)"
    * (BK3-014). Rules.md §13 — named one at a time, each with its own
@@ -4626,6 +4655,32 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       supports: 'black',
       effect: { do: 'noEffect' },
       text: 'Support (Black). This card is treated as a mercenary during deckbuilding',
+    },
+  ],
+
+  'BK2-047': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'allyDiedNear', maxDistance: 1 },
+      // "In that area" — the one where your character fell, which §15 counts
+      // from this card's own; Distance 1 reaches both.
+      target: { side: 'theirs', maxDistance: 1 },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 5 },
+      text: 'This card can only be opened if a character you control was destroyed within 1 distance this turn. Deal 5 damage to a character your opponent controls in that area.',
+    },
+  ],
+
+  'BK3-027': [
+    {
+      trigger: 'open',
+      // A board wipe that charges its caster double: every enemy here, then
+      // twice that many of your own wherever they stand, then that many
+      // cards out of your hand onto the board. Each count is read off what
+      // the step before it actually did, so it is one effect rather than a
+      // chain of them.
+      effect: { do: 'darkMagic', perEnemy: 2 },
+      text: 'When this card is opened, destroy all characters your opponent controls in this area. For each character eliminated this way, eliminate 2 characters you control. Set cards from your hand equal to the amount cards you controlled that were destroyed this way.',
     },
   ],
 

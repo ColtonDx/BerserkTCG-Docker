@@ -48,7 +48,8 @@ export type HandStep =
         | 'pay'
         | 'lock'
         | 'hit'
-        | 'scatter';
+        | 'scatter'
+        | 'setAnywhere';
       /** The player may stop short of the count. Rules.md §13 — "up to". */
       readonly upTo: boolean;
     }

@@ -4395,3 +4395,83 @@ describe('Support pays for either colour (Rules.md §7)', () => {
     expect(isMercenary('BK1-001')).toBe(true);
   });
 });
+
+describe('BK3-027 charges its caster double (Rules.md §13)', () => {
+  it('wipes the enemy here, takes twice as many of yours, then sets that many', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // One enemy here, so the toll is two of mine — and I have three, so the
+    // third survives and I choose which two go.
+    const enemy = place(state, other, GREEN, 2);
+    state = enemy.state;
+    const mine: CardInstanceId[] = [];
+    for (let n = 0; n < 3; n++) {
+      const own = place(state, player, GREEN, n);
+      state = own.state;
+      mine.push(own.card);
+    }
+
+    const magic = place(state, player, 'BK3-027', 2, { faceUp: false });
+    state = openable(magic.state, player, magic.card);
+    state = apply(state, player, openOf(state, player, magic.card) as GameAction);
+
+    // The enemy is gone at once, and the toll is put as a choice of two.
+    expect(state.cards[enemy.card]?.zone).toBe('trash');
+    expect(state.pending?.count).toBe(2);
+    expect(state.pending?.waitingOn).toBe(player);
+
+    const handBefore = zoneSize(state, player, 'hand');
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: mine[0] as CardInstanceId });
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: mine[1] as CardInstanceId });
+    expect(state.cards[mine[0] as CardInstanceId]?.zone).toBe('trash');
+    expect(state.cards[mine[1] as CardInstanceId]?.zone).toBe('trash');
+    // The third was never in danger — the toll was two, not everybody.
+    expect(state.cards[mine[2] as CardInstanceId]?.zone).toBe('city');
+
+    // Then two cards out of hand, each into an area of my choosing.
+    expect(state.pending?.kind.zone).toBe('hand');
+    expect(state.pending?.count).toBe(2);
+    const offers = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'CHOOSE_CARD') as Extract<
+      GameAction,
+      { type: 'CHOOSE_CARD' }
+    >[];
+    expect(offers.every((offer) => offer.city !== undefined)).toBe(true);
+
+    const first = offers.find((offer) => offer.city === 4) as Extract<
+      GameAction,
+      { type: 'CHOOSE_CARD' }
+    >;
+    state = apply(state, player, first);
+    expect(state.cards[first.card]?.cityIndex).toBe(4);
+    expect(state.cards[first.card]?.faceUp).toBe(false);
+    expect(zoneSize(state, player, 'hand')).toBe(handBefore - 1);
+  });
+
+  it('takes everything you have when the toll runs past your board', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // Two enemies here means a toll of four, and I have only one character:
+    // it goes, and nothing is asked because there is no choice to make.
+    for (let n = 0; n < 2; n++) {
+      const theirs = place(state, other, GREEN, 2);
+      state = theirs.state;
+    }
+    const lone = place(state, player, GREEN, 0);
+    state = lone.state;
+
+    const magic = place(state, player, 'BK3-027', 2, { faceUp: false });
+    state = openable(magic.state, player, magic.card);
+    state = apply(state, player, openOf(state, player, magic.card) as GameAction);
+
+    expect(state.cards[lone.card]?.zone).toBe('trash');
+    // One was lost, so one card is set — not four.
+    expect(state.pending?.kind.zone).toBe('hand');
+    expect(state.pending?.count).toBe(1);
+  });
+});

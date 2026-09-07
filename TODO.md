@@ -86,7 +86,7 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    abilities can finally ask for an area — BK1-131 is the first that does, and
    `useAbility` validates it rather than refusing.
 
-   **BK1 is complete (140), BK2 is 57 of 58, BK3 is 55 of 60.** The rest of
+   **BK1 and BK2 are complete (140 and 58), BK3 is 59 of 60.** The rest of
    the set is transcription — the cardlist has no effect text for BK4
    onwards, and a card with no entry stays inert rather than approximated.
 
@@ -98,9 +98,6 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    flag (`mercenaryForDeckbuilding`): it governs `Deckbuilding.md`'s copy
    limit and ten-card minimum without disturbing the printed identity,
    which is still the first card of each colour block named "Mercenary".
-
-   **BK2-047's damage is missing from the source** — "Deal damage to a
-   character your opponent controls" has no number in the cardlist.
 
    RULES: three lines are built to their narrower reading, because a
    `Selector` cannot be conditional and the wider one would need a second

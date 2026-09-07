@@ -239,6 +239,12 @@ export type PendingChoiceKind =
       readonly maxLevel: number | null;
     }
   /**
+   * Set cards out of your hand, face down, into areas you choose (BK3-027).
+   * Rules.md §7 — the city rides on each answer, as it does for a search
+   * that sets anywhere.
+   */
+  | { readonly zone: 'hand'; readonly action: 'setAnywhere' }
+  /**
    * Search your deck for cards and do something with them, then reshuffle.
    * Rules.md §13.
    *
@@ -379,6 +385,14 @@ export interface TurnState {
    * an effect (§13), for cards that ask whether an opponent moved here.
    */
   readonly arrivals: readonly { readonly player: PlayerId; readonly city: number }[];
+  /**
+   * Every character destroyed this turn, and where it fell, for cards that
+   * ask whether somebody died nearby (BK2-047). Rules.md §3.
+   *
+   * Kept alongside `arrivals` and cleared with the turn: the bodies are in
+   * the Trash by the time anything asks, so the board cannot be read for it.
+   */
+  readonly deaths: readonly { readonly player: PlayerId; readonly city: number }[];
   /** The Draw phase was given up this turn (BK1-066). Rules.md §13. */
   readonly drawSkipped: boolean;
   /** Cards owed to the turn player at the end of the turn instead. */

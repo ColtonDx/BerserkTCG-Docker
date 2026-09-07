@@ -162,6 +162,7 @@ export function createMatch(config: MatchConfig): GameState {
       declaredCities: [],
       capturedCities: [],
       arrivals: [],
+      deaths: [],
       drawSkipped: false,
       drawAtEnd: 0,
     },

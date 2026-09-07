@@ -183,6 +183,16 @@ function choosable(
   // offered — the client cannot know which cities count (BK1-155).
   // A card *and* a destination: every legal pair is offered, since the
   // client cannot know which cities count (BK1-155, BK3-014).
+  // Out of hand into a chosen area (BK3-027): every legal pair is offered,
+  // since the client cannot know which cities count.
+  if (kind.zone === 'hand' && kind.action === 'setAnywhere') {
+    for (const card of cardsInZone(state, player, 'hand')) {
+      for (const city of state.cities) {
+        actions.push({ type: 'CHOOSE_CARD', card: card.instanceId, city: city.index });
+      }
+    }
+    return actions;
+  }
   if (kind.zone === 'field' && kind.action === 'scatter') {
     for (const card of cards) {
       for (const city of state.cities) {

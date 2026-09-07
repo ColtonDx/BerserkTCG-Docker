@@ -1182,6 +1182,11 @@ function effectRelevant(
     case 'divideDamage':
     case 'pickAndScatter':
       return reaches(effect.who);
+    case 'darkMagic':
+    case 'darkMagicToll':
+    case 'setFromHandCount':
+      // A board wipe and the toll it exacts — worth doing wherever it lands.
+      return true;
     case 'ifYouControl':
       return effect.effects.some((inner) =>
         effectRelevant(ctx, state, source, ability, inner, inBattle),
@@ -1663,6 +1668,16 @@ export function conditionHolds(
           card.zone === 'city' &&
           card.cityIndex === source.cityIndex &&
           card.controller !== source.controller,
+      );
+    case 'allyDiedNear':
+      return (
+        source.cityIndex !== undefined &&
+        state.turn.deaths.some(
+          (death) =>
+            death.player === source.controller &&
+            source.cityIndex !== undefined &&
+            cityDistance(source.cityIndex, death.city) <= condition.maxDistance,
+        )
       );
     case 'cityLevelAtLeast':
       return cityLevel(state) >= condition.level;
