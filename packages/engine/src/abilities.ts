@@ -157,6 +157,12 @@ export interface TargetSpec {
   /** Only characters at or above this printed Level (BK3-028). Rules.md §7. */
   readonly minLevel?: number;
   /**
+   * Only characters carrying damage (BK3-029). Rules.md §3 — damage is
+   * cleared in the End phase, so "already dealt damage this turn" is
+   * exactly what a mark on the card means.
+   */
+  readonly damaged?: boolean;
+  /**
    * Point at a face-up Effect card rather than a character (BK2-014, "1
    * Eternal card within 1 distance"). Rules.md §3. Mirrors
    * {@link Selector.effectCards}.
@@ -319,7 +325,9 @@ export type Condition =
    * A character its controller owns was destroyed this turn, within
    * `maxDistance` of its own area (BK2-047). Rules.md §3, §15.
    */
-  | { readonly when: 'allyDiedNear'; readonly maxDistance: number };
+  | { readonly when: 'allyDiedNear'; readonly maxDistance: number }
+  /** An enemy character in its area is carrying damage (BK3-029). §3. */
+  | { readonly when: 'enemyDamagedHere' };
 
 /**
  * What the ability does when it applies.
@@ -1089,6 +1097,17 @@ export type Trigger =
    * Rules.md §7 — the area they set into travels as the chosen area.
    */
   | 'enemySet'
+  /**
+   * This card was discarded out of its owner's hand by somebody else's card
+   * effect (BK3-029). Rules.md §13.
+   *
+   * The only trigger that fires from the *hand* — every other one reads a
+   * card standing on the field. It fires as the card leaves, so its own
+   * abilities are still readable, and only for a discard the owner did not
+   * choose: paying a cost or discarding down to the hand limit is not
+   * somebody else's effect doing it.
+   */
+  | 'discardedByEnemy'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -4681,6 +4700,28 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       // chain of them.
       effect: { do: 'darkMagic', perEnemy: 2 },
       text: 'When this card is opened, destroy all characters your opponent controls in this area. For each character eliminated this way, eliminate 2 characters you control. Set cards from your hand equal to the amount cards you controlled that were destroyed this way.',
+    },
+  ],
+
+  'BK3-029': [
+    {
+      trigger: 'open',
+      // "Cannot be opened if a card was not dealt damage" — the gate and the
+      // target are the same question, so `gate` makes a shut one a non-offer
+      // rather than a card thrown away for nothing (§13).
+      gate: true,
+      condition: { when: 'enemyDamagedHere' },
+      target: { side: 'theirs', where: 'thisArea', damaged: true },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      text: 'When this card is opened, deal 3 damage to an opponents character in this area that was already dealt damage this turn.',
+    },
+    {
+      // The only trigger that fires from the hand: somebody else's effect
+      // has just discarded this card, and it hits back on the way out.
+      trigger: 'discardedByEnemy',
+      target: { where: 'anywhere' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 5 },
+      text: 'If this card is discarded from your hand by an opponents card effect, deal 5 damage to target character',
     },
   ],
 

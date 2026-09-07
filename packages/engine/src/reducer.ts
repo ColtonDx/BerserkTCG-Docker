@@ -2354,7 +2354,14 @@ function fireAbilities(
   for (const ability of abilitiesOf(ctx, source)) {
     if (ability.trigger !== trigger) continue;
     const index = ability.target !== undefined || ability.area !== undefined ? asked++ : -1;
-    const chosen = index >= 0 ? choices.cards[index] : undefined;
+    let chosen = index >= 0 ? choices.cards[index] : undefined;
+    // A trigger nobody was asked about still has to point somewhere: the
+    // player is not being offered a choice here, so the engine takes the
+    // first legal one (BK3-029 answers from the hand, where there is no
+    // action to carry a target on).
+    if (ability.target && chosen === undefined) {
+      chosen = legalTargets(ctx, draft, source, ability.target, draft.battle)[0]?.instanceId;
+    }
     const area = index >= 0 ? choices.areas[index] : undefined;
     const second = index >= 0 ? choices.seconds[index] : undefined;
     if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) continue;
@@ -2522,7 +2529,7 @@ function runEffect(
       // Your opponent's cards go at random; your own are your choice. See the
       // note on the effect in `abilities.ts`, and `forcedDiscard` below.
       if (effect.player === 'opponent') {
-        forcedDiscard(draft, player, effect.count, events);
+        forcedDiscard(ctx, draft, player, effect.count, events);
         return pushed();
       }
       askFor(draft, events, {
@@ -2893,7 +2900,7 @@ function runEffect(
         if (over <= 0) continue;
         // At random, like every other discard the holder does not choose:
         // "discard until" names a number, not the cards.
-        forcedDiscard(draft, seat, over, events);
+        forcedDiscard(ctx, draft, seat, over, events);
         took += over;
       }
       return took > 0;
@@ -3536,6 +3543,7 @@ function scaleOf(
  * (§10 ⑤), and to an effect through `CHOOSE_CARD` (§13).
  */
 function forcedDiscard(
+  ctx: EngineContext,
   draft: Draft<GameState>,
   player: PlayerId,
   count: number,
@@ -3548,6 +3556,12 @@ function forcedDiscard(
     draft.rng = toDraft(rng);
     const cardId = hand[index];
     if (cardId === undefined) return;
+    // Fired before the card leaves, so its own abilities are still readable
+    // — the only trigger that answers from the hand (BK3-029).
+    const going = draft.cards[cardId];
+    if (going) {
+      fireAbilities(ctx, draft, going as CardInstance, 'discardedByEnemy', events);
+    }
     moveToZone(draft, cardId, { player, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player, card: cardId });
   }

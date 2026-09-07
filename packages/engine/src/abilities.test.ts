@@ -4475,3 +4475,97 @@ describe('BK3-027 charges its caster double (Rules.md §13)', () => {
     expect(state.pending?.count).toBe(1);
   });
 });
+
+describe('BK3-029 hits back from the hand (Rules.md §13)', () => {
+  it('is not openable until an enemy here is carrying damage', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const enemy = place(state, other, 'BK1-084', 2);
+    state = enemy.state;
+    const blow = place(state, player, 'BK3-029', 2, { faceUp: false });
+    state = openable(blow.state, player, blow.card);
+
+    // Nothing has been hurt yet, so it is never offered.
+    expect(openOf(state, player, blow.card)).toBeUndefined();
+
+    // Mark the enemy — damage clears in the End phase, so a mark on the card
+    // is exactly "already dealt damage this turn" (§3).
+    const hurt = {
+      ...state,
+      cards: { ...state.cards, [enemy.card]: { ...cardOf(state, enemy.card), damage: 1 } },
+    };
+    const open = openOf(hurt, player, blow.card);
+    expect(open, 'a damaged enemy should open it').toBeDefined();
+    expect(open?.targets?.[0]).toBe(enemy.card);
+
+    let after = apply(hurt, player, open as GameAction);
+    // §14 — an opened card's effect goes on the stack and resolves once both
+    // players have passed on it, so drain the round before reading the board.
+    for (let n = 0; n < 8 && after.stack.length > 0; n++) {
+      after = apply(after, after.turn.priorityPlayer, { type: 'PASS_PRIORITY' });
+    }
+    // Three more on top of the one it already carried — a 2/4 Forest Ghost
+    // dies to exactly that, which is the visible proof the blow landed.
+    expect(after.cards[enemy.card]?.zone).toBe('trash');
+  });
+
+  it('fires from the hand when an opponent effect discards it', () => {
+    // BK1-017 Corkus is white, and its on-open line is what makes the
+    // opponent discard at random (§13) — so a white deck pays for it.
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // A lone target for the counterblow, and a hand of exactly one card so
+    // the random discard can only take the Return Blow.
+    const victim = place(state, player, 'BK1-002', 3);
+    state = victim.state;
+
+    const hand = [...(state.zoneOrder[`${other}:hand`] ?? [])];
+    const mine = [...(state.zoneOrder[`${player}:hand`] ?? [])];
+    const kept = mine[0] as CardInstanceId;
+    let trimmed = state;
+    for (const id of mine.slice(1)) {
+      trimmed = {
+        ...trimmed,
+        cards: { ...trimmed.cards, [id]: { ...cardOf(trimmed, id), zone: 'trash' as const } },
+        zoneOrder: {
+          ...trimmed.zoneOrder,
+          [`${player}:hand`]: (trimmed.zoneOrder[`${player}:hand`] ?? []).filter((c) => c !== id),
+        },
+      };
+    }
+    trimmed = {
+      ...trimmed,
+      cards: {
+        ...trimmed.cards,
+        [kept]: { ...cardOf(trimmed, kept), defId: asCardDefId('BK3-029') },
+      },
+    };
+    expect(zoneSize(trimmed, player, 'hand')).toBe(1);
+    expect(hand.length).toBeGreaterThan(0);
+
+    // BK1-017's on-open line makes the opponent discard one at random (§13).
+    const stripper = place(trimmed, other, 'BK1-017', 2, { faceUp: false });
+    trimmed = openable(stripper.state, other, stripper.card);
+    trimmed = {
+      ...trimmed,
+      turn: { ...trimmed.turn, activePlayer: other, priorityPlayer: other },
+    };
+    const open = openOf(trimmed, other, stripper.card);
+    expect(open, 'Corkus should be openable').toBeDefined();
+    const after = apply(trimmed, other, open as GameAction);
+
+    // The Return Blow left the hand — and hit somebody on the way out.
+    // The Return Blow left the hand — and hit somebody on the way out. The
+    // engine picks the target here: its owner is not being asked, since a
+    // discard carries no action to put a choice on.
+    expect(after.cards[kept]?.zone).toBe('trash');
+    // Five damage kills anything small outright. Corkus is the first legal
+    // target and has 2 HP, so the blow landing means he is in the Trash —
+    // the card that caused the discard is struck by the card it discarded.
+    expect(after.cards[stripper.card]?.zone).toBe('trash');
+  });
+});

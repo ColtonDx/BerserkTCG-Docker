@@ -826,6 +826,9 @@ export function legalTargets(
     // §11 ① — the character leading the fight running right now.
     if (spec.vanguard === true && battle?.vanguard !== card.instanceId) return false;
     if (spec.unique === true && !definitionOf(ctx, card).unique) return false;
+    // §3 — damage clears in the End phase, so a mark on the card *is*
+    // "already dealt damage this turn".
+    if (spec.damaged === true && card.damage <= 0) return false;
     if (spec.minLevel !== undefined) {
       const level = definitionOf(ctx, card).level;
       if (level === null || level < spec.minLevel) return false;
@@ -1668,6 +1671,16 @@ export function conditionHolds(
           card.zone === 'city' &&
           card.cityIndex === source.cityIndex &&
           card.controller !== source.controller,
+      );
+    case 'enemyDamagedHere':
+      return Object.values(state.cards).some(
+        (card) =>
+          card.zone === 'city' &&
+          card.faceUp &&
+          card.cityIndex === source.cityIndex &&
+          card.controller !== source.controller &&
+          card.damage > 0 &&
+          isCharacter(ctx, card),
       );
     case 'allyDiedNear':
       return (

@@ -86,7 +86,7 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    abilities can finally ask for an area — BK1-131 is the first that does, and
    `useAbility` validates it rather than refusing.
 
-   **BK1 and BK2 are complete (140 and 58), BK3 is 59 of 60.** The rest of
+   **BK1, BK2 and BK3 are complete — 140, 58 and 60 printed lines.** The rest of
    the set is transcription — the cardlist has no effect text for BK4
    onwards, and a card with no entry stays inert rather than approximated.
 
@@ -126,6 +126,13 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
      — the whole point of the keyword.
    - **`lockCard`** is the only way a character is locked, so BK3-052 and
      BK3-059 answer for every route down. There were twelve.
+   - **`discardedByEnemy`** is the only trigger that fires from the _hand_
+     (BK3-029). It runs before the card leaves, so its own abilities are
+     still readable, and only for a discard its owner did not choose —
+     paying a cost or discarding to the hand limit is not somebody else's
+     effect doing it. `fireAbilities` picks a legal target for any trigger
+     nobody was asked about, since a discard carries no action to put a
+     choice on.
    - **Board-read keywords**: `isDemonCity` (BK3-043 confers it),
      `isQuickNow` (a card can gain Quick conditionally), `untargetable`,
      `opensLocked`, `openLevelFor`.
