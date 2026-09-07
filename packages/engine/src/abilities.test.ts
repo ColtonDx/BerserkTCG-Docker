@@ -8,6 +8,8 @@ import {
   rangeOf,
   stillFighting,
   cannotAttack,
+  cannotBattle,
+  canVanguard,
   damageAfterReduction,
   hpOf,
   moveOf,
@@ -2743,7 +2745,7 @@ describe('red and the rest of black (Rules.md §13)', () => {
 
     const victim = place(state, other, RED, 2);
     state = victim.state;
-    expect(cannotAttack({ registry }, state, cardOf(state, victim.card))).toBe(false);
+    expect(cannotBattle(state, cardOf(state, victim.card))).toBe(false);
 
     const blood = place(state, player, 'BK1-149', 2, { faceUp: false });
     state = openable(blood.state, player, blood.card);
@@ -2754,7 +2756,12 @@ describe('red and the rest of black (Rules.md §13)', () => {
     // A Normal Effect is in the Trash the moment it resolves (§3), so this
     // has to be written onto the character rather than read off the source.
     expect(state.cards[blood.card]?.zone).toBe('trash');
-    expect(cannotAttack({ registry }, state, cardOf(state, victim.card))).toBe(true);
+    // "Cannot participate in battle" bars it from being chosen at all — on
+    // either side, unlike the narrower `cannotAttack`.
+    expect(cannotBattle(state, cardOf(state, victim.card))).toBe(true);
+    expect(canVanguard({ registry }, state, other, 2)).not.toContainEqual(
+      expect.objectContaining({ instanceId: victim.card }),
+    );
   });
 
   it('BK1-152 destroys the Eternals in play and draws exactly that many', () => {
@@ -2829,5 +2836,122 @@ describe('red and the rest of black (Rules.md §13)', () => {
     // Uncontested, so the attacker takes it (§12) and the city pays 3.
     expect(state.cities[2]?.occupiedBy).toBe(attacker);
     expect(zoneSize(state, attacker, 'hand')).toBe(before + 3);
+  });
+});
+
+describe('"cannot participate in battle" bars either side (Rules.md §11)', () => {
+  it('keeps a barred defender out of the fight, garrison or not', () => {
+    // The ruling: it cannot be *chosen* for a battle at all — unlike
+    // `cannotAttack`, which only stops it leading or joining an attack.
+    let state = started(RED);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const lead = place(state, attacker, RED, 2);
+    state = lead.state;
+    const barred = place(state, defender, RED, 2);
+    state = barred.state;
+    // The defender occupies, so their garrison is committed for them.
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: defender } : city,
+      ),
+      cards: {
+        ...state.cards,
+        [barred.card]: {
+          ...cardOf(state, barred.card),
+          counters: { ...cardOf(state, barred.card).counters, noBattle: 1 },
+        },
+      },
+    };
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+
+    // Even an occupier's automatic commitment leaves it out.
+    expect(state.battle?.participants ?? []).not.toContain(barred.card);
+    // And it is never offered as a commitment either.
+    expect(
+      engine
+        .legalActions(state, defender)
+        .some((action) => action.type === 'COMMIT_CHARACTER' && action.card === barred.card),
+    ).toBe(false);
+  });
+
+  it('a character barred only from attacking may still defend', () => {
+    // The narrower restriction is unchanged: BK1-089 cannot attack, but
+    // nothing stops it standing in the way.
+    let state = started(GREEN);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const lead = place(state, attacker, GREEN, 2);
+    state = lead.state;
+    // BK1-090's first printed line is a flat "cannot attack", and its other
+    // ability is not usable here, so no Quick window interrupts the battle.
+    const guardian = place(state, defender, 'BK1-090', 2);
+    state = guardian.state;
+    state = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [guardian.card]: { ...cardOf(state, guardian.card), locked: true },
+      },
+    };
+
+    expect(cannotAttack({ registry }, state, cardOf(state, guardian.card))).toBe(true);
+    expect(cannotBattle(state, cardOf(state, guardian.card))).toBe(false);
+    // Unlocked again now the Quick that would interrupt cannot be paid for.
+    state = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [guardian.card]: { ...cardOf(state, guardian.card), locked: false },
+      },
+    };
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    // Declaring opens a Quick window for the guardian's own ability (§13);
+    // nobody wants it here, so decline until play resumes.
+    for (let guard = 0; guard < 6 && state.quick; guard++) {
+      state = apply(state, state.quick.waitingOn, { type: 'PASS_PRIORITY' });
+    }
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    for (let guard = 0; guard < 6 && state.quick; guard++) {
+      state = apply(state, state.quick.waitingOn, { type: 'PASS_PRIORITY' });
+    }
+
+    // It is offered as a defender, which is the whole difference.
+    expect(
+      engine
+        .legalActions(state, defender)
+        .some((action) => action.type === 'COMMIT_CHARACTER' && action.card === guardian.card),
+    ).toBe(true);
+  });
+
+  it('BK1-154 shields everyone but the area it was opened in', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    const here = place(state, player, RED, 2);
+    state = here.state;
+    const away = place(state, player, RED, 4);
+    state = away.state;
+
+    const evasion = place(state, player, 'BK1-154', 2, { faceUp: false });
+    state = openable(evasion.state, player, evasion.card);
+    const open = openOf(state, player, evasion.card);
+    expect(open, 'Strafing Evasion should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // "Characters that are not in this area" — so the far one is shielded...
+    expect(
+      damageAfterReduction({ registry }, state, cardOf(state, away.card), 3, { combat: true }),
+    ).toBe(0);
+    // ...and the one standing with the card is not.
+    expect(
+      damageAfterReduction({ registry }, state, cardOf(state, here.card), 3, { combat: true }),
+    ).toBe(3);
   });
 });

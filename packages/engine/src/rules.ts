@@ -742,6 +742,10 @@ function effectRelevant(
         return false;
       }
       return reaches(effect.who);
+    case 'cannotBattle':
+      // Outlasts the turn's fighting rather than a single blow, so it is
+      // worth doing whenever there is somebody to bar.
+      return reaches(effect.who);
     case 'reduceDamage':
     case 'cannotAttack':
     case 'unlock':
@@ -969,10 +973,24 @@ export const targetingAbilities = (
  * Asked of continuous abilities only, because a restriction has to hold for
  * as long as it is printed rather than being applied once.
  */
+/**
+ * Is this card barred from the battle entirely? Rules.md §11.
+ *
+ * Broader than {@link cannotAttack}, and deliberately separate: "cannot
+ * participate in battle" (BK1-035, BK1-037, BK1-149) means it cannot be
+ * *chosen* for one at all — not as vanguard, not committed by the attacker,
+ * not committed by the defender. A character merely forbidden to attack may
+ * still stand and defend, which is why the two cannot share a flag.
+ *
+ * Written onto the card for the turn rather than read off a source, because
+ * the cards that impose it are Normal Effects that go to the Trash the
+ * moment they resolve (§3) — there would be nothing left on the board to ask.
+ */
+export function cannotBattle(state: Pick<GameState, 'cards'>, card: CardInstance): boolean {
+  return (card.counters[NO_BATTLE] ?? 0) > 0;
+}
+
 export function cannotAttack(ctx: EngineContext, state: BoardView, card: CardInstance): boolean {
-  // Written onto the card for the turn by a non-continuous ability (BK1-149),
-  // whose own card is in the Trash by now and cannot be read off the board.
-  if ((card.counters[NO_BATTLE] ?? 0) > 0) return true;
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
     for (const ability of definitionOf(ctx, source).abilities ?? []) {
@@ -1072,6 +1090,13 @@ export function conditionHolds(
       if (!newcomer || newcomer.cityIndex === undefined) return false;
       return state.cities[newcomer.cityIndex]?.occupiedBy !== newcomer.controller;
     }
+    case 'allyArrivedThisArea':
+      return state.turn.arrivals.some(
+        (arrival) => arrival.city === source.cityIndex && arrival.player === source.controller,
+      );
+    case 'cityLevelAtMost':
+      // "Area level" reads as City Level: §5 defines one global value.
+      return cityLevel(state) <= condition.level;
     case 'isVanguard':
       return battle?.vanguard === source.instanceId;
     case 'attackingOccupiedArea': {
@@ -1179,7 +1204,7 @@ export function canVanguard(
   cityIndex: number,
 ): CardInstance[] {
   return presenceIn(ctx, state, cityIndex, player).filter(
-    (card) => !card.locked && !cannotAttack(ctx, state, card),
+    (card) => !card.locked && !cannotBattle(state, card) && !cannotAttack(ctx, state, card),
   );
 }
 
@@ -1198,8 +1223,10 @@ export function canCommit(
     (card) =>
       !card.locked &&
       !battle.participants.includes(card.instanceId) &&
-      // A character forbidden to attack may still defend: the restriction is
-      // on attacking, and the defender is not. Rules.md §11.
+      // "Cannot participate in battle" bars it from either side of the fight.
+      !cannotBattle(state, card) &&
+      // A character forbidden only to *attack* may still defend: that
+      // restriction is on attacking, and the defender is not. Rules.md §11.
       !(player === battle.attacker && cannotAttack(ctx, state, card)),
   );
 }

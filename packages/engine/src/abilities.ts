@@ -54,7 +54,12 @@ export interface Selector {
    */
   readonly scope?: 'self' | 'others' | 'any' | 'target';
   readonly side?: 'yours' | 'theirs' | 'any';
-  readonly where?: 'thisArea' | 'anywhere';
+  /**
+   * `thisArea` is the source's own city, `anywhere` the whole board, and
+   * `elsewhere` every city *but* the source's own (BK1-154, "characters that
+   * are not in this area").
+   */
+  readonly where?: 'thisArea' | 'anywhere' | 'elsewhere';
   /** One printed subtype token, e.g. `hawk`. See `build-catalogue.py`. */
   readonly subtype?: string;
   /** Only characters at or below this printed Level. Rules.md §7. */
@@ -215,7 +220,17 @@ export type Condition =
    * Read against the *chosen* card rather than the source, which is what
    * makes it usable from an `arrival` trigger: the newcomer is the choice.
    */
-  | { readonly when: 'targetDoesNotOccupyThisArea' };
+  | { readonly when: 'targetDoesNotOccupyThisArea' }
+  /**
+   * City Level is at most this (BK1-028, BK1-033). Rules.md §5.
+   *
+   * The cards say "area level", which is not a term the rules define: City
+   * Level is a single global value and there is no per-city one, so that is
+   * what this reads.
+   */
+  | { readonly when: 'cityLevelAtMost'; readonly level: number }
+  /** A character its controller owns arrived in its area this turn. */
+  | { readonly when: 'allyArrivedThisArea' };
 
 /**
  * What the ability does when it applies.
@@ -452,14 +467,22 @@ export type Effect =
       readonly withSource?: boolean;
     }
   /**
-   * Rules.md §11 — may not lead or join an attack.
+   * Rules.md §11 — may not lead or join an attack. Continuous only: it is
+   * read off the board by `rules.ts:cannotAttack`.
    *
-   * Under `always` this is continuous and read off the board. Under any
-   * other trigger it is written onto the card as a counter and lasts the
-   * turn, like a buff — which is what BK1-149 needs, its own card having
-   * gone to the Trash by the time anybody asks.
+   * A character barred this way may still *defend*, which is the whole
+   * difference from {@link cannotBattle} below.
    */
   | { readonly do: 'cannotAttack'; readonly who: Selector }
+  /**
+   * Rules.md §11 — "cannot participate in battle": it may not be chosen for
+   * the fight at all, on either side, for the rest of the turn.
+   *
+   * Written onto the card as a counter rather than read off the board,
+   * because the cards that impose it are Normal Effects and are in the Trash
+   * the moment they resolve (§3). Swept with the boosts at end of turn.
+   */
+  | { readonly do: 'cannotBattle'; readonly who: Selector }
   /**
    * Shifts the City Level a player opens against (BK1-116, "can only open
    * cards as if the level were 1 lower"). Rules.md §5 and §7.
@@ -1809,9 +1832,8 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
     {
       trigger: 'open',
       target: { where: 'thisArea' },
-      // Written onto the card for the turn rather than read off this one:
-      // a Normal Effect is in the Trash the moment it resolves (§3).
-      effect: { do: 'cannotAttack', who: { scope: 'target' } },
+      // Barred from the fight on either side, not merely from attacking.
+      effect: { do: 'cannotBattle', who: { scope: 'target' } },
       text: 'Until end of turn, target character in this area cannot participate in battle.',
     },
   ],
@@ -2113,6 +2135,108 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       text: 'When this card is opened, move a target character you control to this area.',
     },
   ],
+  'BK1-033': [
+    {
+      trigger: 'open',
+      // "If the area level is 2 or less" — City Level, §5. A gate on the
+      // effect rather than the open: "when this card is opened, if …".
+      condition: { when: 'cityLevelAtMost', level: 2 },
+      target: { side: 'yours', where: 'thisArea' },
+      effect: { do: 'returnToHand', who: { scope: 'target' } },
+      text: 'When this card is opened, if the area level is 2 or less, return 1 character you control in this area to your hand.',
+    },
+  ],
+  'BK1-035': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'openedCharacterHere' },
+      // "All characters in this area" — both sides, as printed. They are
+      // unlocked and then barred from the fight for the rest of the turn.
+      effect: { do: 'unlock', who: { scope: 'any', side: 'any', where: 'thisArea' } },
+      then: [{ do: 'cannotBattle', who: { scope: 'any', side: 'any', where: 'thisArea' } }],
+      text: 'When this card is opened, if you opened a character in this area this turn, unlock all characters in this area. Characters unlocked this way cannot participate in battle the rest of the turn.',
+    },
+  ],
+  'BK1-037': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'youCapturedThisArea' },
+      effect: { do: 'unlock', who: { scope: 'any', side: 'yours', where: 'thisArea' } },
+      then: [
+        {
+          do: 'buff',
+          who: { scope: 'any', side: 'yours', where: 'thisArea' },
+          stats: { move: 2 },
+        },
+        { do: 'cannotBattle', who: { scope: 'any', side: 'yours', where: 'thisArea' } },
+      ],
+      text: 'When this card is opened, if you captured this area this turn, unlock all characters you control in this area. They receive +2 Movement until end of turn. They cannot participate in battle this turn.',
+    },
+  ],
+  'BK1-038': [
+    {
+      trigger: 'open',
+      // Your own Hawks, everywhere on the board.
+      effect: {
+        do: 'unlock',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'hawk' },
+      },
+      then: [
+        {
+          do: 'buff',
+          who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'hawk' },
+          stats: { power: 1, hp: 1 },
+        },
+      ],
+      text: 'Unlock all "Hawk" characters. They all gain +1/+1 until end of turn.',
+    },
+  ],
+  'BK1-154': [
+    {
+      trigger: 'open',
+      // "Characters that are not in this area" — both sides, everywhere else.
+      // 99 is a shield nothing can exceed, so damage lands as nothing.
+      effect: {
+        do: 'reduceDamage',
+        who: { scope: 'any', side: 'any', where: 'elsewhere' },
+        amount: 99,
+      },
+      text: 'Until end of turn, characters that are not in this area have their damage taken reduced to 0.',
+    },
+  ],
+
+  'BK1-028': [
+    {
+      trigger: 'open',
+      gate: true,
+      // Two printed conditions, and `Condition` holds one — the City Level
+      // ceiling is the one that can shut before anything is paid, so it
+      // gates; the arrival is checked by the target having somebody to point
+      // at. RULES: "area level" read as City Level (§5).
+      condition: { when: 'cityLevelAtMost', level: 1 },
+      target: { side: 'yours', where: 'thisArea' },
+      effect: { do: 'unlock', who: { scope: 'target' } },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'This card can only be opened if the area level is 1 or less, and if a character you control moved to this area this turn. Unlock 1 character you control here, then draw 1 card.',
+    },
+  ],
+  'BK1-036': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'allyArrivedThisArea' },
+      // "A character that moved to this area this turn" — the engine records
+      // that an arrival happened rather than which card it was, so the
+      // player points at one of their own standing here.
+      target: { side: 'yours', where: 'thisArea' },
+      effect: { do: 'unlock', who: { scope: 'target' } },
+      then: [{ do: 'draw', player: 'you', count: 2 }],
+      text: 'When this card is opened, unlock a character that moved to this area this turn. Then draw 2 cards.',
+    },
+  ],
+
   'BK1-156': [
     {
       trigger: 'always',
@@ -2168,8 +2292,11 @@ export function selects(
     // Distance widens "this area" outwards; §15 counts from the source.
     if (source.cityIndex === undefined || card.cityIndex === undefined) return false;
     if (Math.abs(source.cityIndex - card.cityIndex) > selector.maxDistance) return false;
-  } else if ((selector.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
-    return false;
+  } else {
+    const where = selector.where ?? 'thisArea';
+    if (where === 'thisArea' && card.cityIndex !== source.cityIndex) return false;
+    // "Not in this area" — everywhere the source is not standing.
+    if (where === 'elsewhere' && card.cityIndex === source.cityIndex) return false;
   }
   const facts = factsOf(card);
   if (selector.subtype !== undefined && !facts.subtypes.includes(selector.subtype)) return false;

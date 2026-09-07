@@ -86,37 +86,39 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    abilities can finally ask for an area — BK1-131 is the first that does, and
    `useAbility` validates it rather than refusing.
 
-   **Twenty BK1 lines are still unbuilt**, and most want a ruling first:
+   **Thirteen BK1 lines are still unbuilt.** Four rulings settled the ones
+   that were only waiting on a reading: "area level" is City Level (§5 has
+   one global value and no per-city one); "cannot participate in battle"
+   means the character cannot be _chosen_ for a fight at all, so
+   `rules.ts:cannotBattle` is separate from `cannotAttack` and gates the
+   vanguard, both commit paths, and the occupier's automatic garrison —
+   `cannotAttack` still lets a character defend, which is the whole
+   difference; BK1-038 unlocks only your own Hawks; BK1-154 shields both
+   sides. That brought BK1-028, 033, 035, 036, 037, 038, 149 and 154 in, and
+   `Selector.where` gained `elsewhere` for "characters that are not in this
+   area".
 
-   - **"Area level"** (BK1-028, BK1-033) is not a term `Rules.md` defines.
-     City Level is global (§5), so an "area level" is either a synonym for it
-     or something per-city the rules do not have.
-   - **"Cannot participate in battle"** (BK1-035, BK1-037) — does it stop
-     defending too, or only attacking? `NO_BATTLE` currently reads as
-     `cannotAttack`, which is the narrow half.
-   - **BK1-038** "unlock all Hawk characters" — both sides, or yours?
-   - **BK1-154** "characters that are not in this area" — both sides again.
-   - **BK1-147** "target any number of characters" needs several targets for
-     one ability; the wire carries one target per _ability_, and
-     `legalActions` offers one action per legal target, so "any number" would
-     be a cross-product. It wants a different shape of choice, probably a
-     pending one answered card by card.
+   What is left needs building rather than deciding:
+
+   - **BK1-147** "target any number of characters" — the wire carries one
+     target per _ability_ and `legalActions` offers one action per legal
+     target, so "any number" would be a cross-product. It wants a pending
+     choice answered card by card instead.
    - **BK1-151** "negate all abilities of normal effects within 1 distance"
      needs negation checked at every ability lookup — seventeen sites across
-     `rules.ts` and `reducer.ts`. Anything less is silently wrong in the
-     places it was not applied.
+     `rules.ts` and `reducer.ts`. Anything less is silently wrong wherever it
+     was not applied.
    - **BK1-022** "reveal the capital to yourself" needs the Royal Capital's
-     identity revealed to one player without leaking it in `view.ts`, which
-     currently hides face-down cities from everyone.
-   - **BK1-157**, **BK1-158**, **BK1-027**, **BK1-029**, **BK1-030**,
-     **BK1-031**, **BK1-034**, **BK1-036** each want one new primitive:
-     a per-character attack restriction tied to an area, a trigger on the
-     _opponent_ capturing, redirected damage, a conditional "while defending"
-     buff, opening another Set Card as an effect, barring a Set Card from
-     being opened, "target attacking character", and unlocking specifically
-     what arrived this turn.
+     identity shown to one player without leaking it: `view.ts` hides
+     face-down cities from everyone, and that is what keeps its position
+     secret.
    - **BK1-023**, **BK1-155**, **BK1-159** are deck manipulation — look at
      the top _n_ and choose, set them anywhere, or reorder without shuffling.
+   - **BK1-027**, **BK1-029**, **BK1-030**, **BK1-031**, **BK1-034**,
+     **BK1-157**, **BK1-158** each want one new primitive: redirected damage,
+     a "while defending" buff, opening another Set Card as an effect, barring
+     a Set Card from being opened, "target attacking character", a
+     per-area attack restriction, and a trigger on the _opponent_ capturing.
 
 2. **The priority stack** (`Rules.md` §14) is built for what a player does —
    an open, an ability used — with two narrowings noted in `DesignNotes`

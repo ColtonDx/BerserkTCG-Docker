@@ -40,6 +40,7 @@ import {
   moveOf,
   nextRangeBand,
   powerOf,
+  cannotBattle,
   presenceIn,
   quickCardRelevant,
   reachedBy,
@@ -729,6 +730,9 @@ function beginCommit(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
   if (city?.occupiedBy === battle.defender) {
     for (const card of presenceIn(ctx, draft, battle.city, battle.defender)) {
       if (battle.participants.includes(card.instanceId)) continue;
+      // An occupier's garrison is committed for them, but a character barred
+      // from the fight is still barred — it is not chosen for it at all.
+      if (cannotBattle(draft, card)) continue;
       battle.participants.push(card.instanceId);
       events.push({
         type: 'CHARACTER_COMMITTED',
@@ -2612,11 +2616,14 @@ function runEffect(
     }
 
     // Continuous by nature: asked of the board by `cannotAttack`, never run.
-    case 'cannotAttack': {
-      // Only a non-continuous ability ever gets here: an `always` one is read
-      // off the board by `rules.ts:cannotAttack` and is never resolved. So
-      // this is the "until end of turn" kind, written onto the card because
-      // its source may be gone (BK1-149 is a Normal Effect, trashed at once).
+    // Continuous by nature: read off the board by `cannotAttack`, never run.
+    case 'cannotAttack':
+      return true;
+
+    case 'cannotBattle': {
+      // "Cannot participate in battle" for the rest of the turn, written onto
+      // the card because the source is a Normal Effect and will be in the
+      // Trash before anybody asks (§3).
       let marked = 0;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         card.counters = { ...card.counters, [NO_BATTLE]: 1 };
