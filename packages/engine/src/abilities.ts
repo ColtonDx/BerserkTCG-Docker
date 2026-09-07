@@ -516,6 +516,12 @@ export type Effect =
    */
   | { readonly do: 'seal'; readonly who: Selector }
   /**
+   * A bonus that only counts while its holder is defending a battle
+   * (BK1-029). Rules.md §11. Lasts the turn, like a buff, and is swept with
+   * the other counters.
+   */
+  | { readonly do: 'defenderBonus'; readonly who: Selector; readonly stats: StatLine }
+  /**
    * Turn a Set Card face up at once, paying nothing and outside the City
    * Level gate (BK1-030). Rules.md §7 and §13.
    *
@@ -771,6 +777,18 @@ export const NO_BATTLE = 'noBattle';
  */
 export const SEALED = 'sealed';
 
+/**
+ * An extra +1/+1 that applies only while its holder is defending a battle
+ * (BK1-029's "while defending it gains an additional +1/+1"). Rules.md §11.
+ *
+ * A plain boost counter cannot express this: the bonus comes and goes with
+ * the fight, and the card that granted it is a Normal Effect already in the
+ * Trash (§3), so there is nothing on the board to read it off either. Held
+ * as a count of how many such grants are outstanding and paid out by
+ * `powerOf`/`hpOf` only when a battle is actually running.
+ */
+export const REARGUARD = 'rearguard';
+
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
   BOOST_HP,
@@ -778,6 +796,7 @@ export const BOOST_COUNTERS: readonly string[] = [
   SHIELD,
   NO_BATTLE,
   SEALED,
+  REARGUARD,
 ];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
@@ -2377,6 +2396,18 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       target: { attacking: true },
       effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
       text: 'When this card is opened, if you occupy this area, deal 3 damage to target attacking character.',
+    },
+  ],
+
+  'BK1-029': [
+    {
+      trigger: 'open',
+      target: { side: 'yours', where: 'thisArea' },
+      // One printed line, two grants: the flat boost, and a further +1/+1
+      // that only counts while it is defending (§11).
+      effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 1, hp: 2 } },
+      then: [{ do: 'defenderBonus', who: { scope: 'target' }, stats: { power: 1, hp: 1 } }],
+      text: 'When this card is opened, target a character you control in this area, it gains +1/+2 until end of turn. While defending it gains an additional +1/+1.',
     },
   ],
 

@@ -3221,3 +3221,74 @@ describe('an ability aimed at a Set Card survives the stack (Rules.md §14)', ()
     expect(state.cards[hidden.card]?.zone).toBe('trash');
   });
 });
+
+describe('BK1-029 pays its second half only while defending (Rules.md §11)', () => {
+  it('gives +1/+2 at once, and +1/+1 more inside a fight it is defending', () => {
+    let state = started();
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // The card is the defender's, so put the turn on them to open it.
+    const guard = place(state, defender, 'BK1-002', 2);
+    state = guard.state;
+    const designation = place(state, defender, 'BK1-029', 2, { faceUp: false });
+    state = openable(designation.state, defender, designation.card);
+
+    // Printed 1/2 for BK1-002.
+    expect(power(state, guard.card)).toBe(1);
+    expect(hp(state, guard.card)).toBe(2);
+
+    const open = engine
+      .legalActions(state, defender)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === designation.card &&
+          action.targets?.[0] === guard.card,
+      );
+    expect(open, 'Rear Guard Designation should point at the character').toBeDefined();
+    state = apply(state, defender, open as GameAction);
+
+    // The flat half lands now; the conditional half does not, with no fight on.
+    expect(power(state, guard.card)).toBe(2);
+    expect(hp(state, guard.card)).toBe(4);
+    expect(state.cards[guard.card]?.counters['rearguard']).toBe(1);
+
+    // Now run a battle at that city with them defending.
+    let fighting = {
+      ...state,
+      turn: { ...state.turn, activePlayer: attacker, priorityPlayer: attacker },
+    };
+    const lead = place(fighting, attacker, 'BK1-002', 2);
+    fighting = lead.state;
+    fighting = apply(atMain(fighting), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    for (let n = 0; n < 6 && fighting.quick; n++) {
+      fighting = apply(fighting, fighting.quick.waitingOn, { type: 'PASS_PRIORITY' });
+    }
+    fighting = apply(fighting, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    for (let n = 0; n < 6 && fighting.quick; n++) {
+      fighting = apply(fighting, fighting.quick.waitingOn, { type: 'PASS_PRIORITY' });
+    }
+    const join = engine
+      .legalActions(fighting, defender)
+      .find((action) => action.type === 'COMMIT_CHARACTER' && action.card === guard.card);
+    expect(join, 'the guard should be able to defend').toBeDefined();
+
+    // Read the numbers *inside* the fight: a battle this small settles the
+    // moment it is joined, so the state afterwards has no battle to read.
+    const committed = engine.reduce(fighting, defender, join as GameAction);
+    expect(committed.ok).toBe(true);
+
+    // Committed on the defending side, the extra +1/+1 counts — checked
+    // against a board that still has the battle on it.
+    const midFight = {
+      ...fighting,
+      battle: {
+        ...(fighting.battle as NonNullable<typeof fighting.battle>),
+        participants: [...(fighting.battle?.participants ?? []), guard.card],
+      },
+    };
+    expect(power(midFight, guard.card)).toBe(3);
+    expect(hp(midFight, guard.card)).toBe(5);
+  });
+});

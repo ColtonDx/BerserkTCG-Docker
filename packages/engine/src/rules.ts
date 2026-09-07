@@ -4,6 +4,7 @@ import {
   counterFor,
   selects,
   NO_BATTLE,
+  REARGUARD,
   SEALED,
   SHIELD,
   usedOnTurnCounter,
@@ -44,7 +45,14 @@ export interface EngineContext {
  * board, the cities and whose turn it is, and every reader in the chain has
  * to admit that up front.
  */
-export type BoardView = Pick<GameState, 'cards' | 'cities' | 'turn' | 'seats'>;
+export type BoardView = Pick<GameState, 'cards' | 'cities' | 'turn' | 'seats'> & {
+  /**
+   * The battle in progress, when the caller has one to hand. Optional so the
+   * narrowed views that predate it still satisfy the type; a bonus that only
+   * counts during a fight (BK1-029) simply does not apply without it.
+   */
+  readonly battle?: BattleState | null;
+};
 
 export const OCCUPATION_WIN_THRESHOLD = 3;
 export const HAND_LIMIT = 7;
@@ -305,7 +313,16 @@ const statOf = (
 ): number => {
   const printed = definitionOf(ctx, card).stats?.[stat] ?? 0;
   const boost = card.counters[counterFor(stat)] ?? 0;
-  return Math.max(0, printed + boost + continuousBonus(ctx, state, card, stat));
+  // "While defending" — paid only while its holder is actually in a fight on
+  // the defending side (BK1-029). Rules.md §11.
+  const rearguard =
+    (stat === 'power' || stat === 'hp') &&
+    state.battle != null &&
+    state.battle.defender === card.controller &&
+    state.battle.participants.includes(card.instanceId)
+      ? (card.counters[REARGUARD] ?? 0)
+      : 0;
+  return Math.max(0, printed + boost + rearguard + continuousBonus(ctx, state, card, stat));
 };
 
 export const powerOf = (ctx: EngineContext, state: BoardView, card: CardInstance): number =>
@@ -761,6 +778,9 @@ function effectRelevant(
       // A body onto the board for free — worth doing wherever there is one
       // lying face down to turn up.
       return reaches(effect.who);
+    case 'defenderBonus':
+      // Only ever pays out inside a battle, so it is only relevant in one.
+      return inBattle && reaches(effect.who);
     case 'seal':
       // Denying an open outlasts the moment, so it is worth doing whenever
       // there is a Set Card to shut.

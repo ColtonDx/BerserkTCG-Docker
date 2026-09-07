@@ -4,6 +4,7 @@ import {
   selects,
   BOOST_COUNTERS,
   NO_BATTLE,
+  REARGUARD,
   SEALED,
   SHIELD,
   SKIP_REFRESH,
@@ -2675,6 +2676,22 @@ function runEffect(
       }
       if (opened > 0) refreshBoard(ctx, draft, events);
       return opened > 0;
+    }
+
+    case 'defenderBonus': {
+      // One counter, however the printed line splits it: the set's only such
+      // line grants +1/+1, so the two stats move together.
+      const amount = effect.stats.power ?? effect.stats.hp ?? 0;
+      if (amount === 0) return false;
+      let granted = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        card.counters = {
+          ...card.counters,
+          [REARGUARD]: (card.counters[REARGUARD] ?? 0) + amount,
+        };
+        granted++;
+      }
+      return granted > 0;
     }
 
     case 'seal': {
