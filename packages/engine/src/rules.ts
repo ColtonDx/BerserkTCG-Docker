@@ -835,6 +835,16 @@ function effectRelevant(
       // Continuations, never printed on a card and never offered on their
       // own — they only ever run from inside a choice already under way.
       return false;
+    case 'reflectDamage':
+      // Only bites inside a fight, where blows are actually struck.
+      return inBattle && reaches(effect.who);
+    case 'setTopOfDeck':
+      // A card onto the board for free, whenever the deck still has one.
+      return true;
+    case 'gatherHere':
+      // Bodies onto a contested area, which is worth doing wherever there is
+      // somebody to bring.
+      return reaches(effect.who);
     case 'theyDestroy':
     case 'destroyOrDiscard':
       // Card advantage either way — §13 counts it wherever it happens.

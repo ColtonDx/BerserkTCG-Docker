@@ -5,6 +5,7 @@ import {
   BOOST_COUNTERS,
   NO_BATTLE,
   REARGUARD,
+  REFLECT,
   SEALED,
   SHIELD,
   SKIP_REFRESH,
@@ -936,8 +937,16 @@ function resolveBand(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
   if (!battle) return;
 
   for (const hit of battle.pending) {
-    const target = draft.cards[hit.target];
+    let target = draft.cards[hit.target];
     if (!target) continue;
+    // BK1-027 — this striker's blows against the protected side come back at
+    // it instead. Redirected before reduction, so the blow is softened by
+    // whatever the *new* target is wearing rather than the old one.
+    const striker = draft.cards[hit.source];
+    const protectedSeat = (striker?.counters[REFLECT] ?? 0) - 1;
+    if (striker && protectedSeat >= 0 && draft.seats[protectedSeat] === target.controller) {
+      target = striker;
+    }
     // Reduction bites where the blow lands, not where it was assigned: §11 ④
     // makes the striker spend its Power exactly, so armour makes the wound
     // smaller rather than letting the attacker hold anything back.
@@ -949,7 +958,7 @@ function resolveBand(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
     events.push({
       type: 'DAMAGE_DEALT',
       source: hit.source,
-      target: hit.target,
+      target: target.instanceId,
       amount,
       combat: true,
     });
@@ -1002,6 +1011,8 @@ function endBattle(
       // §12 — the city card's own effect: a fresh occupation draws two,
       // unless an attacker present says otherwise (BK1-093).
       drawInto(draft, battle.attacker, captureDrawFor(ctx, draft, battle), events);
+      // Cards that answer to the other player taking a city (BK1-158).
+      fireEnemyCapture(ctx, draft, battle.attacker, battle.city, events);
     }
   } else if (result === 'mutual_destruction' && city && city.occupiedBy) {
     city.occupiedBy = null;
@@ -2565,6 +2576,58 @@ function runEffect(
       return pushed();
     }
 
+    case 'reflectDamage': {
+      // Counters are numbers, so the protected side is stored as its seat
+      // index plus one — 0 is "no reflection", which is what an absent
+      // counter reads as.
+      const seat = draft.seats.indexOf(controller);
+      if (seat < 0) return false;
+      let marked = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        card.counters = { ...card.counters, [REFLECT]: seat + 1 };
+        marked++;
+      }
+      return marked > 0;
+    }
+
+    case 'setTopOfDeck': {
+      const to = effect.where === 'chosenArea' ? area : source.cityIndex;
+      if (to === undefined || !draft.cities[to]) return false;
+      const [top] = cardsInZone(draft as GameState, controller, 'deck');
+      // An empty deck simply has nothing to set; running dry is a loss on the
+      // *draw* (§1), not here.
+      if (!top) return false;
+      moveToCity(draft, top.instanceId, to, { controller, faceUp: false });
+      events.push({ type: 'CARD_SET', player: controller, card: top.instanceId, city: to });
+      return pushed();
+    }
+
+    case 'gatherHere': {
+      const city = source.cityIndex;
+      if (city === undefined) return false;
+      const reachable = selected(ctx, draft, source, effect.who, chosen).filter(
+        // Somebody already standing here has nowhere to be moved to.
+        (card) => card.cityIndex !== city,
+      );
+      if (reachable.length === 0) return false;
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: Math.min(effect.count, reachable.length),
+        // "Any number": the count is a ceiling, and stopping early is legal.
+        upTo: true,
+        kind: {
+          zone: 'field',
+          action: 'moveHere',
+          cards: reachable.map((card) => card.instanceId),
+          city,
+          ...(effect.unlock === true ? { unlock: true } : {}),
+        },
+      });
+      return pushed();
+    }
+
     case 'theyDestroy': {
       // The choice belongs to whoever owns the cards, not to the player who
       // used the ability (BK1-100). Nothing in reach is not an error — the
@@ -2885,7 +2948,26 @@ function chooseCard(
     if (!kind.cards.includes(cardId)) {
       return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
     }
-    destroy(ctx, draft, card, events);
+    if (kind.action === 'moveHere') {
+      const to = kind.city;
+      if (to === undefined) return violation('WRONG_PHASE', 'Nowhere to move it to.', '§13');
+      const from = card.cityIndex;
+      card.cityIndex = to;
+      // §14 over §6: an effect saying where somebody ends up spends no Move
+      // and locks nobody, so the printed unlock is a real grant.
+      if (kind.unlock === true) card.locked = false;
+      if (from !== undefined) {
+        events.push({ type: 'CHARACTER_MOVED', card: cardId, from, to });
+      }
+      if (card.faceUp) {
+        arrived(draft, card.controller, to);
+        fireArrival(ctx, draft, card, events);
+      }
+      // Struck off, so each card is named once.
+      pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });
+    } else {
+      destroy(ctx, draft, card, events);
+    }
   } else if (kind.zone === 'hand' && kind.action === 'discard') {
     moveToZone(draft, cardId, { player: actor, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
@@ -3066,6 +3148,35 @@ function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameE
 /** Notes a character arriving in a city this turn, for cards that ask. */
 function arrived(draft: Draft<GameState>, player: PlayerId, city: number): void {
   draft.turn.arrivals = toDraft([...draft.turn.arrivals, { player, city }]);
+}
+
+/**
+ * Fires the `enemyCapture` trigger for everything the capturing player does
+ * *not* control. Rules.md §12.
+ *
+ * The captured city travels as the chosen area, so an effect can act on the
+ * ground that just changed hands rather than on wherever its own card
+ * happens to be standing.
+ */
+function fireEnemyCapture(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  captor: PlayerId,
+  city: number,
+  events: GameEvent[],
+): void {
+  for (const watcher of Object.values(draft.cards)) {
+    if (watcher.zone !== 'city' || !watcher.faceUp) continue;
+    // "Whenever your opponent captures an area" — so not the captor's own.
+    if (watcher.controller === captor) continue;
+    for (const ability of definitionOf(ctx, watcher as CardInstance).abilities ?? []) {
+      if (ability.trigger !== 'enemyCapture') continue;
+      if (!conditionHolds(ctx, draft, watcher as CardInstance, ability.condition, draft.battle)) {
+        continue;
+      }
+      resolveEffect(ctx, draft, watcher as CardInstance, ability, events, undefined, city);
+    }
+  }
 }
 
 /**

@@ -3292,3 +3292,162 @@ describe('BK1-029 pays its second half only while defending (Rules.md §11)', ()
     expect(hp(midFight, guard.card)).toBe(5);
   });
 });
+
+describe('BK1-147 calls in any number of characters (Rules.md §13)', () => {
+  it('brings the ones named here and unlocks them, and stops when told', () => {
+    let state = started(RED);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // Three of the defender's characters, scattered, all locked.
+    const away1 = place(state, defender, RED, 0);
+    state = away1.state;
+    const away2 = place(state, defender, RED, 4);
+    state = away2.state;
+    const alreadyHere = place(state, defender, RED, 2);
+    state = alreadyHere.state;
+    for (const id of [away1.card, away2.card, alreadyHere.card]) {
+      state = {
+        ...state,
+        cards: { ...state.cards, [id]: { ...cardOf(state, id), locked: true } },
+      };
+    }
+
+    const interception = place(state, defender, 'BK1-147', 2, { faceUp: false });
+    state = openable(interception.state, defender, interception.card);
+
+    // The gate: a battle must have been declared here by the *other* player.
+    expect(openOf(state, defender, interception.card)).toBeUndefined();
+    state = {
+      ...state,
+      turn: { ...state.turn, activePlayer: attacker, declaredCities: [2] },
+    };
+    const open = openOf(state, defender, interception.card);
+    expect(open, 'Sudden Interception should open after defending here').toBeDefined();
+    state = apply(state, defender, open as GameAction);
+
+    // Only the ones that are elsewhere are offered — somebody already
+    // standing here has nowhere to be moved to.
+    const offered = engine
+      .legalActions(state, defender)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+    expect(offered).toContain(away1.card);
+    expect(offered).toContain(away2.card);
+    expect(offered).not.toContain(alreadyHere.card);
+
+    // Call one in: it arrives here and stands up.
+    state = apply(state, defender, { type: 'CHOOSE_CARD', card: away1.card });
+    expect(state.cards[away1.card]?.cityIndex).toBe(2);
+    expect(state.cards[away1.card]?.locked).toBe(false);
+
+    // "Any number" — stopping early is legal, and leaves the rest alone.
+    expect(state.pending).not.toBeNull();
+    expect(engine.legalActions(state, defender).some((a) => a.type === 'ANSWER' && !a.accept)).toBe(
+      true,
+    );
+    state = apply(state, defender, { type: 'ANSWER', accept: false });
+    expect(state.pending).toBeNull();
+    expect(state.cards[away2.card]?.cityIndex).toBe(4);
+    expect(state.cards[away2.card]?.locked).toBe(true);
+  });
+});
+
+describe('BK1-158 answers the opponent taking ground (Rules.md §12)', () => {
+  it('sets the top of its owner deck into the city that just changed hands', () => {
+    let state = started(RED);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // The Eternal stands somewhere else entirely: it acts on the captured
+    // area, not on its own.
+    const mobilization = place(state, defender, 'BK1-158', 0);
+    state = mobilization.state;
+    const lead = place(state, attacker, RED, 2);
+    state = lead.state;
+
+    const topBefore = (state.zoneOrder[`${defender}:deck`] ?? [])[0] as CardInstanceId;
+    const deckBefore = zoneSize(state, defender, 'deck');
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    state = runBattle(state, defender);
+
+    // The attacker took city 2 (§12, uncontested).
+    expect(state.cities[2]?.occupiedBy).toBe(attacker);
+    // ...and the defender's top card is now set face down *there*.
+    expect(state.cards[topBefore]?.zone).toBe('city');
+    expect(state.cards[topBefore]?.cityIndex).toBe(2);
+    expect(state.cards[topBefore]?.faceUp).toBe(false);
+    expect(state.cards[topBefore]?.controller).toBe(defender);
+    expect(zoneSize(state, defender, 'deck')).toBe(deckBefore - 1);
+  });
+
+  it('does not fire for its own controller capturing', () => {
+    // "Whenever your opponent captures" — the captor's own cards stay quiet.
+    let state = started(RED);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const mobilization = place(state, attacker, 'BK1-158', 0);
+    state = mobilization.state;
+    const lead = place(state, attacker, RED, 2);
+    state = lead.state;
+
+    const topBefore = (state.zoneOrder[`${attacker}:deck`] ?? [])[0] as CardInstanceId;
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    state = runBattle(state, defender);
+
+    expect(state.cities[2]?.occupiedBy).toBe(attacker);
+    // The card that was on top was drawn by the capture, not set on the board.
+    expect(state.cards[topBefore]?.zone).not.toBe('city');
+  });
+});
+
+describe('BK1-027 turns a small striker on itself (Rules.md §11 ④)', () => {
+  it('sends its damage back at it instead of into the protected side', () => {
+    // BK1-027 is white, so a white deck is what can pay for it (§7).
+    let state = started();
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // The attacker leads with a Level 0 white Mercenary, 1/1.
+    const striker = place(state, attacker, 'BK1-001', 2);
+    state = striker.state;
+    const guard = place(state, defender, 'BK1-001', 2);
+    state = guard.state;
+
+    // The defender opens the counterattack on the striker before the fight.
+    const counter = place(state, defender, 'BK1-027', 2, { faceUp: false });
+    state = openable(counter.state, defender, counter.card);
+    const open = engine
+      .legalActions(state, defender)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === counter.card &&
+          action.targets?.[0] === striker.card,
+      );
+    expect(open, 'Brilliant Counterattack should point at the striker').toBeDefined();
+    state = apply(state, defender, open as GameAction);
+    expect(state.cards[striker.card]?.counters['reflect']).toBeGreaterThan(0);
+
+    // Now fight over that city.
+    state = {
+      ...state,
+      turn: { ...state.turn, activePlayer: attacker, priorityPlayer: attacker },
+    };
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    for (let n = 0; n < 6 && state.quick; n++) {
+      state = apply(state, state.quick.waitingOn, { type: 'PASS_PRIORITY' });
+    }
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: striker.card });
+    state = runBattle(state, defender);
+
+    // The striker's blow came back at it: it dies, and the guard lives.
+    expect(state.cards[striker.card]?.zone).toBe('trash');
+    expect(state.cards[guard.card]?.zone).toBe('city');
+  });
+});

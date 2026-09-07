@@ -363,6 +363,19 @@ export type Effect =
    * difference from `search`. `joinsBattle` is the printed tail: a character
    * that replaces one which was fighting steps into the same fight (§11 ③).
    */
+  /**
+   * Set the top card of your deck face down in an area (BK1-158). Rules.md
+   * §7 and §13.
+   *
+   * Nothing is chosen and nothing is revealed: it is the top card, face
+   * down, so it stays as hidden as any other Set Card. `where` says which
+   * area — `chosenArea` is the one the trigger supplied, which for an
+   * `enemyCapture` is the city that just changed hands.
+   */
+  | {
+      readonly do: 'setTopOfDeck';
+      readonly where: 'sourceArea' | 'chosenArea';
+    }
   | {
       readonly do: 'revealUntilCharacter';
       readonly to: 'setOpen';
@@ -522,6 +535,15 @@ export type Effect =
    */
   | { readonly do: 'defenderBonus'; readonly who: Selector; readonly stats: StatLine }
   /**
+   * Damage the chosen character deals to its opponent's side in this area is
+   * dealt to itself instead, until end of turn (BK1-027). Rules.md §11 ④.
+   *
+   * Marked on the striker rather than on the protected characters, because
+   * the printed line is about *that character's* blows however many people
+   * it swings at.
+   */
+  | { readonly do: 'reflectDamage'; readonly who: Selector }
+  /**
    * Turn a Set Card face up at once, paying nothing and outside the City
    * Level gate (BK1-030). Rules.md §7 and §13.
    *
@@ -582,6 +604,24 @@ export type Effect =
    */
   | { readonly do: 'theyDestroy'; readonly who: Selector; readonly count: number }
   /**
+   * "Target any number of characters and move them to this area" (BK1-147).
+   * Rules.md §13.
+   *
+   * Not a `target` on the ability: the wire carries one target per ability,
+   * and "any number" would be a cross-product of every subset. The player
+   * names them one at a time instead, and may stop whenever they like — so
+   * `count` is a ceiling rather than a debt.
+   *
+   * `unlock` is the printed tail. Like every card-effect move this spends no
+   * Move and locks nobody (§14 over §6), so the unlock is a real grant.
+   */
+  | {
+      readonly do: 'gatherHere';
+      readonly who: Selector;
+      readonly count: number;
+      readonly unlock?: boolean;
+    }
+  /**
    * A choice put to the opponent once for each character they have in the
    * battle here: lose that character, or pay `discard` cards (BK1-103).
    * Rules.md §13.
@@ -637,6 +677,14 @@ export type Trigger =
    * reaches: `fireArrival` passes it as the chosen card.
    */
   | 'arrival'
+  /**
+   * The other player has just captured a city (BK1-158). Rules.md §12.
+   *
+   * Fired from where the city changes hands, on behalf of the card that owns
+   * the ability. The captured area travels as the chosen *area*, so an effect
+   * can act on it rather than on wherever the card happens to stand.
+   */
+  | 'enemyCapture'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -789,6 +837,17 @@ export const SEALED = 'sealed';
  */
 export const REARGUARD = 'rearguard';
 
+/**
+ * Damage this character deals to the *marker's* side comes back at it
+ * instead (BK1-027). Rules.md §11 ④.
+ *
+ * Held on the character whose blows are turned around, together with the
+ * controller it must not hurt — a reflection that caught everybody would
+ * also stop it striking its own allies, which the printed line does not say.
+ * Swept with the boosts, so "until end of turn" needs no timer.
+ */
+export const REFLECT = 'reflect';
+
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
   BOOST_HP,
@@ -797,6 +856,7 @@ export const BOOST_COUNTERS: readonly string[] = [
   NO_BATTLE,
   SEALED,
   REARGUARD,
+  REFLECT,
 ];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
@@ -2408,6 +2468,52 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 1, hp: 2 } },
       then: [{ do: 'defenderBonus', who: { scope: 'target' }, stats: { power: 1, hp: 1 } }],
       text: 'When this card is opened, target a character you control in this area, it gains +1/+2 until end of turn. While defending it gains an additional +1/+1.',
+    },
+  ],
+
+  'BK1-147': [
+    {
+      trigger: 'open',
+      gate: true,
+      // §11 ① — a battle was declared here by the other player, so its
+      // controller is the one who defended.
+      condition: { when: 'defendedThisArea' },
+      // "Any number of characters": named one at a time and stoppable, since
+      // one target per ability is all the wire carries. Either side's, as
+      // printed, and from anywhere on the board.
+      effect: {
+        do: 'gatherHere',
+        who: { scope: 'any', side: 'any', where: 'anywhere' },
+        count: 5,
+        unlock: true,
+      },
+      text: 'You can only open this card if you defended this area this turn. Target any number of characters and move them to this area and unlock them.',
+    },
+  ],
+
+  'BK1-158': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'enemyCapture',
+      // Into the area they just took, not into this card's own — the trigger
+      // hands the captured city over as the chosen area.
+      effect: { do: 'setTopOfDeck', where: 'chosenArea' },
+      text: 'Whenever your opponent captures an area, set the top card of your library in that area.',
+    },
+  ],
+
+  'BK1-027': [
+    {
+      trigger: 'open',
+      // "A level 1 or lower character in this area" — either side's, as
+      // printed; it is normally pointed at an enemy about to swing.
+      target: { where: 'thisArea', maxLevel: 1 },
+      effect: { do: 'reflectDamage', who: { scope: 'target' } },
+      text: 'Target a level 1 or lower character in this area. Until end of turn any damage dealt by that character to any of your characters in this area is instead dealt to itself.',
     },
   ],
 

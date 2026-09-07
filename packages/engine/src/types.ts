@@ -274,8 +274,16 @@ export type PendingChoiceKind =
    */
   | {
       readonly zone: 'field';
-      readonly action: 'destroy';
+      /**
+       * `destroy` sends the chosen card to the Trash (BK1-100);
+       * `moveHere` brings it to `city` and unlocks it (BK1-147).
+       */
+      readonly action: 'destroy' | 'moveHere';
       readonly cards: readonly CardInstanceId[];
+      /** Where they go, for `moveHere`. */
+      readonly city?: number;
+      /** Whether arriving also unlocks them, for `moveHere` (BK1-147). */
+      readonly unlock?: boolean;
     }
   /**
    * Put the cards you are looking at back on the deck in an order you pick
