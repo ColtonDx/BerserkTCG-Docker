@@ -54,6 +54,24 @@ export interface EngineContext {
  * negation (BK1-151) applied at some lookups and not others would be
  * silently wrong exactly where it was forgotten, and nothing would fail.
  */
+/**
+ * Does anything on the board lock a character as it is opened? Rules.md §6,
+ * §7 — BK2-046, "when characters are opened, they become locked".
+ *
+ * Read off the board rather than written down, like every other continuous
+ * ability: the moment the card leaves, opens stop being punished.
+ */
+export function opensLocked(ctx: EngineContext, state: Pick<GameState, 'cards'>): boolean {
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    for (const ability of abilitiesOf(ctx, source)) {
+      if (ability.trigger !== 'always') continue;
+      if (ability.effect.do === 'openedCardsLock') return true;
+    }
+  }
+  return false;
+}
+
 export function abilitiesOf(ctx: EngineContext, card: CardInstance): readonly Ability[] {
   if ((card.counters[NEGATED] ?? 0) > 0) return [];
   return definitionOf(ctx, card).abilities ?? [];
@@ -544,6 +562,9 @@ export function legalTargets(
       // A Set Card, whatever it is — never a standing character, and never
       // the source itself, which is about to be face up.
       if (card.faceUp || card.instanceId === source.instanceId) return false;
+    } else if (spec.effectCards !== undefined) {
+      // Standing Effect cards, the other face-up population (BK2-014).
+      if (!card.faceUp || card.instanceId === source.instanceId) return false;
     } else {
       const standing = card.faceUp || card.instanceId === source.instanceId;
       if (!standing || !isCharacter(ctx, card)) return false;
@@ -561,6 +582,12 @@ export function legalTargets(
     } else if ((spec.where ?? 'thisArea') === 'thisArea' && card.cityIndex !== source.cityIndex) {
       return false;
     }
+    if (spec.effectCards !== undefined) {
+      // Face-up Effect cards rather than characters (BK2-014).
+      const def = definitionOf(ctx, card);
+      if (def.kind !== 'effect') return false;
+      if (spec.effectCards !== 'any' && def.duration !== spec.effectCards) return false;
+    }
     if (spec.subtype !== undefined && !subtypesOf(ctx, card).includes(spec.subtype)) return false;
     if (spec.unlocked === true && card.locked) return false;
     // Rules.md §11 ③ — the participants, not merely everyone standing in the
@@ -568,6 +595,8 @@ export function legalTargets(
     if (spec.inCombat === true && !battle?.participants.includes(card.instanceId)) return false;
     // §11 — committed *and* on the attacking side, which `inCombat` alone
     // does not distinguish.
+    // §11 ① — the character leading the fight running right now.
+    if (spec.vanguard === true && battle?.vanguard !== card.instanceId) return false;
     if (spec.attacking === true) {
       if (!battle?.participants.includes(card.instanceId)) return false;
       if (card.controller !== battle.attacker) return false;
@@ -853,6 +882,12 @@ function effectRelevant(
       // Silencing outlasts the moment and is worth doing wherever there is
       // something to silence.
       return reaches(effect.who);
+    case 'discardDownTo':
+      // Card advantage, which §13 counts wherever it happens.
+      return true;
+    case 'openedCardsLock':
+      // Continuous, read off the board where a card is opened.
+      return ability.trigger === 'always';
     case 'seeCapital':
       // Knowing where the capital is bears on §1's whole win condition, so
       // it is worth having whenever it is still hidden from you.
@@ -1000,6 +1035,13 @@ export function canActivate(
   if (
     entry.ability.cost?.lockAlly &&
     legalTargets(ctx, state, card, entry.ability.cost.lockAlly, state.battle).length === 0
+  ) {
+    return false;
+  }
+  // Nobody to spend means the price cannot be paid, so it is never offered.
+  if (
+    entry.ability.cost?.destroyAlly &&
+    legalTargets(ctx, state, card, entry.ability.cost.destroyAlly, state.battle).length === 0
   ) {
     return false;
   }
@@ -1233,6 +1275,18 @@ export function conditionHolds(
       ).length;
       return mine === 0 && theirs >= condition.enemyAtLeast;
     }
+    case 'aloneHere':
+      return !Object.values(state.cards).some(
+        (card) =>
+          card.zone === 'city' &&
+          card.faceUp &&
+          card.cityIndex === source.cityIndex &&
+          card.controller === source.controller &&
+          card.instanceId !== source.instanceId &&
+          isCharacter(ctx, card),
+      );
+    case 'selfUnlocked':
+      return !source.locked;
     case 'cityLevelAtMost':
       // "Area level" reads as City Level: §5 defines one global value.
       return cityLevel(state) <= condition.level;

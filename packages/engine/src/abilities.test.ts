@@ -18,6 +18,7 @@ import {
   turnOrdinal,
   cityLevel,
   openLevelFor,
+  opensLocked,
 } from './rules.js';
 import { isCityHidden, isHidden, viewFor } from './view.js';
 import type { CardInstance, GameAction, GameEvent, GameState } from './types.js';
@@ -3658,5 +3659,113 @@ describe('BK1-151 negates nearby Normal Effects (Rules.md §14)', () => {
     // Distance 1 from city 2 reaches city 3, not city 0 (§15).
     expect(state.cards[near.card]?.counters['negated']).toBe(1);
     expect(state.cards[far.card]?.counters['negated']).toBeUndefined();
+  });
+});
+
+describe('BK2 (Rules.md §13)', () => {
+  it('BK2-046 locks characters as they are opened, and stops when it leaves', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+
+    const dream = place(state, player, 'BK2-046', 1);
+    state = dream.state;
+
+    const soldier = place(state, player, GREEN, 2, { faceUp: false });
+    state = openable(soldier.state, player, soldier.card);
+    state = apply(state, player, openOf(state, player, soldier.card) as GameAction);
+    // Opened straight into a lock (§6, §7).
+    expect(state.cards[soldier.card]?.faceUp).toBe(true);
+    expect(state.cards[soldier.card]?.locked).toBe(true);
+
+    // Continuous, so it stops the instant the Eternal goes — nothing to undo.
+    const gone = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [dream.card]: { ...cardOf(state, dream.card), zone: 'trash' as const },
+      },
+    };
+    expect(opensLocked({ registry }, gone)).toBe(false);
+  });
+
+  it('BK2-007 Pippin scales with the company he keeps', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const pippin = place(state, player, 'BK2-007', 2);
+    state = pippin.state;
+    // A 1/2 enemy: nothing dies until Pippin has friends.
+    const enemy = place(state, other, 'BK1-002', 2);
+    state = enemy.state;
+
+    // Alone, "for each *other* character you control" counts nobody, so the
+    // ability deals nothing at all.
+    let solo = atMain(state);
+    const useAlone = engine
+      .legalActions(solo, player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === pippin.card);
+    expect(useAlone, 'the ability is still offered').toBeDefined();
+    solo = apply(solo, player, useAlone as GameAction);
+    for (let n = 0; n < 8 && solo.stack.length > 0; n++) {
+      solo = apply(solo, solo.turn.priorityPlayer, { type: 'PASS_PRIORITY' });
+    }
+    expect(solo.cards[enemy.card]?.damage).toBe(0);
+    expect(solo.cards[enemy.card]?.zone).toBe('city');
+
+    // With two friends standing here, the same blow lands for 2.
+    let crowded = state;
+    for (let n = 0; n < 2; n++) {
+      const friend = place(crowded, player, 'BK1-001', 2);
+      crowded = friend.state;
+    }
+    crowded = atMain(crowded);
+    const use = engine
+      .legalActions(crowded, player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === pippin.card);
+    crowded = apply(crowded, player, use as GameAction);
+    // §14 — a used ability goes on the stack and resolves once both players
+    // have passed on it, so drain the round before reading the board.
+    for (let n = 0; n < 8 && crowded.stack.length > 0; n++) {
+      const waiting = crowded.turn.priorityPlayer;
+      crowded = apply(crowded, waiting, { type: 'PASS_PRIORITY' });
+    }
+    // Three friends here besides Pippin, so three damage — "for each other
+    // character you control in this area".
+    // Three friends here besides Pippin, so three damage — enough to kill a
+    // 1/2, which is the visible proof that the scale was applied.
+    expect(crowded.cards[enemy.card]?.zone).toBe('trash');
+  });
+
+  it('BK2-042 takes both players down to two cards, and spares a small hand', () => {
+    // Black card, so a black deck is what can pay for it (§7).
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // Strip the opponent to one card, so "2 or less" leaves them alone.
+    const theirHand = [...(state.zoneOrder[`${other}:hand`] ?? [])];
+    for (const id of theirHand.slice(1)) {
+      state = {
+        ...state,
+        cards: { ...state.cards, [id]: { ...cardOf(state, id), zone: 'trash' as const } },
+        zoneOrder: Object.fromEntries(
+          Object.entries(state.zoneOrder).map(([key, order]) => [
+            key,
+            key === `${other}:hand` ? order.filter((c) => c !== id) : order,
+          ]),
+        ),
+      };
+    }
+    expect(zoneSize(state, other, 'hand')).toBe(1);
+
+    const entrance = place(state, player, 'BK2-042', 2, { faceUp: false });
+    state = openable(entrance.state, player, entrance.card);
+    state = apply(state, player, openOf(state, player, entrance.card) as GameAction);
+
+    // "All players" includes its own controller (§13).
+    expect(zoneSize(state, player, 'hand')).toBe(2);
+    // A hand already under the size loses nothing.
+    expect(zoneSize(state, other, 'hand')).toBe(1);
   });
 });

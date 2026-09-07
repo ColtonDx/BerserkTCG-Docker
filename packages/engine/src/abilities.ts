@@ -134,6 +134,17 @@ export interface TargetSpec {
    */
   readonly attacking?: boolean;
   /**
+   * Only the character leading the battle running right now (BK2-009).
+   * Rules.md §11 ① — with no battle on, nothing qualifies.
+   */
+  readonly vanguard?: boolean;
+  /**
+   * Point at a face-up Effect card rather than a character (BK2-014, "1
+   * Eternal card within 1 distance"). Rules.md §3. Mirrors
+   * {@link Selector.effectCards}.
+   */
+  readonly effectCards?: 'eternal' | 'normal' | 'any';
+  /**
    * Point at a face-down Set Card instead of a standing character (BK1-146,
    * "destroy a set card in this area"). Rules.md §7.
    *
@@ -244,7 +255,11 @@ export type Condition =
    * least `enemyAtLeast` (BK1-155). Rules.md §12 — a card for the player who
    * is losing badly, so both halves are printed and both are checked.
    */
-  | { readonly when: 'losingBadly'; readonly enemyAtLeast: number };
+  | { readonly when: 'losingBadly'; readonly enemyAtLeast: number }
+  /** Its controller has no other character in its area (BK2-003). */
+  | { readonly when: 'aloneHere' }
+  /** It is standing rather than locked (BK2-005). Rules.md §6. */
+  | { readonly when: 'selfUnlocked' };
 
 /**
  * What the ability does when it applies.
@@ -437,7 +452,13 @@ export type Effect =
    * that dealt its own separate kind of damage would need all three rules
    * again, and would get one of them wrong.
    */
-  | { readonly do: 'damage'; readonly who: Selector; readonly amount: number }
+  | {
+      readonly do: 'damage';
+      readonly who: Selector;
+      readonly amount: number;
+      /** §13's "for each" — scales the blow by what this selector counts. */
+      readonly per?: Selector;
+    }
   /**
    * Softens damage on its way in, to a floor of nothing.
    *
@@ -560,6 +581,24 @@ export type Effect =
    * it would raise City Level for both players and show the opponent too.
    */
   | { readonly do: 'seeCapital' }
+  /**
+   * While this card stands, a character turning face up is locked as it
+   * arrives (BK2-046). Rules.md §6 and §7. Continuous: read off the board
+   * where a card is opened, never resolved.
+   */
+  | { readonly do: 'openedCardsLock' }
+  /**
+   * Discard until a hand is no bigger than `size` (BK2-042). Rules.md §13.
+   *
+   * Not a count: how many go depends on how many are held, so a player
+   * already at or under the size loses nothing. `both` reaches its own
+   * controller too, which is what the printed "all players" means.
+   */
+  | {
+      readonly do: 'discardDownTo';
+      readonly player: EffectPlayer | 'both';
+      readonly size: number;
+    }
   /**
    * Silence the reached cards' abilities until end of turn (BK1-151).
    * Rules.md §14.
@@ -718,6 +757,18 @@ export type Trigger =
    */
   | 'enemyCapture'
   /**
+   * Its controller has just captured a city (BK2-011, BK2-020). Rules.md
+   * §12 — the mirror of `enemyCapture`, and the captured area travels as the
+   * chosen area in the same way.
+   */
+  | 'ownCapture'
+  /**
+   * An enemy character has just been destroyed in this card's area
+   * (BK2-037). Rules.md §3 — fired on the way out, like `death`, but read
+   * off the *watcher* rather than the card dying.
+   */
+  | 'enemyDeathHere'
+  /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
    */
@@ -739,6 +790,15 @@ export interface ActivationCost {
    * an Eternal Effect is not a character and never stands unlocked.
    */
   readonly lockAlly?: TargetSpec;
+  /**
+   * "Destroy 1 character you control:" — a character the player picks goes
+   * to the Trash to pay (BK2-041). Rules.md §13.
+   *
+   * Distinct from {@link destroySelf}, which spends the card whose ability
+   * it is: here the player chooses who pays, so the ability is never offered
+   * when there is nobody eligible.
+   */
+  readonly destroyAlly?: TargetSpec;
   /** Cards out of hand into the Trash, in the DesignNotes 8 notation. */
   readonly pay?: string;
   /** "Can only be used once per turn." */
@@ -2607,6 +2667,244 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         who: { scope: 'others', side: 'any', maxDistance: 1, effectCards: 'normal' },
       },
       text: 'When this card is opened negate all abilities of normal effects with 1 distance until end of turn.',
+    },
+  ],
+
+  /* ================================================================ BK2 */
+
+  'BK2-003': [
+    {
+      trigger: 'always',
+      condition: { when: 'aloneHere' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
+      text: 'While you control no other characters in this area, this card gets +2/+2',
+    },
+  ],
+  'BK2-005': [
+    {
+      trigger: 'always',
+      condition: { when: 'selfUnlocked' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { hp: 2 } },
+      text: 'While this character is unlocked it has +0/+2',
+    },
+  ],
+  'BK2-006': [
+    {
+      trigger: 'always',
+      // "Cannot participate in battle" — barred from either side (§11), and
+      // conditional on the board rather than written onto the card, so it
+      // lifts the moment the enemy leaves.
+      condition: { when: 'enemyLevelHere', level: 2 },
+      effect: { do: 'cannotBattle', who: { scope: 'self' } },
+      text: 'This character cannot participate in battle while there is an enemy character level 2 or above in this area.',
+    },
+  ],
+  'BK2-008': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 1 },
+      text: 'When you open this card, draw 1 card.',
+    },
+  ],
+  'BK2-013': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'mercenary' },
+        stats: { hp: 1 },
+      },
+      text: 'All Mercenaries you control gain +0/+1',
+    },
+  ],
+  'BK2-019': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'others', side: 'yours', where: 'thisArea' },
+        stats: { power: 1, hp: 1 },
+      },
+      text: 'All other characters you control in this area gain +1/+1',
+    },
+  ],
+  'BK2-030': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea' },
+      // The named victim takes 3; everybody else here takes 1. One printed
+      // line, so one ability with a `then`.
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      then: [{ do: 'damage', who: { scope: 'others', side: 'any', where: 'thisArea' }, amount: 1 }],
+      text: 'When this card is opened, deal 3 damage to target character in this area. All other characters in this area take 1 damage.',
+    },
+  ],
+  'BK2-035': [
+    {
+      trigger: 'turnStart',
+      effect: { do: 'mill', player: 'opponent', count: 2 },
+      text: 'At the beginning of your turn, your opponent puts the top 2 cards of their deck in the graveyard.',
+    },
+  ],
+  'BK2-038': [
+    {
+      trigger: 'open',
+      // The opponent picks which of their own Set Cards goes (§13).
+      effect: {
+        do: 'theyDestroy',
+        who: { scope: 'any', side: 'theirs', where: 'thisArea', faceDown: true },
+        count: 1,
+      },
+      text: 'When this card is opened your opponent selects and destroys one of their set cards in this area.',
+    },
+  ],
+  'BK2-041': [
+    {
+      trigger: 'activated',
+      quick: true,
+      // "Destroy 1 character you control" — a cost paid by locking nobody
+      // and losing somebody instead. It is not `destroySelf`: the player
+      // chooses which of their characters pays.
+      cost: { destroyAlly: { side: 'yours', where: 'thisArea' } },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
+      text: '(Quick) Destroy 1 character you control: Until end of turn this card gains +2/+2',
+    },
+  ],
+  'BK2-044': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea' },
+      effect: { do: 'lock', who: { scope: 'target' } },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'When this card is opened, lock a character in this area and then draw 1 card.',
+    },
+  ],
+
+  'BK2-011': [
+    {
+      trigger: 'ownCapture',
+      // "Additional", on top of §12's two — a second draw, not a replacement,
+      // so this is a plain draw rather than a `captureDraw` override.
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'Whenever you capture an area, draw 2 additional cards.',
+    },
+  ],
+  'BK2-014': [
+    {
+      trigger: 'open',
+      // "1 Eternal card within 1 distance" — either side's, and Eternal only.
+      target: { maxDistance: 1, faceDown: false, effectCards: 'eternal' },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: 'When this card is opened destroy 1 Eternal card within 1 distance.',
+    },
+  ],
+  'BK2-027': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      effect: { do: 'draw', player: 'you', count: 1 },
+      then: [{ do: 'discard', player: 'you', count: 1 }],
+      text: 'Tap: Draw 1 card and then discard 1 card.',
+    },
+  ],
+  'BK2-031': [
+    {
+      trigger: 'open',
+      // "Each character you control" — everywhere, not just here.
+      effect: {
+        do: 'reduceDamage',
+        who: { scope: 'any', side: 'yours', where: 'anywhere' },
+        amount: 1,
+      },
+      text: 'When this card is opened, reduce the next damage that each character you control would be dealt by 1, until end of turn.',
+    },
+  ],
+  'BK2-032': [
+    {
+      trigger: 'open',
+      // "Reduced to 0" is a shield nothing can exceed, for the turn.
+      effect: {
+        do: 'reduceDamage',
+        who: { scope: 'any', side: 'yours', where: 'thisArea' },
+        amount: 99,
+      },
+      text: 'When this card is opened, reduce damage dealt to your characters in this area to 0 until end of turn.',
+    },
+  ],
+  'BK2-037': [
+    {
+      trigger: 'enemyDeathHere',
+      effect: { do: 'discard', player: 'opponent', count: 1 },
+      text: 'Whenever an enemy character dies in this area, your opponent must discard 1 card from their hand.',
+    },
+  ],
+  'BK2-042': [
+    {
+      trigger: 'open',
+      // Both players down to two, so it is a discard *to* a size rather than
+      // a count — its own controller included.
+      effect: { do: 'discardDownTo', player: 'both', size: 2 },
+      text: 'When this card is opened, all players discard cards from their hands until they have 2 or less cards in hand.',
+    },
+  ],
+
+  'BK2-004': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { destroySelf: true },
+      // "Only if you control a card named Griffith" — a gate on using it, so
+      // `canActivate` never offers it otherwise.
+      condition: { when: 'youControlName', name: 'Griffith' },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: '(quick) Destroy this card: Target character in this area takes 2 damage. You can only activate this ability if you control a card named Griffith.',
+    },
+  ],
+  'BK2-007': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      target: { side: 'theirs', where: 'thisArea' },
+      // "For each *other* character you control here" — Pippin excluded, and
+      // an empty board means no damage at all, which is the printed reading.
+      effect: {
+        do: 'damage',
+        who: { scope: 'target' },
+        amount: 1,
+        per: { scope: 'others', side: 'yours', where: 'thisArea' },
+      },
+      text: '(quick) Tap: Target an enemy character in this area. It takes 1 damage for each other character you control in this area.',
+    },
+  ],
+  'BK2-009': [
+    {
+      trigger: 'open',
+      // "Ally vanguard within 1 distance" — the character leading a fight,
+      // so with no battle on there is nobody to point at.
+      target: { side: 'yours', maxDistance: 1, vanguard: true },
+      effect: { do: 'buff', who: { scope: 'target' }, stats: { power: 3, hp: 2 } },
+      text: 'When this card is opened, target 1 ally vanguard character within 1 distance and it gains +3/+2 until end of turn',
+    },
+  ],
+  'BK2-020': [
+    {
+      trigger: 'ownCapture',
+      effect: { do: 'draw', player: 'you', count: 1 },
+      text: 'Whenever you capture this area, draw 1 card.',
+    },
+  ],
+  'BK2-046': [
+    {
+      trigger: 'always',
+      effect: { do: 'openedCardsLock' },
+      text: 'While this card is open, when characters are opened, they become locked.',
     },
   ],
 

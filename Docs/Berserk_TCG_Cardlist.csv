@@ -164,51 +164,51 @@ BK1,158,Legendary Mobilization,R,no,2,,,,,no,Effect,Eternal,"When this card is o
 BK1,159,Preposterous Story,R,no,2,,,,,no,Effect,Normal,"When this card as opened, look at the top 4 cards of your deck and put them back in any order. Do not shuffle."
 BK1,160,New Wings,R,no,3,,,,,no,Effect,Normal,"When this card is opened, move a target character you control to this area."
 BK2,1,Mercenary,W,no,0,0,1,1,1,no,character,,
-BK2,2,Griffith,W,yes,2,0,1,3,3,no,character,,
-BK2,3,Guts,W,yes,1,0,1,2,2,no,character,,
-BK2,4,Casca,W,yes,1,0,1,2,2,no,character,,
-BK2,5,Judeau,W,yes,1,1,1,2,1,no,character,,
-BK2,6,Corkus,W,yes,1,0,1,2,3,no,character,,
-BK2,7,Pippin,W,yes,1,0,1,2,1,no,character,,
-BK2,8,Rickert,W,yes,1,0,1,1,2,no,character,,
-BK2,9,Lone Horseman Charge,W,no,2,,,,,yes,Effect,Normal,
-BK2,10,Death God's Assault,W,no,3,,,,,yes,Effect,Normal,
-BK2,11,Moment of Fulfillment,W,no,1,,,,,no,Effect,Eternal,
-BK2,12,The Star of Victory,W,no,1,,,,,yes,Effect,Normal,
-BK2,13,Faithful Followers,W,no,1,,,,,no,Effect,Eternal,
-BK2,14,Protested Mission,W,no,1,,,,,yes,Effect,Normal,
-BK2,15,Courtship Failure,W,no,1,,,,,no,Effect,Normal,
-BK2,16,Knighting Ceremony,W,no,0,,,,,no,Effect,Eternal,
+BK2,2,Griffith,W,yes,2,0,1,3,3,no,character,,"At the beginning of your turn you may search your deck for a card named Mercenary and set it in any area that you control a ""Hawk"" character in. Then shuffle your deck. Then you may open that card."
+BK2,3,Guts,W,yes,1,0,1,2,2,no,character,,"While you control no other characters in this area, this card gets +2/+2"
+BK2,4,Casca,W,yes,1,0,1,2,2,no,character,,(quick) Destroy this card: Target character in this area takes 2 damage. You can only activate this ability if you control a card named Griffith.
+BK2,5,Judeau,W,yes,1,1,1,2,1,no,character,,While this character is unlocked it has +0/+2
+BK2,6,Corkus,W,yes,1,0,1,2,3,no,character,,This character cannot participate in battle while there is an enemy character level 2 or above in this area.
+BK2,7,Pippin,W,yes,1,0,1,2,1,no,character,,(quick) Tap: Target an enemy character in this area. It takes 1 damage for each other character you control in this area.
+BK2,8,Rickert,W,yes,1,0,1,1,2,no,character,,"When you open this card, draw 1 card."
+BK2,9,Lone Horseman Charge,W,no,2,,,,,yes,Effect,Normal,"When this card is opened, target 1 ally vanguard character within 1 distance and it gains +3/+2 until end of turn"
+BK2,10,Death God's Assault,W,no,3,,,,,yes,Effect,Normal,"When this card is opened, the area level is reduced by 1. Draw 1 card."
+BK2,11,Moment of Fulfillment,W,no,1,,,,,no,Effect,Eternal,"Whenever you capture an area, draw 2 additional cards."
+BK2,12,The Star of Victory,W,no,1,,,,,yes,Effect,Normal,"When this card is opened, choose a unique character you control within 1 distance. Until end of turns it gains +1/+1 for every character you control in this area."
+BK2,13,Faithful Followers,W,no,1,,,,,no,Effect,Eternal,All Mercenaries you control gain +0/+1
+BK2,14,Protested Mission,W,no,1,,,,,yes,Effect,Normal,When this card is opened destroy 1 Eternal card within 1 distance.
+BK2,15,Courtship Failure,W,no,1,,,,,no,Effect,Normal,"When this card is opened, reveal all enemy set cards in all areas. Select 1 of them that isn't a character and destroy it. Then draw 2 cards."
+BK2,16,Knighting Ceremony,W,no,0,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. All Mercenaries you control are Hawks in addition to their other types."
 BK2,17,Mercenary,G,no,0,0,1,1,1,no,character,,
-BK2,18,Guts,GG,yes,4,0,1,7,7,no,character,,
-BK2,19,Casca,G,yes,1,0,1,1,1,no,character,,
-BK2,20,Farnese,G,yes,1,0,1,1,2,no,character,,
-BK2,21,Serpico,G,yes,3,0,1,3,4,no,character,,
-BK2,22,Schierke,G,yes,3,0,1,0,1,no,character,,
-BK2,23,Isidro,G,yes,2,1,1,1,1,no,character,,
-BK2,24,3 Days Without Sun,G,no,2,,,,,yes,Effect,Normal,
-BK2,25,Encounter with an Elf,G,no,2,,,,,no,Effect,Normal,
-BK2,26,Outcome of Misconception,G,no,2,,,,,no,Effect,Normal,
-BK2,27,Delivery at Dawn,G,no,2,,,,,no,Effect,Eternal,
-BK2,28,Peaceful Respite,G,no,2,,,,,no,Effect,Normal,
-BK2,29,Tactical Decoy,G,no,2,,,,,no,Effect,Normal,
-BK2,30,Wholesale Destruction,G,no,3,,,,,no,Effect,Normal,
-BK2,31,Coca Leaves,G,no,2,,,,,yes,Effect,Normal,
-BK2,32,Unthinkable Ally,G,no,4,,,,,no,Effect,Normal,
+BK2,18,Guts,GG,yes,4,0,1,7,7,no,character,,(Quick) Alteration. (Quick) Tap: Until end of turn all green characters you control in this area get +0/+2
+BK2,19,Casca,G,yes,1,0,1,1,1,no,character,,All other characters you control in this area gain +1/+1
+BK2,20,Farnese,G,yes,1,0,1,1,2,no,character,,"Whenever you capture, or successfully defend this area, draw 1 card."
+BK2,21,Serpico,G,yes,3,0,1,3,4,no,character,,"(Quick) 1: Choose one of the following effects: (1) Deal 1 damage to target character in this area. (2) Until end of turn, reduce the next damage this card would take by 1. This ability can only be activated once per turn."
+BK2,22,Schierke,G,yes,3,0,1,0,1,no,character,,Tap: All other characters in this area take 3 damage. This card cannot be used in the Capital.
+BK2,23,Isidro,G,yes,2,1,1,1,1,no,character,,"When this card is opened, put 2 ""Explosive"" counters on it. (Quick) Remove 1 Explosive Counter: Choose 1 character in this area, it takes 2 damage. This ability may only be used once per turn"
+BK2,24,3 Days Without Sun,G,no,2,,,,,yes,Effect,Normal,"When this card is opened, target a character you control within 1 distance. The next damage that card would take this turn is reduced to 0. If damage is succesfully prevented this way, draw 2 cards."
+BK2,25,Encounter with an Elf,G,no,2,,,,,no,Effect,Normal,"When this card is opened, choose 3 cards from your graveyard or 3 cards from your opponents graveyard and shuffle them back into their owners deck. Then that player draws 3 cards."
+BK2,26,Outcome of Misconception,G,no,2,,,,,no,Effect,Normal,"You can only open this card if your opponent does not occupy this area. Choose a character your opponent controls that is involved in combat, and remove it from combat (leave it locked, but not participating in dealing or taking damage)."
+BK2,27,Delivery at Dawn,G,no,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. Tap: Draw 1 card and then discard 1 card."
+BK2,28,Peaceful Respite,G,no,2,,,,,no,Effect,Normal,You cannot open this card if your opponent controls a card (set or open) in this area. Draw 4 cards.
+BK2,29,Tactical Decoy,G,no,2,,,,,no,Effect,Normal,"Target a character you control and a character your opponent controls (must have valid targets for both), move them to the same area within 1 distance."
+BK2,30,Wholesale Destruction,G,no,3,,,,,no,Effect,Normal,"When this card is opened, deal 3 damage to target character in this area. All other characters in this area take 1 damage."
+BK2,31,Coca Leaves,G,no,2,,,,,yes,Effect,Normal,"When this card is opened, reduce the next damage that each character you control would be dealt by 1, until end of turn."
+BK2,32,Unthinkable Ally,G,no,4,,,,,no,Effect,Normal,"When this card is opened, reduce damage dealt to your characters in this area to 0 until end of turn."
 BK2,33,Mercenary,B,no,0,0,1,1,1,no,character,,
-BK2,34,Insect Swarm,B,no,1,0,2,1,1,no,character,,
-BK2,35,Ogre,B,no,3,0,1,3,4,no,character,,
+BK2,34,Insect Swarm,B,no,1,0,2,1,1,no,character,,"Whenever this character moves, you may select 1 other character in the area it moved to and deal 1 damage to it."
+BK2,35,Ogre,B,no,3,0,1,3,4,no,character,,"At the beginning of your turn, your opponent puts the top 2 cards of their deck in the graveyard."
 BK2,36,Kelpie,B,no,3,1,1,2,5,no,character,,
-BK2,37,Boss Troll,B,no,2,1,1,2,3,no,character,,
-BK2,38,Zodd,1B,yes,3,0,2,4,5,no,character,,
-BK2,39,Rosine,BB,yes,3,1,3,5,5,no,character,,
-BK2,40,Rosine,B,yes,3,0,2,4,3,no,character,,
-BK2,41,Slan,BBB,yes,3,0,2,7,7,no,character,,
-BK2,42,Zodd's Entrance,B,no,3,,,,,no,Effect,Normal,
-BK2,43,Prophecy of Death,B,no,2,,,,,no,Effect,Eternal,
-BK2,44,Creeping Shadow,B,no,3,,,,,no,Effect,Normal,
-BK2,45,Swift Counter,B,no,1,,,,,no,Effect,Normal,
-BK2,46,A Dream of Peace,B,no,2,,,,,no,Effect,Eternal,
+BK2,37,Boss Troll,B,no,2,1,1,2,3,no,character,,"Whenever an enemy character dies in this area, your opponent must discard 1 card from their hand."
+BK2,38,Zodd,1B,yes,3,0,2,4,5,no,character,,When this card is opened your opponent selects and destroys one of their set cards in this area.
+BK2,39,Rosine,BB,yes,3,1,3,5,5,no,character,,"(Quick) Alteration. Whenever this character moves, choose another character in this area and deal 3 damage to it."
+BK2,40,Rosine,B,yes,3,0,2,4,3,no,character,,"(Quick) Tap: Target a level 2 or lower character you control within 1 distance, move this character and that character to any single area within 2 distance."
+BK2,41,Slan,BBB,yes,3,0,2,7,7,no,character,,(Quick) Destroy 1 character you control: Until end of turn this card gains +2/+2
+BK2,42,Zodd's Entrance,B,no,3,,,,,no,Effect,Normal,"When this card is opened, all players discard cards from their hands until they have 2 or less cards in hand."
+BK2,43,Prophecy of Death,B,no,2,,,,,no,Effect,Eternal,Tap: your opponent must discard a card or destroy a set card they control or destroy a character they control. They choose.
+BK2,44,Creeping Shadow,B,no,3,,,,,no,Effect,Normal,"When this card is opened, lock a character in this area and then draw 1 card."
+BK2,45,Swift Counter,B,no,1,,,,,no,Effect,Normal,"When this card is opened, target a player. That player must choose one of the following effects 3 times (distributed any way): (1) discard a card (2) destroy a set card they control (3) destroy an open character they control"
+BK2,46,A Dream of Peace,B,no,2,,,,,no,Effect,Eternal,"While this card is open, when characters are opened, they become locked."
 BK2,47,Power of One's Death,B,no,4,,,,,yes,Effect,Normal,
 BK2,48,Overrunning Territory,B,no,2,,,,,no,Effect,Eternal,
 BK2,49,Mercenary,R,no,0,0,1,1,1,no,character,,

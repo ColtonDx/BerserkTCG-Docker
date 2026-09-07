@@ -37,6 +37,7 @@ import {
   checkWinConditions,
   cityLevel,
   openLevelFor,
+  opensLocked,
   conditionHolds,
   damageAfterReduction,
   definitionOf,
@@ -1206,6 +1207,8 @@ function openCard(
   // Remembered so "the turn it is opened" can still be asked later in the
   // turn. Rules.md §7 — cleared when the card leaves the field.
   card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+  // BK2-046 — while it stands, whatever is opened arrives locked (§6, §7).
+  if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
   if (!inBattle && !inWindow) draft.turn.openedThisTurn = true;
   events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
   // A character turning up here is an arrival, exactly as a move is (§13).
@@ -1987,6 +1990,23 @@ function useAbility(
     lockedAlly = picked;
   }
 
+  let doomedAlly: CardInstanceId | undefined;
+  if (cost?.destroyAlly) {
+    const picked = choices.shift();
+    if (picked === undefined) {
+      return violation(
+        'ILLEGAL_TARGET',
+        'That ability must destroy one of your characters.',
+        '§13',
+      );
+    }
+    const allowed = legalTargets(ctx, draft, card as CardInstance, cost.destroyAlly, draft.battle);
+    if (!allowed.some((option) => option.instanceId === picked)) {
+      return violation('ILLEGAL_TARGET', 'That character cannot pay for this.', '§13');
+    }
+    doomedAlly = picked;
+  }
+
   let chosen: CardInstanceId | undefined;
   if (entry.ability.target) {
     const picked = choices.shift();
@@ -2036,6 +2056,12 @@ function useAbility(
   if (lockedAlly !== undefined) {
     const ally = draft.cards[lockedAlly];
     if (ally) ally.locked = true;
+  }
+  // The sacrificed character goes at once — unlike `destroySelf`, nothing
+  // about it is needed to resolve the effect, so there is no stack to fizzle.
+  if (doomedAlly !== undefined) {
+    const ally = draft.cards[doomedAlly];
+    if (ally) destroy(ctx, draft, ally, events);
   }
   if (cost?.oncePerTurn === true) {
     card.counters[usedOnTurnCounter(entry.index)] = turnOrdinal(draft);
@@ -2393,6 +2419,7 @@ function runEffect(
       moveToCity(draft, found.instanceId, city, { controller, faceUp: false });
       found.faceUp = true;
       found.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+      if (opensLocked(ctx, draft)) found.locked = true;
       events.push({ type: 'CARD_OPENED', player: controller, card: found.instanceId, city });
       // §11 ③ — it steps into the fight the destroyed character was in.
       if (effect.joinsBattle === true && draft.battle && draft.battle.city === city) {
@@ -2547,12 +2574,20 @@ function runEffect(
       // Marked as damage rather than dealt as its own thing, so it stacks
       // with combat damage, kills at HP and clears at end of turn — the
       // three rules a separate kind of damage would have to repeat.
+      // §13's "for each": a scale of nothing deals nothing, which is the
+      // printed behaviour of a line counting an empty area.
+      const scale = scaleOf(ctx, draft, source, effect.per);
+      if (scale === 0) return false;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
         // Not combat: a card that only softens blows "during combat" says
         // nothing about a spell, and must not quietly absorb this.
-        const amount = damageAfterReduction(ctx, draft, card as CardInstance, effect.amount, {
-          combat: false,
-        });
+        const amount = damageAfterReduction(
+          ctx,
+          draft,
+          card as CardInstance,
+          effect.amount * scale,
+          { combat: false },
+        );
         if (amount === 0) continue;
         card.damage += amount;
         events.push({
@@ -2598,6 +2633,32 @@ function runEffect(
       }
       return silenced > 0;
     }
+
+    case 'discardDownTo': {
+      // How many go depends on how many are held, so a hand already at or
+      // under the size loses nothing (BK2-042).
+      const players =
+        effect.player === 'both'
+          ? [...draft.seats]
+          : [targetPlayer(draft, controller, effect.player, source)].filter(
+              (seat): seat is PlayerId => seat !== null,
+            );
+      let took = 0;
+      for (const seat of players) {
+        const over = handSize(draft, seat) - effect.size;
+        if (over <= 0) continue;
+        // At random, like every other discard the holder does not choose:
+        // "discard until" names a number, not the cards.
+        forcedDiscard(draft, seat, over, events);
+        took += over;
+      }
+      return took > 0;
+    }
+
+    case 'openedCardsLock':
+      // Continuous, like `cannotAttack`: asked of the board where a card is
+      // opened by `rules.ts:opensLocked`. Nothing to do when it resolves.
+      return true;
 
     case 'seeCapital': {
       const capital = draft.cities.find((city) => city.royalCapital);
@@ -2775,6 +2836,7 @@ function runEffect(
         if (card.faceUp || card.cityIndex === undefined) continue;
         card.faceUp = true;
         card.counters = { ...card.counters, [OPENED_ON_TURN]: turnOrdinal(draft) };
+        if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
         events.push({
           type: 'CARD_OPENED',
           player: card.controller,
@@ -2849,8 +2911,14 @@ function destroy(
   events: GameEvent[],
 ): void {
   fireAbilities(ctx, draft, card as CardInstance, 'death', events);
+  // Cards watching for an enemy to fall here (BK2-037), asked before it
+  // leaves for the same reason `death` is: an ability read off the board is
+  // read off cards that are on it.
+  const fellIn = card.cityIndex;
+  const fallen = card.controller;
   moveToZone(draft, card.instanceId, { player: card.owner, zone: 'trash' });
   events.push({ type: 'CHARACTER_DESTROYED', card: card.instanceId });
+  if (fellIn !== undefined) fireEnemyDeath(ctx, draft, fallen, fellIn, events);
 }
 
 /** The cards on the field an effect's selector reaches, as drafts to write to. */
@@ -3030,6 +3098,7 @@ function chooseCard(
     events.push({ type: 'CARD_SET', player: actor, card: cardId, city: kind.city });
     card.faceUp = true;
     card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+    if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
     events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city: kind.city });
     fireArrival(ctx, draft, card, events);
     // The card's own on-open abilities fire, with nothing chosen for them:
@@ -3086,6 +3155,7 @@ function chooseCard(
         // what puts it there, not the turn's one open (§10 ③).
         card.faceUp = true;
         card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+        if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
         events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
         fireArrival(ctx, draft, card, events);
         fireAbilities(ctx, draft, card as CardInstance, 'open', events);
@@ -3199,6 +3269,36 @@ function arrived(draft: Draft<GameState>, player: PlayerId, city: number): void 
 }
 
 /**
+ * Fires `enemyDeathHere` for everything standing where a character just
+ * fell, on the *other* side from the one that died. Rules.md §3.
+ *
+ * Run after the body has gone to the Trash, so a watcher that also died in
+ * the same blow is no longer on the field to answer — the board it reads is
+ * the board as it now stands.
+ */
+function fireEnemyDeath(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  fallen: PlayerId,
+  city: number,
+  events: GameEvent[],
+): void {
+  for (const watcher of Object.values(draft.cards)) {
+    if (watcher.zone !== 'city' || !watcher.faceUp) continue;
+    if (watcher.cityIndex !== city) continue;
+    // "Whenever an *enemy* character dies" — read from the watcher's side.
+    if (watcher.controller === fallen) continue;
+    for (const ability of abilitiesOf(ctx, watcher as CardInstance)) {
+      if (ability.trigger !== 'enemyDeathHere') continue;
+      if (!conditionHolds(ctx, draft, watcher as CardInstance, ability.condition, draft.battle)) {
+        continue;
+      }
+      resolveEffect(ctx, draft, watcher as CardInstance, ability, events);
+    }
+  }
+}
+
+/**
  * Fires the `enemyCapture` trigger for everything the capturing player does
  * *not* control. Rules.md §12.
  *
@@ -3215,10 +3315,11 @@ function fireEnemyCapture(
 ): void {
   for (const watcher of Object.values(draft.cards)) {
     if (watcher.zone !== 'city' || !watcher.faceUp) continue;
-    // "Whenever your opponent captures an area" — so not the captor's own.
-    if (watcher.controller === captor) continue;
+    // Two mirrored triggers: one answers to the other player taking ground,
+    // the other to your own (§12).
+    const want = watcher.controller === captor ? 'ownCapture' : 'enemyCapture';
     for (const ability of abilitiesOf(ctx, watcher as CardInstance)) {
-      if (ability.trigger !== 'enemyCapture') continue;
+      if (ability.trigger !== want) continue;
       if (!conditionHolds(ctx, draft, watcher as CardInstance, ability.condition, draft.battle)) {
         continue;
       }

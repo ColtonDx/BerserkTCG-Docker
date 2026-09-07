@@ -3560,7 +3560,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "At the beginning of your turn you may search your deck for a card named Mercenary and set it in any area that you control a \"Hawk\" character in. Then shuffle your deck. Then you may open that card.",
     "mercenary": false
   },
   {
@@ -3582,7 +3582,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "While you control no other characters in this area, this card gets +2/+2",
     "mercenary": false
   },
   {
@@ -3604,7 +3604,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(quick) Destroy this card: Target character in this area takes 2 damage. You can only activate this ability if you control a card named Griffith.",
     "mercenary": false
   },
   {
@@ -3626,7 +3626,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "While this character is unlocked it has +0/+2",
     "mercenary": false
   },
   {
@@ -3648,7 +3648,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "This character cannot participate in battle while there is an enemy character level 2 or above in this area.",
     "mercenary": false
   },
   {
@@ -3670,7 +3670,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(quick) Tap: Target an enemy character in this area. It takes 1 damage for each other character you control in this area.",
     "mercenary": false
   },
   {
@@ -3692,7 +3692,7 @@
     "cost": "W",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "When you open this card, draw 1 card.",
     "mercenary": false
   },
   {
@@ -3714,7 +3714,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, target 1 ally vanguard character within 1 distance and it gains +3/+2 until end of turn",
     "mercenary": false
   },
   {
@@ -3736,7 +3736,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, the area level is reduced by 1. Draw 1 card.",
     "mercenary": false
   },
   {
@@ -3758,7 +3758,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Whenever you capture an area, draw 2 additional cards.",
     "mercenary": false
   },
   {
@@ -3780,7 +3780,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, choose a unique character you control within 1 distance. Until end of turns it gains +1/+1 for every character you control in this area.",
     "mercenary": false
   },
   {
@@ -3802,7 +3802,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "All Mercenaries you control gain +0/+1",
     "mercenary": false
   },
   {
@@ -3824,7 +3824,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened destroy 1 Eternal card within 1 distance.",
     "mercenary": false
   },
   {
@@ -3846,7 +3846,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, reveal all enemy set cards in all areas. Select 1 of them that isn't a character and destroy it. Then draw 2 cards.",
     "mercenary": false
   },
   {
@@ -3868,7 +3868,7 @@
     "cost": "W",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards. All Mercenaries you control are Hawks in addition to their other types.",
     "mercenary": false
   },
   {
@@ -3912,7 +3912,7 @@
     "cost": "GG",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(Quick) Alteration. (Quick) Tap: Until end of turn all green characters you control in this area get +0/+2",
     "mercenary": false
   },
   {
@@ -3934,7 +3934,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "All other characters you control in this area gain +1/+1",
     "mercenary": false
   },
   {
@@ -3956,7 +3956,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "Whenever you capture, or successfully defend this area, draw 1 card.",
     "mercenary": false
   },
   {
@@ -3978,7 +3978,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(Quick) 1: Choose one of the following effects: (1) Deal 1 damage to target character in this area. (2) Until end of turn, reduce the next damage this card would take by 1. This ability can only be activated once per turn.",
     "mercenary": false
   },
   {
@@ -4000,7 +4000,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "Tap: All other characters in this area take 3 damage. This card cannot be used in the Capital.",
     "mercenary": false
   },
   {
@@ -4022,7 +4022,7 @@
     "cost": "G",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, put 2 \"Explosive\" counters on it. (Quick) Remove 1 Explosive Counter: Choose 1 character in this area, it takes 2 damage. This ability may only be used once per turn",
     "mercenary": false
   },
   {
@@ -4044,7 +4044,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, target a character you control within 1 distance. The next damage that card would take this turn is reduced to 0. If damage is succesfully prevented this way, draw 2 cards.",
     "mercenary": false
   },
   {
@@ -4066,7 +4066,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, choose 3 cards from your graveyard or 3 cards from your opponents graveyard and shuffle them back into their owners deck. Then that player draws 3 cards.",
     "mercenary": false
   },
   {
@@ -4088,7 +4088,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "You can only open this card if your opponent does not occupy this area. Choose a character your opponent controls that is involved in combat, and remove it from combat (leave it locked, but not participating in dealing or taking damage).",
     "mercenary": false
   },
   {
@@ -4110,7 +4110,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards. Tap: Draw 1 card and then discard 1 card.",
     "mercenary": false
   },
   {
@@ -4132,7 +4132,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "You cannot open this card if your opponent controls a card (set or open) in this area. Draw 4 cards.",
     "mercenary": false
   },
   {
@@ -4154,7 +4154,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Target a character you control and a character your opponent controls (must have valid targets for both), move them to the same area within 1 distance.",
     "mercenary": false
   },
   {
@@ -4176,7 +4176,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, deal 3 damage to target character in this area. All other characters in this area take 1 damage.",
     "mercenary": false
   },
   {
@@ -4198,7 +4198,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, reduce the next damage that each character you control would be dealt by 1, until end of turn.",
     "mercenary": false
   },
   {
@@ -4220,7 +4220,7 @@
     "cost": "G",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, reduce damage dealt to your characters in this area to 0 until end of turn.",
     "mercenary": false
   },
   {
@@ -4264,7 +4264,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Whenever this character moves, you may select 1 other character in the area it moved to and deal 1 damage to it.",
     "mercenary": false
   },
   {
@@ -4286,7 +4286,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "At the beginning of your turn, your opponent puts the top 2 cards of their deck in the graveyard.",
     "mercenary": false
   },
   {
@@ -4330,7 +4330,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Whenever an enemy character dies in this area, your opponent must discard 1 card from their hand.",
     "mercenary": false
   },
   {
@@ -4352,7 +4352,7 @@
     "cost": "1B",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened your opponent selects and destroys one of their set cards in this area.",
     "mercenary": false
   },
   {
@@ -4374,7 +4374,7 @@
     "cost": "BB",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(Quick) Alteration. Whenever this character moves, choose another character in this area and deal 3 damage to it.",
     "mercenary": false
   },
   {
@@ -4396,7 +4396,7 @@
     "cost": "B",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(Quick) Tap: Target a level 2 or lower character you control within 1 distance, move this character and that character to any single area within 2 distance.",
     "mercenary": false
   },
   {
@@ -4418,7 +4418,7 @@
     "cost": "BBB",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "(Quick) Destroy 1 character you control: Until end of turn this card gains +2/+2",
     "mercenary": false
   },
   {
@@ -4440,7 +4440,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, all players discard cards from their hands until they have 2 or less cards in hand.",
     "mercenary": false
   },
   {
@@ -4462,7 +4462,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Tap: your opponent must discard a card or destroy a set card they control or destroy a character they control. They choose.",
     "mercenary": false
   },
   {
@@ -4484,7 +4484,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, lock a character in this area and then draw 1 card.",
     "mercenary": false
   },
   {
@@ -4506,7 +4506,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, target a player. That player must choose one of the following effects 3 times (distributed any way): (1) discard a card (2) destroy a set card they control (3) destroy an open character they control",
     "mercenary": false
   },
   {
@@ -4528,7 +4528,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "While this card is open, when characters are opened, they become locked.",
     "mercenary": false
   },
   {

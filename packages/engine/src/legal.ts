@@ -272,6 +272,14 @@ function abilityActions(
         if (!ally) continue;
         prefix.push(ally.instanceId);
       }
+      // The character spent to pay comes first too, ahead of any target for
+      // the effect: a cost is settled before what it buys (BK2-041).
+      const destroyAlly = entry.ability.cost?.destroyAlly;
+      if (destroyAlly) {
+        const doomed = legalTargets(ctx, state, card, destroyAlly, state.battle)[0];
+        if (!doomed) continue;
+        prefix.push(doomed.instanceId);
+      }
 
       const aims = entry.ability.target
         ? legalTargets(ctx, state, card, entry.ability.target, state.battle).map(
