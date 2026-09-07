@@ -73,6 +73,9 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
   const [mercenariesOnly, setMercenariesOnly] = useState(false);
   const [inDeckOnly, setInDeckOnly] = useState(false);
   const [sort, setSort] = useState<Sort>('level');
+  // Folded away by default: the card grid is what the screen is for, and
+  // five rows of chips leave it a third of the height on a narrow window.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // The card under the pointer, held up in the preview. It stays once the
   // pointer leaves — a preview that blinks away the moment you move to click
@@ -284,6 +287,31 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
               )}
             </div>
 
+            <button
+              type="button"
+              className={
+                filtersOpen ? 'db__filters-toggle db__filters-toggle--open' : 'db__filters-toggle'
+              }
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+            >
+              Filters{filtering ? ' •' : ''}
+            </button>
+
+            <span className="db__count">
+              {visible.length} of {builder.catalogue.length}
+              {filtering && (
+                <button type="button" className="db__reset" onClick={clearFilters}>
+                  reset
+                </button>
+              )}
+            </span>
+          </div>
+
+          {/* The chip rows fold away, because five groups of them wrap to
+           * several rows on a narrow window and the card grid is what the
+           * screen is actually for. */}
+          <div className={filtersOpen ? 'db__filters db__filters--open' : 'db__filters'}>
             <div className="db__chips" role="group" aria-label="Colour">
               {COLOURS.map((colour) => (
                 <Chip
@@ -362,15 +390,6 @@ export function DeckBuilder({ onExit }: Props): JSX.Element {
                 ))}
               </select>
             </label>
-
-            <span className="db__count">
-              {visible.length} of {builder.catalogue.length}
-              {filtering && (
-                <button type="button" className="db__reset" onClick={clearFilters}>
-                  reset
-                </button>
-              )}
-            </span>
           </div>
 
           {builder.loading ? (

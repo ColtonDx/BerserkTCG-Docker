@@ -4,6 +4,7 @@ import type { EngineContext } from './rules.js';
 import {
   boostSources,
   cityLevel,
+  isDemonCity,
   hpOf,
   isCharacter,
   moveOf,
@@ -107,7 +108,15 @@ export interface HiddenCity {
   readonly royalCapital?: boolean;
 }
 
-export type ViewCity = City | HiddenCity;
+/**
+ * A city as the client sees it, plus what a card has made of it.
+ *
+ * `demonic` says a face-up card standing there has turned it into a Demon
+ * City (BK3-043). Rules.md §5 — that card is face up and its area is public,
+ * so this reveals nothing, and the client needs it to draw the city
+ * differently.
+ */
+export type ViewCity = (City | HiddenCity) & { readonly demonic?: boolean };
 
 export const isCityHidden = (city: ViewCity): city is HiddenCity => 'hidden' in city;
 
@@ -200,7 +209,11 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
     viewer,
     seats: state.seats,
     players: state.players,
-    cities: state.cities.map((city) => redactCity(city, seenCities.has(city.index))),
+    cities: state.cities.map((city) => ({
+      ...redactCity(city, seenCities.has(city.index)),
+      // Public: the card that confers it is face up (§5, BK3-043).
+      ...(isDemonCity(ctx, state, city.index) ? { demonic: true } : {}),
+    })),
     cityLevel: cityLevel(state),
     phases: state.phases,
     turn: state.turn,

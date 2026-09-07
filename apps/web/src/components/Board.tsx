@@ -610,6 +610,10 @@ function CityColumn({
   // being attacked that turns one face up, and winning there that claims it,
   // so standing upright is what "this one is somebody's" looks like.
   if (!city.faceUp || !occupied) classes.push('city--flat');
+  // A card standing here has made this a Demon City (BK3-043), which the
+  // board shows as a red glow — the ground itself has changed, so it reads
+  // off the city rather than off the card that did it.
+  if (city.demonic) classes.push('city--demonic');
 
   // Without preventDefault the browser refuses to accept the drop.
   const accept = (event: DragEvent): void => {
