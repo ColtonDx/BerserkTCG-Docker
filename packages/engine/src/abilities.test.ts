@@ -3979,3 +3979,129 @@ describe('BK2 two-target and combat removal (Rules.md §13)', () => {
     expect(after.value.state.cards[lead.card]?.locked).toBe(true);
   });
 });
+
+describe('BK2-023 spends the counters it arrived with (Rules.md §13)', () => {
+  it('gains two on opening, spends one per use, and runs out', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const enemy = place(state, other, GREEN, 2);
+    state = enemy.state;
+    const isidro = place(state, player, 'BK2-023', 2, { faceUp: false });
+    state = openable(isidro.state, player, isidro.card);
+    state = apply(state, player, openOf(state, player, isidro.card) as GameAction);
+    expect(state.cards[isidro.card]?.counters['charges']).toBe(2);
+
+    // Spend one.
+    const use = engine
+      .legalActions(atMain(state), player)
+      .find((action) => action.type === 'USE_ABILITY' && action.card === isidro.card);
+    expect(use, 'the Explosive ability should be offered').toBeDefined();
+    state = apply(atMain(state), player, use as GameAction);
+    expect(state.cards[isidro.card]?.counters['charges']).toBe(1);
+
+    // Once per turn, so it is not offered again on this turn.
+    expect(
+      engine
+        .legalActions(atMain(state), player)
+        .some((action) => action.type === 'USE_ABILITY' && action.card === isidro.card),
+    ).toBe(false);
+
+    // With no counters left it is never offered again, whatever the turn.
+    const spent = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [isidro.card]: {
+          ...cardOf(state, isidro.card),
+          counters: { ...cardOf(state, isidro.card).counters, charges: 0, 'usedOnTurn:1': 0 },
+        },
+      },
+    };
+    expect(
+      engine
+        .legalActions(atMain(spent), player)
+        .some((action) => action.type === 'USE_ABILITY' && action.card === isidro.card),
+    ).toBe(false);
+  });
+});
+
+describe('BK2-002 fetches a Mercenary to a Hawk area (Rules.md §13)', () => {
+  it('offers only cities holding one of his Hawks, and opens what it sets', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    // BK1-009 Griffith is a Hawk; put him in city 3 and nothing in city 0.
+    const hawk = place(state, player, 'BK1-009', 3);
+    state = hawk.state;
+    const griffith = place(state, player, 'BK2-002', 2);
+    state = griffith.state;
+
+    // Run to this player's turn start, where the ability fires.
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+    let next = endTurn(endTurn(state, player), other);
+    expect(next.turn.activePlayer).toBe(player);
+
+    // "You may": a yes-or-no first.
+    expect(next.pending?.kind.zone).toBe('decision');
+    next = apply(next, player, { type: 'ANSWER', accept: true });
+
+    // Then the Mercenaries in the deck, each offered only into Hawk areas.
+    const chooses = engine
+      .legalActions(next, player)
+      .filter((action) => action.type === 'CHOOSE_CARD') as Extract<
+      GameAction,
+      { type: 'CHOOSE_CARD' }
+    >[];
+    expect(chooses.length).toBeGreaterThan(0);
+    // City 3 holds a Hawk; city 0 does not, so it is never on offer.
+    const cities = new Set(chooses.map((action) => action.city));
+    expect(cities.has(3)).toBe(true);
+    expect(cities.has(0)).toBe(false);
+
+    // Take one: it lands in the Hawk's area and is opened at once.
+    const pick = chooses.find((action) => action.city === 3) as Extract<
+      GameAction,
+      { type: 'CHOOSE_CARD' }
+    >;
+    next = apply(next, player, pick);
+    expect(next.cards[pick.card]?.cityIndex).toBe(3);
+    expect(next.cards[pick.card]?.faceUp).toBe(true);
+  });
+});
+
+describe('BK2-021 offers two modes that share one use (Rules.md §13)', () => {
+  it('spends the turn on whichever mode is taken', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const enemy = place(state, other, GREEN, 2);
+    state = enemy.state;
+    const serpico = place(state, player, 'BK2-021', 2);
+    state = serpico.state;
+
+    // Both modes are on the table to begin with.
+    const both = engine
+      .legalActions(atMain(state), player)
+      .filter((action) => action.type === 'USE_ABILITY' && action.card === serpico.card);
+    expect(new Set(both.map((a) => (a as { ability: string }).ability)).size).toBe(2);
+
+    // Take the shield; the damage mode goes with it, since one printed
+    // ability may only be used once per turn.
+    const shield = both.find((a) => (a as { ability: string }).ability === '1');
+    expect(shield, 'the shield mode should be offered').toBeDefined();
+    let used = apply(atMain(state), player, shield as GameAction);
+    for (let n = 0; n < 8 && used.stack.length > 0; n++) {
+      used = apply(used, used.turn.priorityPlayer, { type: 'PASS_PRIORITY' });
+    }
+    expect(used.cards[serpico.card]?.counters['shield']).toBe(1);
+
+    expect(
+      engine
+        .legalActions(atMain(used), player)
+        .some((action) => action.type === 'USE_ABILITY' && action.card === serpico.card),
+    ).toBe(false);
+  });
+});

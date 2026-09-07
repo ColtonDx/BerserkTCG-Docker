@@ -367,6 +367,14 @@ export type Effect =
        * down in whichever city the player names, one card at a time (BK1-155).
        */
       readonly to?: 'hand' | 'trash' | 'set' | 'setOpen' | 'setAnywhere';
+      /**
+       * Narrows where a `setAnywhere` may put what it finds: only cities where
+       * its controller has a face-up character of this subtype (BK2-002, "any
+       * area that you control a Hawk character in"). Rules.md §7.
+       */
+      readonly intoAreasWith?: string;
+      /** Open what was set, once it is placed (BK2-002's "then you may open"). */
+      readonly thenOpen?: boolean;
       readonly reveal?: boolean;
     }
   /**
@@ -621,6 +629,11 @@ export type Effect =
    */
   | { readonly do: 'wardNextDamage'; readonly who: Selector }
   /**
+   * Puts named counters on this card, to be spent by a later ability
+   * (BK2-023). Rules.md §13. They outlive the turn, unlike a boost.
+   */
+  | { readonly do: 'addCharges'; readonly count: number }
+  /**
    * A price the *other* player pays, their choice of how, `count` times over
    * (BK2-043, BK2-045). Rules.md §13.
    *
@@ -641,6 +654,20 @@ export type Effect =
    * while standing where it stands.
    */
   | { readonly do: 'removeFromCombat'; readonly who: Selector }
+  /**
+   * Shuffle cards out of a graveyard back into its owner's deck, then that
+   * player draws (BK2-025). Rules.md §13, §14.
+   *
+   * `player` is whose Trash is emptied, and it is the same player who draws
+   * — the printed line says "their owners deck" and "that player". A Trash
+   * with fewer than `count` gives what it has.
+   */
+  | {
+      readonly do: 'recycleTrash';
+      readonly player: EffectPlayer;
+      readonly count: number;
+      readonly draw: number;
+    }
   /**
    * Discard until a hand is no bigger than `size` (BK2-042). Rules.md §13.
    *
@@ -861,6 +888,22 @@ export interface ActivationCost {
    * when there is nobody eligible.
    */
   readonly destroyAlly?: TargetSpec;
+  /**
+   * "Remove 1 Explosive Counter:" — spends counters the card put on itself
+   * (BK2-023). Rules.md §13. With too few on the card the ability is never
+   * offered, exactly like a cost that cannot be paid from hand.
+   */
+  readonly spendCharges?: number;
+  /**
+   * Shares the once-per-turn lock with every other ability naming the same
+   * group (BK2-021). Rules.md §13.
+   *
+   * "Choose one of the following effects … only once per turn" is one
+   * ability with two modes, and the wire names an ability by its index — so
+   * the modes are separate entries that must not each get their own use.
+   * Without this they would key on their own index and both be usable.
+   */
+  readonly oncePerTurnGroup?: string;
   /** Cards out of hand into the Trash, in the DesignNotes 8 notation. */
   readonly pay?: string;
   /** "Can only be used once per turn." */
@@ -1031,6 +1074,16 @@ export const NEGATED = 'negated';
  * Swept with the boosts.
  */
 export const WARD = 'ward';
+
+/**
+ * A named counter a card puts on itself and spends later (BK2-023's
+ * "Explosive" counters). Rules.md §13.
+ *
+ * Deliberately *not* swept at end of turn, unlike the boosts: the printed
+ * line puts two on when the card is opened and lets it spend one per turn,
+ * so they have to survive to a later turn to be worth anything.
+ */
+export const CHARGES = 'charges';
 
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
@@ -3180,6 +3233,83 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       effect: { do: 'moveTo', who: { scope: 'target' }, where: 'chosenArea' },
       then: [{ do: 'moveTo', who: { scope: 'target2' }, where: 'chosenArea' }],
       text: 'Target a character you control and a character your opponent controls, move them to the same area within 1 distance.',
+    },
+  ],
+
+  'BK2-025': [
+    {
+      trigger: 'open',
+      // RULES: the printed line offers a choice of *whose* graveyard, and
+      // the wire has no way to ask it — the engine takes the opponent's,
+      // which is the reading that does something to somebody. Worth
+      // confirming; see TODO.md.
+      effect: { do: 'recycleTrash', player: 'opponent', count: 3, draw: 3 },
+      text: 'When this card is opened, choose 3 cards from your graveyard or 3 cards from your opponents graveyard and shuffle them back into their owners deck. Then that player draws 3 cards.',
+    },
+  ],
+
+  'BK2-023': [
+    {
+      trigger: 'open',
+      // Two charges up front, spent one at a time by the ability below.
+      // They outlive the turn, so they are not swept with the boosts.
+      effect: { do: 'addCharges', count: 2 },
+      text: 'When this card is opened, put 2 "Explosive" counters on it.',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { spendCharges: 1, oncePerTurn: true },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: '(Quick) Remove 1 Explosive Counter: Choose 1 character in this area, it takes 2 damage. This ability may only be used once per turn',
+    },
+  ],
+
+  'BK2-002': [
+    {
+      trigger: 'turnStart',
+      // "You may" — declinable. The search names a Mercenary, sets it in an
+      // area where a Hawk of his already stands, and opens it at once; both
+      // halves are one printed line, so one ability.
+      effect: {
+        do: 'may',
+        effects: [
+          {
+            do: 'search',
+            player: 'you',
+            count: 1,
+            named: 'Mercenary',
+            to: 'setAnywhere',
+            intoAreasWith: 'hawk',
+            thenOpen: true,
+          },
+        ],
+      },
+      text: 'At the beginning of your turn you may search your deck for a card named Mercenary and set it in any area that you control a "Hawk" character in. Then shuffle your deck. Then you may open that card.',
+    },
+  ],
+
+  'BK2-021': [
+    {
+      trigger: 'activated',
+      quick: true,
+      // Two modes of one printed ability, so they share a single use per
+      // turn: taking either shuts both (`oncePerTurnGroup`). The wire names
+      // an ability by its index, which is why they are separate entries.
+      cost: { pay: '1', oncePerTurnGroup: 'serpico' },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 1 },
+      text: '(Quick) 1: Deal 1 damage to target character in this area. This ability can only be activated once per turn.',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1', oncePerTurnGroup: 'serpico' },
+      // "Reduce the next damage this card would take by 1" — a shield of
+      // one point, not a ward: it softens the blow rather than eating it.
+      effect: { do: 'reduceDamage', who: { scope: 'self' }, amount: 1 },
+      text: '(Quick) 1: Until end of turn, reduce the next damage this card would take by 1. This ability can only be activated once per turn.',
     },
   ],
 

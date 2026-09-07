@@ -86,38 +86,48 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    abilities can finally ask for an area — BK1-131 is the first that does, and
    `useAbility` validates it rather than refusing.
 
-   **BK1 is complete: all 140 cards that carry printed text.** The rest of
-   the set is transcription — `Docs/Berserk_TCG_Cardlist.csv` has no effect
-   text yet for BK2 onwards, and a card with no entry stays inert rather
-   than being approximated.
+   **BK1 and BK2 are complete: 140 and 42 cards carry printed text, and
+   every one is built.** The rest of the set is transcription —
+   `Docs/Berserk_TCG_Cardlist.csv` has no effect text yet for BK3 onwards,
+   and a card with no entry stays inert rather than being approximated.
 
-   The last few brought the machinery worth knowing about:
+   **One printed keyword is deliberately unbuilt.** BK2-018 and BK2-039 both
+   print "(Quick) Alteration.", which `Rules.md` does not define. Every
+   other clause on both cards is built; the keyword is left out rather than
+   guessed at, so those two cards are complete apart from it. Ask before
+   building it.
 
-   - **`rules.ts:abilitiesOf` is now the only way to read a card's
-     abilities.** All twenty lookups across `rules.ts`, `reducer.ts` and
-     `legal.ts` go through it, which is what makes BK1-151's negation
+   RULES: BK2-025 offers a choice of _whose_ graveyard to recycle, and the
+   wire has no way to put that question — the engine takes the opponent's,
+   which is the reading that does something to somebody. Worth confirming.
+
+   The machinery worth knowing about:
+
+   - **`rules.ts:abilitiesOf` is the only way to read a card's abilities.**
+     Every lookup goes through it, which is what makes BK1-151's negation
      honest: applied at some lookups and forgotten at others it would be
-     silently wrong exactly where it was missed, and nothing would fail.
-     Keep new lookups going through it.
-   - **`CardInstance.marked`** lets an Eternal remember the character it
-     named (BK1-157), separate from `attachedTo`: an attachment moves and
-     dies with its host, this is a card watching somebody from where it
-     stands. `cannotAttackArea` and `diesIfItLeaves` read it off the board.
-   - **`GameState.citiesSeen`** shows the Royal Capital to one player
-     (BK1-022) without turning the city face up — §5 flips a city only when
-     a battle commences there, and flipping would raise City Level for both
-     and show the opponent too. `HiddenCity.royalCapital` is optional so
-     that forgetting to set it cannot leak anything.
-   - **Pending choices answered card by card** cover "any number of
-     characters" (BK1-147): the wire carries one target per ability, so a
-     subset would have been a cross-product. `upTo` is what makes it "any
-     number".
-   - **`enemyCapture`** fires where a city changes hands, for everyone but
-     the captor, and hands the captured city over as the chosen area
-     (BK1-158).
-   - Counters that outlive a single effect and are swept with the boosts:
-     `SKIP_REFRESH`, `NO_BATTLE`, `SEALED`, `REARGUARD`, `REFLECT`,
-     `NEGATED`.
+     silently wrong exactly where it was missed. Keep new lookups going
+     through it.
+   - **`Ability.target2`** is a second chosen character for a line naming
+     one from each side (BK2-029). `targets` is walked positionally, so
+     every card naming one is unaffected, and "must have valid targets for
+     both" means the ability is skipped unless each side has somebody.
+   - **Counters that outlive their effect**, swept with the boosts unless
+     noted: `SKIP_REFRESH`, `NO_BATTLE`, `SEALED`, `REARGUARD`, `REFLECT`,
+     `NEGATED`, `WARD` (eats one whole blow, unlike `SHIELD` which shrinks
+     every blow), and `CHARGES` — which is _not_ swept, because BK2-023
+     puts two on and spends one a turn.
+   - **`GameState.revealed` and `citiesSeen`** are the printed exceptions to
+     §7's redaction and §5's hidden capital, honoured in `view.ts` for one
+     player at a time. `HiddenCity.royalCapital` is optional so that
+     forgetting to set it cannot leak anything.
+   - **Triggers beyond the turn edges**: `arrival` (fired from all five ways
+     a character reaches a city), `selfMoved` (the traveller itself),
+     `ownCapture` / `enemyCapture`, `enemyDeathHere`.
+   - **`ActivationCost`** now carries `destroySelf` (paid at resolution, or
+     §14's stack fizzles it), `destroyAlly` (paid at once), `spendCharges`,
+     and `oncePerTurnGroup` — which is how one printed ability with two
+     modes shares a single use per turn (BK2-021).
 
 2. **The priority stack** (`Rules.md` §14) is built for what a player does —
    an open, an ability used — with two narrowings noted in `DesignNotes`

@@ -3,6 +3,7 @@ import {
   counterFor,
   selects,
   BOOST_COUNTERS,
+  CHARGES,
   NEGATED,
   NO_BATTLE,
   REARGUARD,
@@ -56,6 +57,7 @@ import {
   refreshBoard,
   searchable,
   stillFighting,
+  subtypesOf,
   legalTargets,
   settable,
   turnOrdinal,
@@ -2111,6 +2113,12 @@ function useAbility(
     const ally = draft.cards[doomedAlly];
     if (ally) destroy(ctx, draft, ally, events);
   }
+  if (cost?.spendCharges !== undefined) {
+    card.counters[CHARGES] = (card.counters[CHARGES] ?? 0) - cost.spendCharges;
+  }
+  if (cost?.oncePerTurnGroup !== undefined) {
+    card.counters[`usedOnTurn:${cost.oncePerTurnGroup}`] = turnOrdinal(draft);
+  }
   if (cost?.oncePerTurn === true) {
     card.counters[usedOnTurnCounter(entry.index)] = turnOrdinal(draft);
   }
@@ -2490,6 +2498,28 @@ function runEffect(
           ...((to === 'set' || to === 'setOpen') && source.cityIndex !== undefined
             ? { city: source.cityIndex }
             : {}),
+          // "Any area that you control a Hawk character in" (BK2-002): the
+          // list is fixed now, so it cannot drift as the board moves.
+          ...(effect.intoAreasWith !== undefined
+            ? {
+                cities: draft.cities
+                  .map((city) => city.index)
+                  .filter((index) =>
+                    Object.values(draft.cards).some(
+                      (card) =>
+                        card.zone === 'city' &&
+                        card.cityIndex === index &&
+                        card.faceUp &&
+                        card.controller === player &&
+                        isCharacter(ctx, card as CardInstance) &&
+                        subtypesOf(ctx, card as CardInstance, draft as GameState).includes(
+                          effect.intoAreasWith as string,
+                        ),
+                    ),
+                  ),
+              }
+            : {}),
+          ...(effect.thenOpen === true ? { thenOpen: true } : {}),
           reveal: effect.reveal === true,
         },
       });
@@ -2836,6 +2866,33 @@ function runEffect(
       moveToCity(draft, top.instanceId, to, { controller, faceUp: false });
       events.push({ type: 'CARD_SET', player: controller, card: top.instanceId, city: to });
       return pushed();
+    }
+
+    case 'addCharges': {
+      const self = draft.cards[source.instanceId];
+      if (!self) return false;
+      self.counters = {
+        ...self.counters,
+        [CHARGES]: (self.counters[CHARGES] ?? 0) + effect.count,
+      };
+      return true;
+    }
+
+    case 'recycleTrash': {
+      const owner = targetPlayer(draft, controller, effect.player, source);
+      if (!owner) return false;
+      // The Trash is public (§14), so nothing is revealed by taking from it
+      // and nothing needs to be chosen: it is shuffled away regardless.
+      const trash = cardsInZone(draft as GameState, owner, 'trash').slice(0, effect.count);
+      if (trash.length === 0) return false;
+      for (const card of trash) {
+        moveToZone(draft, card.instanceId, { player: card.owner, zone: 'deck' });
+      }
+      // Silent, like every other shuffle in the engine — the draws that
+      // follow are what the players actually see.
+      shuffleDeck(draft, owner);
+      if (effect.draw > 0) drawInto(draft, owner, effect.draw, events);
+      return true;
     }
 
     case 'removeFromCombat': {
@@ -3300,10 +3357,14 @@ function chooseCard(
       if (kind.action === 'toCityAnywhere' && !draft.cities[city]) {
         return violation('ILLEGAL_TARGET', 'That is not a city.', '§13');
       }
+      // Where the printed line narrows it (BK2-002), only those cities.
+      if (kind.cities !== undefined && !kind.cities.includes(city)) {
+        return violation('ILLEGAL_TARGET', 'That card cannot be set there.', '§13');
+      }
       moveToCity(draft, cardId, city, { controller: actor, faceUp: false });
       events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
       events.push({ type: 'CARD_SET', player: actor, card: cardId, city });
-      if (kind.action === 'toCityOpen') {
+      if (kind.action === 'toCityOpen' || kind.thenOpen === true) {
         // "Set that card in this area, and then open it" (BK1-091) — free and
         // outside the City Level gate, as with BK1-061: the printed line is
         // what puts it there, not the turn's one open (§10 ③).

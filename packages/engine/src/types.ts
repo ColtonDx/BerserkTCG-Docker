@@ -270,6 +270,14 @@ export type PendingChoiceKind =
        * rest of the deck being shown.
        */
       readonly topOfDeck?: number;
+      /**
+       * For `toCityAnywhere`: the only cities that may be chosen, worked out
+       * when the question was posed (BK2-002). Absent means every city,
+       * which is BK1-155's unrestricted "set them anywhere".
+       */
+      readonly cities?: readonly number[];
+      /** Open what was set, once placed (BK2-002). */
+      readonly thenOpen?: boolean;
       readonly city?: number;
       readonly reveal: boolean;
     }

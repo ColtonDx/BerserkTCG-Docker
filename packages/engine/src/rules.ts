@@ -7,6 +7,7 @@ import {
   NO_BATTLE,
   REARGUARD,
   SEALED,
+  CHARGES,
   SHIELD,
   WARD,
   usedOnTurnCounter,
@@ -965,6 +966,12 @@ function effectRelevant(
     case 'setTopOfDeck':
       // A card onto the board for free, whenever the deck still has one.
       return true;
+    case 'addCharges':
+      // Ammunition for later, worth putting on whenever it is printed.
+      return true;
+    case 'recycleTrash':
+      // Card advantage, and deck repair — worth doing wherever it happens.
+      return true;
     case 'removeFromCombat':
       // Only means anything inside a fight, and only reaches participants.
       return inBattle && reaches(effect.who);
@@ -1079,7 +1086,20 @@ export function canActivate(
   if (card.zone !== 'city' || !card.faceUp) return false;
   if (card.controller !== player) return false;
   if (usedThisTurn(state, card, entry.index)) return false;
+  // Modes of one printed ability share a single use (BK2-021), so spending
+  // either shuts both.
+  const group = entry.ability.cost?.oncePerTurnGroup;
+  if (group !== undefined && (card.counters[`usedOnTurn:${group}`] ?? 0) === turnOrdinal(state)) {
+    return false;
+  }
   if (entry.ability.cost?.lockSelf === true && card.locked) return false;
+  // Too few counters on the card is a price that cannot be paid (BK2-023).
+  if (
+    entry.ability.cost?.spendCharges !== undefined &&
+    (card.counters[CHARGES] ?? 0) < entry.ability.cost.spendCharges
+  ) {
+    return false;
+  }
   // "Destroy this card:" is paid when the ability resolves, not when it is
   // used, or §14's stack would fizzle it as a source that has gone. So the
   // card has to be barred here instead: without this it could be sacrificed
