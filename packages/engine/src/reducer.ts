@@ -3,6 +3,7 @@ import {
   counterFor,
   selects,
   BOOST_COUNTERS,
+  NO_BATTLE,
   SHIELD,
   SKIP_REFRESH,
   targetPlayer,
@@ -30,6 +31,7 @@ import {
   canVanguard,
   checkWinConditions,
   cityLevel,
+  openLevelFor,
   conditionHolds,
   damageAfterReduction,
   definitionOf,
@@ -1123,7 +1125,8 @@ function openCard(
     );
   }
 
-  const level = cityLevel(draft);
+  // A card on the board may narrow what this player can open (BK1-116).
+  const level = openLevelFor(ctx, draft, actor);
   if (def.level > level) {
     return violation(
       'WRONG_PHASE',
@@ -1176,6 +1179,8 @@ function openCard(
   card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
   if (!inBattle && !inWindow) draft.turn.openedThisTurn = true;
   events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
+  // A character turning up here is an arrival, exactly as a move is (§13).
+  fireArrival(ctx, draft, card, events);
 
   // Rules.md §14 — what the card does goes *pending*, and resolves once both
   // players have passed on it (or at once, if neither can respond). A Normal
@@ -1262,6 +1267,7 @@ function moveCharacter(
   card.cityIndex = city;
   arrived(draft, actor, city);
   events.push({ type: 'CHARACTER_MOVED', card: cardId, from, to: city });
+  fireArrival(ctx, draft, card, events);
   return ok(true);
 }
 
@@ -1959,16 +1965,20 @@ function useAbility(
   if (choices.length > 0) {
     return violation('ILLEGAL_TARGET', 'That ability does not ask for that many choices.', '§13');
   }
-  // No cost-bearing ability in the set asks for an area, and one that did
-  // would need the same (character, area) plumbing the on-open path has.
-  // Refusing is better than accepting the field and quietly ignoring it —
-  // silently dropping a choice the player made is the worse failure.
+  // The area, where the ability asks for one (BK1-131). Validated against the
+  // chosen character where the kind is relative to one, exactly as the
+  // on-open path does — never trusted from the client.
+  let chosenArea: number | undefined;
   if (entry.ability.area !== undefined) {
-    return violation(
-      'NOT_IMPLEMENTED',
-      'Choosing an area for a cost-bearing ability is not built yet.',
-      '§13',
-    );
+    const options = areasFor(ctx, draft, entry.ability.area, card as CardInstance, chosen);
+    const picked = action.areas?.[0] ?? (options.length === 1 ? options[0] : undefined);
+    if (picked === undefined) {
+      return violation('ILLEGAL_TARGET', 'That ability needs an area to aim at.', '§13');
+    }
+    if (!options.includes(picked)) {
+      return violation('ILLEGAL_TARGET', 'That is not a legal area for this card.', '§13');
+    }
+    chosenArea = picked;
   }
 
   /* ------------------------------------------------------------ pay for it */
@@ -1998,6 +2008,8 @@ function useAbility(
     controller: actor,
     ability: entry.index,
     ...(chosen !== undefined ? { chosen } : {}),
+    // §14 resolves this later, so the area has to travel with it.
+    ...(chosenArea !== undefined ? { area: chosenArea } : {}),
   };
   draft.stack = toDraft([...draft.stack, pendingEffect]);
   events.push({
@@ -2265,7 +2277,14 @@ function runEffect(
       // A search that can find nothing does not stop to ask — the effect
       // resolves, finds nobody, and play carries on (Rules.md §13). The deck
       // is still shuffled, because the player has looked through it.
-      const found = searchable(ctx, draft, player, effect.named, effect.characterOnly === true);
+      const found = searchable(
+        ctx,
+        draft,
+        player,
+        effect.named,
+        effect.characterOnly === true,
+        effect.includeTrash === true,
+      );
       if (found.length === 0) {
         shuffleDeck(draft, player);
         return false;
@@ -2289,12 +2308,52 @@ function runEffect(
                   : 'toCity',
           named: effect.named,
           characterOnly: effect.characterOnly === true,
+          ...(effect.includeTrash === true ? { includeTrash: true } : {}),
           ...((to === 'set' || to === 'setOpen') && source.cityIndex !== undefined
             ? { city: source.cityIndex }
             : {}),
           reveal: effect.reveal === true,
         },
       });
+      return pushed();
+    }
+
+    case 'revealUntilCharacter': {
+      const city = source.cityIndex;
+      if (city === undefined) return false;
+      // Off the top, in deck order, until a character turns up. Nothing is
+      // chosen, so this never stops to ask — unlike a search (§13).
+      const deck = cardsInZone(draft as GameState, controller, 'deck');
+      let found: Draft<CardInstance> | undefined;
+      for (const card of deck) {
+        events.push({ type: 'CARD_REVEALED', player: controller, card: card.instanceId });
+        const live = draft.cards[card.instanceId];
+        if (!live) continue;
+        if (isCharacter(ctx, card)) {
+          found = live;
+          break;
+        }
+        // Everything turned over on the way is spent.
+        moveToZone(draft, card.instanceId, { player: card.owner, zone: 'trash' });
+        events.push({ type: 'CARD_TRASHED', player: controller, card: card.instanceId });
+      }
+      // A deck with no character left simply yields none; the cards turned
+      // over are still spent, which is what the printed line does.
+      if (!found) return pushed();
+
+      moveToCity(draft, found.instanceId, city, { controller, faceUp: false });
+      found.faceUp = true;
+      found.counters[OPENED_ON_TURN] = turnOrdinal(draft);
+      events.push({ type: 'CARD_OPENED', player: controller, card: found.instanceId, city });
+      // §11 ③ — it steps into the fight the destroyed character was in.
+      if (effect.joinsBattle === true && draft.battle && draft.battle.city === city) {
+        if (!draft.battle.participants.includes(found.instanceId)) {
+          draft.battle.participants.push(found.instanceId);
+        }
+      }
+      fireArrival(ctx, draft, found, events);
+      fireAbilities(ctx, draft, found as CardInstance, 'open', events);
+      refreshBoard(ctx, draft, events);
       return pushed();
     }
 
@@ -2363,6 +2422,23 @@ function runEffect(
         card.locked = false;
       }
       return freed > 0;
+    }
+
+    case 'reveal': {
+      const seen = selected(ctx, draft, source, effect.who, chosen);
+      if (seen.length === 0) return false;
+      const watchers = effect.to === 'both' ? draft.seats : [controller];
+      for (const watcher of watchers) {
+        const already = draft.revealed[watcher] ?? [];
+        const added = seen
+          .map((card) => card.instanceId)
+          .filter((id) => id !== undefined && !already.includes(id));
+        draft.revealed[watcher] = toDraft([...already, ...added]);
+      }
+      for (const card of seen) {
+        events.push({ type: 'CARD_REVEALED', player: controller, card: card.instanceId });
+      }
+      return pushed();
     }
 
     case 'lock': {
@@ -2434,8 +2510,15 @@ function runEffect(
     }
 
     case 'destroy': {
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      const doomed = selected(ctx, draft, source, effect.who, chosen);
+      // Counted before anything is destroyed: "draw that many" means as many
+      // as this line took off the board (BK1-152).
+      const taken = doomed.length;
+      for (const card of doomed) {
         destroy(ctx, draft, card, events);
+      }
+      if (effect.drawPerDestroyed === true && taken > 0) {
+        drawInto(draft, controller, taken, events);
       }
       return pushed();
     }
@@ -2493,7 +2576,15 @@ function runEffect(
       // already checked against the chosen character by `checkTargets`.
       const to = effect.where === 'chosenArea' ? area : source.cityIndex;
       if (to === undefined) return false;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      const travelling = selected(ctx, draft, source, effect.who, chosen);
+      // "Move this and another character" — the source comes too (BK1-131).
+      if (effect.withSource === true) {
+        const self = draft.cards[source.instanceId];
+        if (self && !travelling.some((card) => card.instanceId === self.instanceId)) {
+          travelling.push(self);
+        }
+      }
+      for (const card of travelling) {
         const from = card.cityIndex;
         if (from === undefined || from === to) continue;
         // Not locked and no Move spent: this is the effect moving them, not
@@ -2501,6 +2592,7 @@ function runEffect(
         card.cityIndex = to;
         if (card.faceUp) arrived(draft, card.controller, to);
         events.push({ type: 'CHARACTER_MOVED', card: card.instanceId, from, to });
+        if (card.faceUp) fireArrival(ctx, draft, card, events);
       }
       // A city whose occupier has just walked away is no longer theirs
       // (Rules.md §12); `refreshBoard` runs after the action and settles it.
@@ -2520,9 +2612,20 @@ function runEffect(
     }
 
     // Continuous by nature: asked of the board by `cannotAttack`, never run.
-    case 'cannotAttack':
-      return true;
+    case 'cannotAttack': {
+      // Only a non-continuous ability ever gets here: an `always` one is read
+      // off the board by `rules.ts:cannotAttack` and is never resolved. So
+      // this is the "until end of turn" kind, written onto the card because
+      // its source may be gone (BK1-149 is a Normal Effect, trashed at once).
+      let marked = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        card.counters = { ...card.counters, [NO_BATTLE]: 1 };
+        marked++;
+      }
+      return marked > 0;
+    }
 
+    case 'openLevel':
     case 'captureDraw':
       // Continuous, like `cannotAttack`: read off the board by
       // `rules.ts:captureDrawFor` when a city changes hands. There is
@@ -2673,7 +2776,11 @@ function chooseCard(
   // A choice made on the field names cards standing in a city, so the zone it
   // asks about is not the zone they are in.
   const wantedZone = kind.zone === 'field' ? 'city' : kind.zone;
-  if (!card || card.controller !== actor || card.zone !== wantedZone) {
+  // A search that reaches the Trash as well (BK1-115) accepts either zone;
+  // `searchable` below is what says the card was really on offer.
+  const searchingTrash = kind.zone === 'deck' && kind.includeTrash === true;
+  const inZone = card?.zone === wantedZone || (searchingTrash && card?.zone === 'trash');
+  if (!card || card.controller !== actor || !inZone) {
     return violation('CARD_NOT_IN_ZONE', `That card is not in your ${kind.zone}.`, '§13');
   }
 
@@ -2699,6 +2806,7 @@ function chooseCard(
     card.faceUp = true;
     card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
     events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city: kind.city });
+    fireArrival(ctx, draft, card, events);
     // The card's own on-open abilities fire, with nothing chosen for them:
     // the effect said "open it", not "open it and point it at somebody".
     fireAbilities(ctx, draft, card as CardInstance, 'open', events);
@@ -2735,6 +2843,7 @@ function chooseCard(
         card.faceUp = true;
         card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
         events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
+        fireArrival(ctx, draft, card, events);
         fireAbilities(ctx, draft, card as CardInstance, 'open', events);
         refreshBoard(ctx, draft, events);
       }
@@ -2839,6 +2948,46 @@ function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameE
 /** Notes a character arriving in a city this turn, for cards that ask. */
 function arrived(draft: Draft<GameState>, player: PlayerId, city: number): void {
   draft.turn.arrivals = toDraft([...draft.turn.arrivals, { player, city }]);
+}
+
+/**
+ * Fires the `arrival` trigger of everything standing in a city, on behalf of
+ * a character that has just turned up there. Rules.md §13.
+ *
+ * Called from both ways in — opening a card face up (§7) and moving one
+ * (§10 ④(1)) — because BK1-113 names them together and a hook on only one of
+ * them would be a card that works half the time. The newcomer travels as the
+ * chosen card, so an ability reaches it with `{ scope: 'target' }`.
+ */
+function fireArrival(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  newcomer: Draft<CardInstance>,
+  events: GameEvent[],
+): void {
+  if (newcomer.cityIndex === undefined) return;
+  if (!isCharacter(ctx, newcomer as CardInstance)) return;
+  for (const watcher of Object.values(draft.cards)) {
+    if (watcher.zone !== 'city' || !watcher.faceUp) continue;
+    if (watcher.cityIndex !== newcomer.cityIndex) continue;
+    if (watcher.instanceId === newcomer.instanceId) continue;
+    for (const ability of definitionOf(ctx, watcher as CardInstance).abilities ?? []) {
+      if (ability.trigger !== 'arrival') continue;
+      if (
+        !conditionHolds(
+          ctx,
+          draft,
+          watcher as CardInstance,
+          ability.condition,
+          draft.battle,
+          newcomer.instanceId,
+        )
+      ) {
+        continue;
+      }
+      resolveEffect(ctx, draft, watcher as CardInstance, ability, events, newcomer.instanceId);
+    }
+  }
 }
 
 /** Every face-up card on the field, so turn triggers can sweep the board. */

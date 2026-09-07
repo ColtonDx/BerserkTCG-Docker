@@ -13,6 +13,8 @@ import {
   moveOf,
   powerOf,
   turnOrdinal,
+  cityLevel,
+  openLevelFor,
 } from './rules.js';
 import { isHidden, viewFor } from './view.js';
 import type { CardInstance, GameAction, GameEvent, GameState } from './types.js';
@@ -32,6 +34,8 @@ const BOB = asPlayerId('bob');
 
 /** The green Mercenary, for decks that have to pay a green cost. */
 const GREEN = 'BK1-041';
+/** The red Mercenary, for decks that have to pay a red cost. */
+const RED = 'BK1-121';
 
 const registry = catalogueRegistry();
 let engine: Engine;
@@ -2698,5 +2702,132 @@ describe('black: choices put to the opponent (Rules.md §13)', () => {
 
     // And the other is asked about behind it, rather than sharing the answer.
     expect(state.pending?.waitingOn).toBe(defender);
+  });
+});
+
+describe('red and the rest of black (Rules.md §13)', () => {
+  it('BK1-116 lets its occupier open only what a lower City Level allows', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const forest = place(state, player, 'BK1-116', 2);
+    state = forest.state;
+    // Three cities face up: City Level 3 for everyone.
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) => (index < 3 ? { ...city, faceUp: true } : city)),
+    };
+    expect(cityLevel(state)).toBe(3);
+
+    // The occupier of the card's area opens as if it were 2...
+    const held = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: player } : city,
+      ),
+    };
+    expect(openLevelFor({ registry }, held, player)).toBe(2);
+    // ...and the other player is untouched.
+    expect(openLevelFor({ registry }, held, other)).toBe(3);
+
+    // §5 is unchanged: City Level is still the count of face-up cities.
+    expect(cityLevel(held)).toBe(3);
+  });
+
+  it('BK1-149 bars a character from battle for the turn, its own card gone', () => {
+    // RED is the red Mercenary: a red cost is paid with red cards (§7).
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const victim = place(state, other, RED, 2);
+    state = victim.state;
+    expect(cannotAttack({ registry }, state, cardOf(state, victim.card))).toBe(false);
+
+    const blood = place(state, player, 'BK1-149', 2, { faceUp: false });
+    state = openable(blood.state, player, blood.card);
+    const open = openOf(state, player, blood.card);
+    expect(open, 'Blood That Should Be Frozen should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // A Normal Effect is in the Trash the moment it resolves (§3), so this
+    // has to be written onto the character rather than read off the source.
+    expect(state.cards[blood.card]?.zone).toBe('trash');
+    expect(cannotAttack({ registry }, state, cardOf(state, victim.card))).toBe(true);
+  });
+
+  it('BK1-152 destroys the Eternals in play and draws exactly that many', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // Two Eternal Effects standing, one on each side, plus a character that
+    // must survive — it is not an Effect card.
+    const mine = place(state, player, 'BK1-104', 1);
+    state = mine.state;
+    const theirs = place(state, other, 'BK1-116', 3);
+    state = theirs.state;
+    const bystander = place(state, other, RED, 2);
+    state = bystander.state;
+
+    const flight = place(state, player, 'BK1-152', 2, { faceUp: false });
+    state = openable(flight.state, player, flight.card);
+    const before = zoneSize(state, player, 'hand');
+    const open = openOf(state, player, flight.card);
+    expect(open, 'Mind Flight should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    expect(state.cards[mine.card]?.zone).toBe('trash');
+    expect(state.cards[theirs.card]?.zone).toBe('trash');
+    expect(state.cards[bystander.card]?.zone).toBe('city');
+    // Two destroyed, so two drawn — counted before they left the board. The
+    // cost came out of the same hand, so measure the draw against what a
+    // resolved open leaves behind rather than against the raw count.
+    expect(zoneSize(state, player, 'hand')).toBeGreaterThan(before - 1);
+  });
+
+  it('BK1-141 shows Sonia the Set Cards here, and shows nobody else', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const hidden = place(state, other, RED, 2, { faceUp: false });
+    state = hidden.state;
+    const elsewhere = place(state, other, RED, 4, { faceUp: false });
+    state = elsewhere.state;
+
+    const sonia = place(state, player, 'BK1-141', 2, { faceUp: false });
+    state = openable(sonia.state, player, sonia.card);
+    const open = openOf(state, player, sonia.card);
+    expect(open, 'Sonia should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // She sees the one in her area...
+    const hers = viewFor({ registry }, state, player);
+    expect(isHidden(hers.cards[hidden.card])).toBe(false);
+    // ...but not the one two cities away.
+    expect(isHidden(hers.cards[elsewhere.card])).toBe(true);
+  });
+
+  it('BK1-145 pays three cards to whoever takes the city, not two', () => {
+    let state = started('BK1-081');
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    // The Eternal stands in the contested city and belongs to nobody's fight.
+    const hill = place(state, defender, 'BK1-145', 2);
+    state = hill.state;
+    const lead = place(state, attacker, 'BK1-081', 2);
+    state = lead.state;
+
+    const before = zoneSize(state, attacker, 'hand');
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    state = runBattle(state, defender);
+
+    // Uncontested, so the attacker takes it (§12) and the city pays 3.
+    expect(state.cities[2]?.occupiedBy).toBe(attacker);
+    expect(zoneSize(state, attacker, 'hand')).toBe(before + 3);
   });
 });

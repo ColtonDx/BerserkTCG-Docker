@@ -2328,7 +2328,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, target a character in this area, or an adjacent area, and deal 2 damage to it",
     "mercenary": false
   },
   {
@@ -2350,7 +2350,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "This card can only be opened when an enemy character moved to this area this turn. That card does not unlock during the next refresh phase when it would unlock.",
     "mercenary": false
   },
   {
@@ -2372,7 +2372,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, move an enemy character from an adjacent area to this area, unlock that character. Draw 1 card.",
     "mercenary": false
   },
   {
@@ -2394,7 +2394,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card Is opened, target 1 character you control in this area, unlock it, and deal 2 damage to it.",
     "mercenary": false
   },
   {
@@ -2416,7 +2416,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "This card can only be opened if a character attacked this area this turn. Lock target character in this area.",
     "mercenary": false
   },
   {
@@ -2438,7 +2438,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, move one of your character from this area to any other area you occupy.",
     "mercenary": false
   },
   {
@@ -2460,7 +2460,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "(Quick) B: Search Search your deck for a Forest Guardian card, set it in this area, and then open it. Shuffle your deck.",
     "mercenary": false
   },
   {
@@ -2482,7 +2482,7 @@
     "cost": "B",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards. Any player who opens a character here or moves a character here while they do not occupy this area, must discard 2 cards or destroy that character.",
     "mercenary": false
   },
   {
@@ -2504,7 +2504,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, if this area is not occupied, lock all characters here.",
     "mercenary": false
   },
   {
@@ -2526,7 +2526,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "At the end of your turn, you may search your deck or your graveyard for an \"Insect Elf\" card, set it in this area, then open it. Shuffle your deck.",
     "mercenary": false
   },
   {
@@ -2548,7 +2548,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, draw 2 cards. The player who occupies this area can only open cards as if the level were 1 lower.",
     "mercenary": false
   },
   {
@@ -2570,7 +2570,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened your opponent discards 3 cards.",
     "mercenary": false
   },
   {
@@ -2592,7 +2592,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy a level 1 or lower character in this area.",
     "mercenary": false
   },
   {
@@ -2614,7 +2614,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, deal 2 damage to target character in this area.",
     "mercenary": false
   },
   {
@@ -2636,7 +2636,7 @@
     "cost": "B",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "This card can only be opened if a battle was declared in this area this turn. Your opponent discards 2 cards.",
     "mercenary": false
   },
   {
@@ -2768,7 +2768,7 @@
     "cost": "RR",
     "unique": false,
     "subtypes": ["neohawk", "beast", "soldiers"],
-    "effect": null,
+    "effect": "When this card is opened, it gets +1/+1 until the end of the turn.",
     "mercenary": false
   },
   {
@@ -2790,7 +2790,7 @@
     "cost": "RR",
     "unique": false,
     "subtypes": ["neohawk", "beast", "soldiers"],
-    "effect": null,
+    "effect": "When this card is opened it gets -1/-1 until end of turn.",
     "mercenary": false
   },
   {
@@ -2812,7 +2812,7 @@
     "cost": "RR",
     "unique": true,
     "subtypes": ["neohawk", "leader"],
-    "effect": null,
+    "effect": "1: Destroy a set card here. This can only be activated once each turn.",
     "mercenary": false
   },
   {
@@ -2834,7 +2834,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk", "leader"],
-    "effect": null,
+    "effect": "When this card is opened, eliminate all of your characters in play that are level 1 or less. 1: Unlock this character, can only be activated once each turn.",
     "mercenary": false
   },
   {
@@ -2856,7 +2856,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk", "leader"],
-    "effect": null,
+    "effect": "When this card is opened, destroy all set cards.",
     "mercenary": false
   },
   {
@@ -2878,7 +2878,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk", "apostle"],
-    "effect": null,
+    "effect": "3: Move this and another character from this area to another area within distance 2. There must be another character to move for this to be used, but it can be your character or an oppoenents character.",
     "mercenary": false
   },
   {
@@ -2900,7 +2900,7 @@
     "cost": "1R",
     "unique": true,
     "subtypes": ["neohawk", "apostle"],
-    "effect": null,
+    "effect": "(Quick) Tap: All characters in this area get -2/+0 until end of the turn",
     "mercenary": false
   },
   {
@@ -2922,7 +2922,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "(Quick) 1R: Target character in this area takes 2 damage.",
     "mercenary": false
   },
   {
@@ -2944,7 +2944,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "While an enemy character, level 4 or higher, is in this area, this card gets +1/+1",
     "mercenary": false
   },
   {
@@ -2966,7 +2966,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "All cavalry characters you control get +1/+1",
     "mercenary": false
   },
   {
@@ -2988,7 +2988,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "(Quick) 1: This character gets +1/+0 until end of turn.",
     "mercenary": false
   },
   {
@@ -3054,7 +3054,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "(Quick) 2: Target character in this area gets -4/+0 until end of turn.",
     "mercenary": false
   },
   {
@@ -3076,7 +3076,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "(Quick) 2: Destroy a level 2 or lower character in this area.",
     "mercenary": false
   },
   {
@@ -3098,7 +3098,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "When this card Is opened, you may look at all set cards in this area.",
     "mercenary": false
   },
   {
@@ -3120,7 +3120,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": ["neohawk"],
-    "effect": null,
+    "effect": "When this card is opened, reveal all enemy set cards in all areas and destroy all effect cards among them.",
     "mercenary": false
   },
   {
@@ -3142,7 +3142,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "You can only open this card if you opened a character in this area this turn. Move all your characters to this area.",
     "mercenary": false
   },
   {
@@ -3164,7 +3164,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened return all set cards you control to your hand.",
     "mercenary": false
   },
   {
@@ -3186,7 +3186,7 @@
     "cost": "R",
     "unique": true,
     "subtypes": [],
-    "effect": null,
+    "effect": "All characters in this area gain +1/+0. If a player captures this area they draw 3 cards instead of 2.",
     "mercenary": false
   },
   {
@@ -3208,7 +3208,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy a set card in this area",
     "mercenary": false
   },
   {
@@ -3230,7 +3230,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "You can only open this card if you defended this area this turn. Target any number of characters and move them to this area and unlock them.",
     "mercenary": false
   },
   {
@@ -3252,7 +3252,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, until end of turn, all damage dealt in this area  is reduced to 0.",
     "mercenary": false
   },
   {
@@ -3274,7 +3274,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "Until end of turn, target character in this area cannot participate in battle.",
     "mercenary": false
   },
   {
@@ -3296,7 +3296,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy target character you control in this area. Then reveal cards from the top of your library until you reveal a character card, set that card in this area, and then open it. If the destroyed character was in battle, the newly opened card joins the battle.",
     "mercenary": false
   },
   {
@@ -3318,7 +3318,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened negate all abilities of normal effects with 1 distance until end of turn.",
     "mercenary": false
   },
   {
@@ -3340,7 +3340,7 @@
     "cost": "R",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy all eternal effect cards in play, then draw that many cards",
     "mercenary": false
   },
   {
@@ -3362,7 +3362,7 @@
     "cost": "RR",
     "unique": false,
     "subtypes": [],
-    "effect": null,
+    "effect": "When this card is opened, destroy target open card in this area",
     "mercenary": false
   },
   {

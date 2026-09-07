@@ -3,6 +3,7 @@ import { costTotal, parseCost } from './cards.js';
 import {
   counterFor,
   selects,
+  NO_BATTLE,
   SHIELD,
   usedOnTurnCounter,
   type Ability,
@@ -79,6 +80,42 @@ export const isCharacter = (ctx: EngineContext, card: CardInstance): boolean =>
  */
 export const cityLevel = (state: Pick<GameState, 'cities'>): number =>
   state.cities.filter((city) => city.faceUp).length;
+
+/**
+ * The City Level a player may open against. Rules.md §5, §7.
+ *
+ * Normally just {@link cityLevel}, but a card on the board can narrow it for
+ * one player (BK1-116). Read off the board rather than stored: City Level is
+ * defined as the number of face-up cities and stays that, so what a card
+ * shifts is the gate in §7, not the value in §5.
+ *
+ * The single implementation, so `legalActions` and `reduce` cannot disagree
+ * about what is openable.
+ */
+export function openLevelFor(
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards' | 'cities' | 'turn' | 'seats'>,
+  player: PlayerId,
+): number {
+  let level = cityLevel(state);
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+      if (ability.trigger !== 'always' || ability.effect.do !== 'openLevel') continue;
+      const affected =
+        ability.effect.player === 'occupier'
+          ? source.cityIndex !== undefined
+            ? state.cities[source.cityIndex]?.occupiedBy
+            : null
+          : state.seats.find((seat) => seat !== source.controller);
+      if (affected !== player) continue;
+      if (!conditionHolds(ctx, state, source, ability.condition)) continue;
+      level += ability.effect.shift;
+    }
+  }
+  // Never below nothing: a Level 0 card is openable whatever is said about it.
+  return Math.max(0, level);
+}
 
 /** Face-up characters a player has in a city. Presence drives city control. */
 export const presenceIn = (
@@ -470,8 +507,15 @@ export function legalTargets(
     // Card, but it resolves a moment later with that card standing in the
     // area — so a lone character that targets "1 character in this area"
     // means itself, and offering nothing would make it do nothing.
-    const standing = card.faceUp || card.instanceId === source.instanceId;
-    if (card.zone !== 'city' || !standing || !isCharacter(ctx, card)) return false;
+    if (card.zone !== 'city') return false;
+    if (spec.faceDown === true) {
+      // A Set Card, whatever it is — never a standing character, and never
+      // the source itself, which is about to be face up.
+      if (card.faceUp || card.instanceId === source.instanceId) return false;
+    } else {
+      const standing = card.faceUp || card.instanceId === source.instanceId;
+      if (!standing || !isCharacter(ctx, card)) return false;
+    }
     // "Target another character" — Rules.md §13.
     if (spec.excludeSelf === true && card.instanceId === source.instanceId) return false;
     const side = spec.side ?? 'any';
@@ -525,6 +569,20 @@ export function reachedBy(
     if (card.zone !== 'city') return false;
     if (!card.faceUp) {
       if (selector.faceDown !== true) return false;
+      // A face-down selector may still narrow by what the card *is*: BK1-142
+      // reveals every Set Card the enemy holds and then destroys only the
+      // Effect cards among them. Without this the destroy would sweep up the
+      // characters it had just turned over.
+      if (selector.effectCards !== undefined) {
+        const def = definitionOf(ctx, card);
+        if (def.kind !== 'effect') return false;
+        if (selector.effectCards !== 'any' && def.duration !== selector.effectCards) return false;
+      }
+    } else if (selector.effectCards !== undefined) {
+      // Standing Effect cards, not characters — the other face-up population.
+      const def = definitionOf(ctx, card);
+      if (def.kind !== 'effect') return false;
+      if (selector.effectCards !== 'any' && def.duration !== selector.effectCards) return false;
     } else if (!isCharacter(ctx, card)) {
       return false;
     }
@@ -708,6 +766,18 @@ function effectRelevant(
     case 'destroy':
     case 'moveTo':
       return reaches(effect.who);
+    case 'revealUntilCharacter':
+      // Card advantage of a sort — a body onto the board — and worth doing
+      // whenever the deck still holds a character.
+      return true;
+    case 'openLevel':
+      // Continuous, read off the board by `openLevelFor` when a card is
+      // opened. Never resolved.
+      return ability.trigger === 'always';
+    case 'reveal':
+      // Information, which is worth having whenever there is anything hidden
+      // left to show.
+      return reaches(effect.who);
     case 'lock':
       // Unlike a boost, this outlasts the turn — it is worth doing outside a
       // battle, and against a character that is already locked (BK1-085 is
@@ -725,7 +795,8 @@ function effectRelevant(
     case 'captureDraw':
       // Continuous, read off the board when a city changes hands.
       return ability.trigger === 'always';
-    case 'mill': { // is the only way it does nothing. // Card advantage, which §13 counts wherever it happens; an empty deck
+    case 'mill': {
+      // is the only way it does nothing. // Card advantage, which §13 counts wherever it happens; an empty deck
       const player =
         effect.player === 'you'
           ? source.controller
@@ -784,14 +855,29 @@ export const CAPTURE_DRAW = 2;
  */
 export function captureDrawFor(ctx: EngineContext, state: GameState, battle: BattleState): number {
   let count = CAPTURE_DRAW;
-  for (const card of stillFighting(state, battle, battle.attacker)) {
+  // Two populations say what a capture pays: the attackers who took it
+  // (BK1-093 draws less), and whatever is standing in the city itself
+  // (BK1-145 pays more, and belongs to nobody). A card that says the draw is
+  // *smaller* than the rule allows always wins, whichever it is — the
+  // narrower number is the one the printed line insists on.
+  const speakers = [
+    ...stillFighting(state, battle, battle.attacker),
+    ...Object.values(state.cards).filter(
+      (card) => card.zone === 'city' && card.cityIndex === battle.city && card.faceUp,
+    ),
+  ];
+  const raises: number[] = [];
+  for (const card of speakers) {
     for (const ability of definitionOf(ctx, card).abilities ?? []) {
       if (ability.trigger !== 'always') continue;
       if (ability.effect.do !== 'captureDraw') continue;
       if (!conditionHolds(ctx, state, card, ability.condition, battle)) continue;
-      count = Math.min(count, ability.effect.count);
+      if (ability.effect.count < CAPTURE_DRAW) count = Math.min(count, ability.effect.count);
+      else raises.push(ability.effect.count);
     }
   }
+  // A raise only applies while nothing has cut the draw down.
+  if (count === CAPTURE_DRAW && raises.length > 0) count = Math.max(...raises);
   return count;
 }
 
@@ -884,6 +970,9 @@ export const targetingAbilities = (
  * as long as it is printed rather than being applied once.
  */
 export function cannotAttack(ctx: EngineContext, state: BoardView, card: CardInstance): boolean {
+  // Written onto the card for the turn by a non-continuous ability (BK1-149),
+  // whose own card is in the Trash by now and cannot be read off the board.
+  if ((card.counters[NO_BATTLE] ?? 0) > 0) return true;
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
     for (const ability of definitionOf(ctx, source).abilities ?? []) {
@@ -908,6 +997,8 @@ export function conditionHolds(
   source: CardInstance,
   condition: Condition | undefined,
   battle?: BattleState | null,
+  /** The card the ability was pointed at, for a condition that asks about it. */
+  chosen?: CardInstanceId | undefined,
 ): boolean {
   if (!condition) return true;
 
@@ -941,6 +1032,46 @@ export function conditionHolds(
       return !state.turn.arrivals.some(
         (arrival) => arrival.city === source.cityIndex && arrival.player !== source.controller,
       );
+    case 'enemyArrivedThisArea':
+      return state.turn.arrivals.some(
+        (arrival) => arrival.city === source.cityIndex && arrival.player !== source.controller,
+      );
+    case 'defendedThisArea':
+      // §11 ① — a battle was declared here, and by the other player, which is
+      // the only way its controller can have been the one defending.
+      return (
+        source.cityIndex !== undefined &&
+        state.turn.declaredCities.includes(source.cityIndex) &&
+        state.turn.activePlayer !== source.controller
+      );
+    case 'areaUnoccupied':
+      return source.cityIndex !== undefined && cityOf(state, source)?.occupiedBy == null;
+    case 'enemyLevelHere':
+      return Object.values(state.cards).some((card) => {
+        if (card.zone !== 'city' || !card.faceUp) return false;
+        if (card.cityIndex !== source.cityIndex) return false;
+        if (card.controller === source.controller) return false;
+        const level = definitionOf(ctx, card).level;
+        return level !== null && level >= condition.level;
+      });
+    case 'openedCharacterHere':
+      return Object.values(state.cards).some(
+        (card) =>
+          card.zone === 'city' &&
+          card.faceUp &&
+          card.cityIndex === source.cityIndex &&
+          card.controller === source.controller &&
+          isCharacter(ctx, card) &&
+          (card.counters[OPENED_ON_TURN] ?? 0) === turnOrdinal(state),
+      );
+    case 'targetDoesNotOccupyThisArea': {
+      // Needs the card the ability was pointed at, which only an arrival or a
+      // chosen target supplies; with nobody named there is nothing to judge.
+      if (!chosen) return false;
+      const newcomer = state.cards[chosen];
+      if (!newcomer || newcomer.cityIndex === undefined) return false;
+      return state.cities[newcomer.cityIndex]?.occupiedBy !== newcomer.controller;
+    }
     case 'isVanguard':
       return battle?.vanguard === source.instanceId;
     case 'attackingOccupiedArea': {
@@ -1090,8 +1221,13 @@ export function searchable(
   player: PlayerId,
   named: string | null,
   characterOnly = false,
+  /** Look in the Trash too (BK1-115). Rules.md §14 — it is public anyway. */
+  includeTrash = false,
 ): CardInstance[] {
-  const deck = state.zoneOrder[zoneKey(player, 'deck')] ?? [];
+  const deck = [
+    ...(state.zoneOrder[zoneKey(player, 'deck')] ?? []),
+    ...(includeTrash ? (state.zoneOrder[zoneKey(player, 'trash')] ?? []) : []),
+  ];
   return (
     deck
       .map((id) => state.cards[id])
@@ -1126,6 +1262,20 @@ export function areasFor(
     }
     case 'anyOther':
       return all.filter((index) => index !== source.cityIndex);
+    case 'withinTwo':
+      // §15 Distance, from the card's own area — "another area", so not this.
+      return all.filter(
+        (index) =>
+          source.cityIndex !== undefined &&
+          index !== source.cityIndex &&
+          cityDistance(source.cityIndex, index) <= 2,
+      );
+    case 'youOccupyOther':
+      // §12 — "any other area you occupy", so the card's own city is out.
+      return all.filter(
+        (index) =>
+          index !== source.cityIndex && state.cities[index]?.occupiedBy === source.controller,
+      );
     case 'enemyLevel3':
       return all.filter(
         (index) =>

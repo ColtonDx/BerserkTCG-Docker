@@ -108,54 +108,54 @@ BK1,102,Rosine,B,yes,3,0,2,5,3,no,character,Apostle,1B: Unlock this card
 BK1,103,Demon Interception,B,no,3,,,,,yes,Effect,Normal,"When this card is opened, your opponent must discard 2 cards for each character they control in battle in this area or destroy that card"
 BK1,104,Deceased Sun,B,yes,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. At the start of each players turn, if that player occupies this area, they must discard a card if they have 3 or more cards in their hand."
 BK1,105,A Crimson Lake Appears,1B,no,4,,,,,no,Effect,Normal,Destroy all characters in this area.
-BK1,106,Flight Of The Insect Elves,B,no,3,,,,,yes,Effect,Normal,
-BK1,107,Peekaf's Fairy Tale,B,no,2,,,,,yes,Effect,Normal,
-BK1,108,Innocent Taunt,B,no,2,,,,,yes,Effect,Normal,
-BK1,109,Scolding,B,no,2,,,,,no,Effect,Normal,
-BK1,110,Instant Contact,B,no,2,,,,,yes,Effect,Normal,
-BK1,111,Withdrawal Order,B,no,2,,,,,yes,Effect,Normal,
-BK1,112,Guardian Deployment,B,no,2,,,,,no,Effect,Eternal,
-BK1,113,Valley Of Mist,B,yes,2,,,,,no,Effect,Eternal,
-BK1,114,Landscape Of Paradise,B,no,2,,,,,yes,Effect,Normal,
-BK1,115,Hatchery,B,no,2,,,,,no,Effect,Eternal,
-BK1,116,Forest In The Dream,B,no,2,,,,,no,Effect,Eternal,
-BK1,117,Curtain Of Night,B,no,2,,,,,no,Effect,Normal,
-BK1,118,Kidnapped,B,no,1,,,,,no,Effect,Normal,
-BK1,119,Swarm Raid,B,no,2,,,,,yes,Effect,Normal,
-BK1,120,Profaned Being,B,no,2,,,,,yes,Effect,Normal,
+BK1,106,Flight Of The Insect Elves,B,no,3,,,,,yes,Effect,Normal,"When this card is opened, target a character in this area, or an adjacent area, and deal 2 damage to it"
+BK1,107,Peekaf's Fairy Tale,B,no,2,,,,,yes,Effect,Normal,This card can only be opened when an enemy character moved to this area this turn. That card does not unlock during the next refresh phase when it would unlock.
+BK1,108,Innocent Taunt,B,no,2,,,,,yes,Effect,Normal,"When this card is opened, move an enemy character from an adjacent area to this area, unlock that character. Draw 1 card."
+BK1,109,Scolding,B,no,2,,,,,no,Effect,Normal,"When this card Is opened, target 1 character you control in this area, unlock it, and deal 2 damage to it."
+BK1,110,Instant Contact,B,no,2,,,,,yes,Effect,Normal,This card can only be opened if a character attacked this area this turn. Lock target character in this area.
+BK1,111,Withdrawal Order,B,no,2,,,,,yes,Effect,Normal,"When this card is opened, move one of your character from this area to any other area you occupy."
+BK1,112,Guardian Deployment,B,no,2,,,,,no,Effect,Eternal,"(Quick) B: Search Search your deck for a Forest Guardian card, set it in this area, and then open it. Shuffle your deck."
+BK1,113,Valley Of Mist,B,yes,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. Any player who opens a character here or moves a character here while they do not occupy this area, must discard 2 cards or destroy that character."
+BK1,114,Landscape Of Paradise,B,no,2,,,,,yes,Effect,Normal,"When this card is opened, if this area is not occupied, lock all characters here."
+BK1,115,Hatchery,B,no,2,,,,,no,Effect,Eternal,"At the end of your turn, you may search your deck or your graveyard for an ""Insect Elf"" card, set it in this area, then open it. Shuffle your deck."
+BK1,116,Forest In The Dream,B,no,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. The player who occupies this area can only open cards as if the level were 1 lower."
+BK1,117,Curtain Of Night,B,no,2,,,,,no,Effect,Normal,When this card is opened your opponent discards 3 cards.
+BK1,118,Kidnapped,B,no,1,,,,,no,Effect,Normal,"When this card is opened, destroy a level 1 or lower character in this area."
+BK1,119,Swarm Raid,B,no,2,,,,,yes,Effect,Normal,"When this card is opened, deal 2 damage to target character in this area."
+BK1,120,Profaned Being,B,no,2,,,,,yes,Effect,Normal,This card can only be opened if a battle was declared in this area this turn. Your opponent discards 2 cards.
 BK1,121,Mercenary,R,no,0,0,1,1,1,no,character,Mercenary,
 BK1,122,Charging Infantry Squad,R,no,2,0,1,4,2,no,character,NeoHawk Infantry,
 BK1,123,Invading Cavalry,R,no,2,0,2,3,2,no,character,NeoHawk Cavalry,
 BK1,124,Prowling Archers,R,no,2,2,1,2,1,no,character,NeoHawk Archer,
 BK1,125,Pursuing Cavalry,R,no,2,0,2,2,3,no,character,NeoHawk Cavalry,
-BK1,126,Raging Beast Soldiers,RR,no,2,0,1,2,3,no,character,NeoHawk Beast Soldiers,
-BK1,127,Beast Soldiers Of The Dark,RR,no,2,0,1,3,4,no,character,NeoHawk Beast Soldiers,
-BK1,128,Griffith,RR,yes,4,0,1,6,7,no,character,NeoHawk Leader,
-BK1,129,Griffith,R,yes,4,0,1,6,6,no,character,NeoHawk Leader,
-BK1,130,Griffith,R,yes,5,0,2,8,8,no,character,NeoHawk Leader,
-BK1,131,Zodd,R,yes,4,0,1,5,5,no,character,NeoHawk Apostle,
-BK1,132,Zodd,1R,yes,3,0,1,5,6,no,character,NeoHawk Apostle,
-BK1,133,Grunbeld,R,yes,3,0,1,3,5,no,character,NeoHawk ,
-BK1,134,Grunbeld,R,yes,4,0,1,5,5,no,character,NeoHawk ,
-BK1,135,Locus,R,yes,3,1,1,4,3,no,character,NeoHawk ,
-BK1,136,Locus,R,yes,4,1,1,4,5,no,character,NeoHawk ,
+BK1,126,Raging Beast Soldiers,RR,no,2,0,1,2,3,no,character,NeoHawk Beast Soldiers,"When this card is opened, it gets +1/+1 until the end of the turn."
+BK1,127,Beast Soldiers Of The Dark,RR,no,2,0,1,3,4,no,character,NeoHawk Beast Soldiers,When this card is opened it gets -1/-1 until end of turn.
+BK1,128,Griffith,RR,yes,4,0,1,6,7,no,character,NeoHawk Leader,1: Destroy a set card here. This can only be activated once each turn.
+BK1,129,Griffith,R,yes,4,0,1,6,6,no,character,NeoHawk Leader,"When this card is opened, eliminate all of your characters in play that are level 1 or less. 1: Unlock this character, can only be activated once each turn."
+BK1,130,Griffith,R,yes,5,0,2,8,8,no,character,NeoHawk Leader,"When this card is opened, destroy all set cards."
+BK1,131,Zodd,R,yes,4,0,1,5,5,no,character,NeoHawk Apostle,"3: Move this and another character from this area to another area within distance 2. There must be another character to move for this to be used, but it can be your character or an oppoenents character."
+BK1,132,Zodd,1R,yes,3,0,1,5,6,no,character,NeoHawk Apostle,(Quick) Tap: All characters in this area get -2/+0 until end of the turn
+BK1,133,Grunbeld,R,yes,3,0,1,3,5,no,character,NeoHawk ,(Quick) 1R: Target character in this area takes 2 damage.
+BK1,134,Grunbeld,R,yes,4,0,1,5,5,no,character,NeoHawk ,"While an enemy character, level 4 or higher, is in this area, this card gets +1/+1"
+BK1,135,Locus,R,yes,3,1,1,4,3,no,character,NeoHawk ,All cavalry characters you control get +1/+1
+BK1,136,Locus,R,yes,4,1,1,4,5,no,character,NeoHawk ,(Quick) 1: This character gets +1/+0 until end of turn.
 BK1,137,Irvine,R,yes,3,3,1,4,3,no,character,NeoHawk ,
 BK1,138,Irvine,R,yes,4,3,1,5,3,no,character,NeoHawk ,
-BK1,139,Rakshas,R,yes,3,0,2,3,4,no,character,NeoHawk ,
-BK1,140,Rakshas,R,yes,4,0,2,3,4,no,character,NeoHawk ,
-BK1,141,Sonia,R,yes,1,0,1,0,2,no,character,NeoHawk ,
-BK1,142,Sonia,R,yes,3,0,1,0,2,no,character,NeoHawk ,
-BK1,143,Revelation Of The Hawk Of Light,R,no,2,,,,,yes,Effect,Normal,
-BK1,144,Preface To Reunion,R,no,3,,,,,yes,Effect,Normal,
-BK1,145,Hill Of Swords,R,yes,2,,,,,no,Effect,Eternal,
-BK1,146,Affirmation Of Freedom,R,no,3,,,,,no,Effect,Normal,
-BK1,147,Sudden Interception,R,no,4,,,,,yes,Effect,Normal,
-BK1,148,Even Match,R,no,3,,,,,yes,Effect,Normal,
-BK1,149,Blood That Should Be Frozen,R,no,2,,,,,yes,Effect,Normal,
-BK1,150,Demonic Transformation,R,no,3,,,,,no,Effect,Normal,
-BK1,151,Rescue From Falling Rocks,R,no,2,,,,,yes,Effect,Normal,
-BK1,152,Mind Flight,R,no,3,,,,,yes,Effect,Normal,
-BK1,153,Precision Strike,RR,no,4,,,,,yes,Effect,Normal,
+BK1,139,Rakshas,R,yes,3,0,2,3,4,no,character,NeoHawk ,(Quick) 2: Target character in this area gets -4/+0 until end of turn.
+BK1,140,Rakshas,R,yes,4,0,2,3,4,no,character,NeoHawk ,(Quick) 2: Destroy a level 2 or lower character in this area.
+BK1,141,Sonia,R,yes,1,0,1,0,2,no,character,NeoHawk ,"When this card Is opened, you may look at all set cards in this area. "
+BK1,142,Sonia,R,yes,3,0,1,0,2,no,character,NeoHawk ,"When this card is opened, reveal all enemy set cards in all areas and destroy all effect cards among them."
+BK1,143,Revelation Of The Hawk Of Light,R,no,2,,,,,yes,Effect,Normal,You can only open this card if you opened a character in this area this turn. Move all your characters to this area.
+BK1,144,Preface To Reunion,R,no,3,,,,,yes,Effect,Normal,When this card is opened return all set cards you control to your hand.
+BK1,145,Hill Of Swords,R,yes,2,,,,,no,Effect,Eternal,All characters in this area gain +1/+0. If a player captures this area they draw 3 cards instead of 2.
+BK1,146,Affirmation Of Freedom,R,no,3,,,,,no,Effect,Normal,"When this card is opened, destroy a set card in this area"
+BK1,147,Sudden Interception,R,no,4,,,,,yes,Effect,Normal,You can only open this card if you defended this area this turn. Target any number of characters and move them to this area and unlock them.
+BK1,148,Even Match,R,no,3,,,,,yes,Effect,Normal,"When this card is opened, until end of turn, all damage dealt in this area  is reduced to 0."
+BK1,149,Blood That Should Be Frozen,R,no,2,,,,,yes,Effect,Normal,"Until end of turn, target character in this area cannot participate in battle."
+BK1,150,Demonic Transformation,R,no,3,,,,,no,Effect,Normal,"When this card is opened, destroy target character you control in this area. Then reveal cards from the top of your library until you reveal a character card, set that card in this area, and then open it. If the destroyed character was in battle, the newly opened card joins the battle."
+BK1,151,Rescue From Falling Rocks,R,no,2,,,,,yes,Effect,Normal,When this card is opened negate all abilities of normal effects with 1 distance until end of turn.
+BK1,152,Mind Flight,R,no,3,,,,,yes,Effect,Normal,"When this card is opened, destroy all eternal effect cards in play, then draw that many cards"
+BK1,153,Precision Strike,RR,no,4,,,,,yes,Effect,Normal,"When this card is opened, destroy target open card in this area"
 BK1,154,Strafing Evasion,R,no,3,,,,,yes,Effect,Normal,"Until end of turn, characters that are not in this area have their damage taken reduced to 0."
 BK1,155,War Cry In The Wind,R,no,2,,,,,yes,Effect,Normal,This card can only be opened if you occupy no areas and your opponent occupies at least 2 areas. Look at the top 7 cards of your deck and set them anywhere.
 BK1,156,Operation Liberation,R,no,3,,,,,no,Effect,Eternal,"While an enemy occupies the city in this area, all enemy character in this area get -2/-0"

@@ -18,6 +18,7 @@ import {
   quickCardRelevant,
   quickRelevant,
   cityLevel,
+  openLevelFor,
   definitionOf,
   isCharacter,
   searchable,
@@ -153,7 +154,14 @@ function choosable(
           kind.cards
             .map((id) => state.cards[id])
             .filter((card): card is CardInstance => card !== undefined && card.zone === 'city')
-        : searchable(ctx, state, player, kind.named, kind.characterOnly);
+        : searchable(
+            ctx,
+            state,
+            player,
+            kind.named,
+            kind.characterOnly,
+            kind.includeTrash === true,
+          );
   actions.push(...cards.map((card) => ({ type: 'CHOOSE_CARD' as const, card: card.instanceId })));
   // "Up to": the player may stop here. A choice with nothing left to pick
   // from is stopped by the engine itself, so this is only ever a real option.
@@ -256,13 +264,23 @@ function abilityActions(
       // an empty list here means the ability asks for nobody at all.
       for (const aim of aims) {
         const choices = aim === undefined ? prefix : [...prefix, aim];
-        actions.push({
-          type: 'USE_ABILITY',
-          card: card.instanceId,
-          ability: abilityKey(entry.index),
-          ...(choices.length > 0 ? { targets: choices } : {}),
-          ...(payment.length > 0 ? { pay: payment } : {}),
-        });
+        // An ability that also asks for an area gets one offer per legal
+        // (character, area) pair, exactly as the on-open path does — the
+        // client cannot work out what "within distance 2" reaches.
+        const areas =
+          entry.ability.area === undefined
+            ? [undefined]
+            : areasFor(ctx, state, entry.ability.area, card, aim);
+        for (const area of areas) {
+          actions.push({
+            type: 'USE_ABILITY',
+            card: card.instanceId,
+            ability: abilityKey(entry.index),
+            ...(choices.length > 0 ? { targets: choices } : {}),
+            ...(area !== undefined ? { areas: [area] } : {}),
+            ...(payment.length > 0 ? { pay: payment } : {}),
+          });
+        }
       }
     }
   }
@@ -399,7 +417,7 @@ function openActions(
     // Cards whose printed level or cost is not yet captured cannot be opened,
     // so they are never offered. Docs/CardData.md.
     if (def.level === null || def.cost === null) continue;
-    if (def.level > cityLevel(state)) continue;
+    if (def.level > openLevelFor(ctx, state, player)) continue;
     if (uniqueConflict(ctx, state, def)) continue;
 
     const payment = choosePayment(ctx, def.cost, hand);

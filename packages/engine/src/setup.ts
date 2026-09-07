@@ -173,6 +173,7 @@ export function createMatch(config: MatchConfig): GameState {
     stack: [],
     resume: null,
     pending: null,
+    revealed: {},
     rng,
     log: [{ type: 'MATCH_STARTED', firstPlayer }],
   };

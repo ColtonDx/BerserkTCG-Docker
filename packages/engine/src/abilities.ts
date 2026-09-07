@@ -84,6 +84,16 @@ export interface Selector {
    * fight reaches nobody, which is the printed behaviour.
    */
   readonly inCombat?: boolean;
+  /**
+   * Face-up Effect cards rather than characters — "all eternal effect cards
+   * in play" (BK1-152). Rules.md §3.
+   *
+   * The default population is characters, because all but a handful of
+   * effects are about people standing in an area. This reaches the standing
+   * Effect cards instead: an Eternal one sits on the board doing its work,
+   * and is a legitimate thing to sweep off it.
+   */
+  readonly effectCards?: 'eternal' | 'normal' | 'any';
 }
 
 /**
@@ -110,6 +120,17 @@ export interface TargetSpec {
    * ability has nobody to point at and is never offered.
    */
   readonly inCombat?: boolean;
+  /**
+   * Point at a face-down Set Card instead of a standing character (BK1-146,
+   * "destroy a set card in this area"). Rules.md §7.
+   *
+   * The two populations never mix, exactly as in {@link Selector.faceDown}:
+   * a spec that says this reaches cards lying face down, whatever they are,
+   * and never a character. `openCard` is the other reading — BK1-153's
+   * "target open card" is the default population, since an open card is one
+   * standing face up.
+   */
+  readonly faceDown?: boolean;
   /** Only characters that are unlocked. Rules.md §6. */
   readonly unlocked?: boolean;
   /**
@@ -137,11 +158,16 @@ export interface TargetSpec {
  * - `anyOther` — any city but the one the card stands in (BK1-068).
  * - `enemyLevel3` — any city where the opponent has a character of Level 3
  *   or more standing face up (BK1-062).
+ * - `youOccupyOther` — any city its controller occupies but the one the card
+ *   stands in (BK1-111, "any other area you occupy").
+ * - `withinTwo` — any other city within Distance 2 of the source (BK1-131).
+ *   §15 counts from the card's own area, which is excluded here because the
+ *   printed line says "to *another* area".
  *
  * The choice travels in `OPEN_CARD.areas` / `USE_ABILITY.areas`, not in
  * `targets`: an area is not a card, and an ability may want either or both.
  */
-export type AreaKind = 'adjacent' | 'anyOther' | 'enemyLevel3';
+export type AreaKind = 'adjacent' | 'anyOther' | 'enemyLevel3' | 'youOccupyOther' | 'withinTwo';
 
 /** What has to be true for the ability to apply. */
 export type Condition =
@@ -162,7 +188,34 @@ export type Condition =
   /** A battle was declared over its area this turn, by anyone. Rules.md §11. */
   | { readonly when: 'battleDeclaredThisArea' }
   /** No enemy character arrived in its area this turn, by move or effect. */
-  | { readonly when: 'noEnemyArrivedThisArea' };
+  | { readonly when: 'noEnemyArrivedThisArea' }
+  /** An enemy character arrived in its area this turn — the other reading. */
+  | { readonly when: 'enemyArrivedThisArea' }
+  /**
+   * A battle was declared over its area this turn by the *other* player, so
+   * its controller was the one defending (BK1-147). Rules.md §11 ①.
+   */
+  | { readonly when: 'defendedThisArea' }
+  /** Nobody holds the area it stands in. Rules.md §12. */
+  | { readonly when: 'areaUnoccupied' }
+  /**
+   * An enemy character of at least this Level stands in its area (BK1-134).
+   * Rules.md §7.
+   */
+  | { readonly when: 'enemyLevelHere'; readonly level: number }
+  /**
+   * Its controller opened a character in its area this turn (BK1-143).
+   * Rules.md §7 — `OPENED_ON_TURN` is what records it.
+   */
+  | { readonly when: 'openedCharacterHere' }
+  /**
+   * The player whose card this ability is pointed at does not occupy the
+   * area (BK1-113, "while they do not occupy this area"). Rules.md §12.
+   *
+   * Read against the *chosen* card rather than the source, which is what
+   * makes it usable from an `arrival` trigger: the newcomer is the choice.
+   */
+  | { readonly when: 'targetDoesNotOccupyThisArea' };
 
 /**
  * What the ability does when it applies.
@@ -234,6 +287,13 @@ export type Effect =
       readonly count: number;
       readonly named: string | null;
       readonly characterOnly?: boolean;
+      /**
+       * Look in the Trash as well as the deck (BK1-115, "search your deck or
+       * your graveyard"). Rules.md §14 — all Trash cards are public, so
+       * nothing is revealed by offering them that both players cannot
+       * already see. The deck is still shuffled afterwards.
+       */
+      readonly includeTrash?: boolean;
       readonly upTo?: boolean;
       /**
        * Where the cards go. `set` puts them face down as Set Cards (BK1-025);
@@ -255,6 +315,19 @@ export type Effect =
    */
   | { readonly do: 'setFromHand'; readonly maxLevel: number | null }
   /**
+   * Turn cards off the top of your deck until a character shows up, set it in
+   * this area and open it; the rest go to the Trash (BK1-150). Rules.md §13.
+   *
+   * Nothing is chosen, so it never stops to ask — which is the whole
+   * difference from `search`. `joinsBattle` is the printed tail: a character
+   * that replaces one which was fighting steps into the same fight (§11 ③).
+   */
+  | {
+      readonly do: 'revealUntilCharacter';
+      readonly to: 'setOpen';
+      readonly joinsBattle?: boolean;
+    }
+  /**
    * "You may …": a yes or no, and the effects that follow a yes. Rules.md
    * §13. Stops the game on the question like any other pending choice.
    */
@@ -272,6 +345,18 @@ export type Effect =
    */
   | { readonly do: 'attach'; readonly who: Selector; readonly grants: Grants }
   | { readonly do: 'unlock'; readonly who: Selector }
+  /**
+   * Show face-down cards to a player, for the rest of the match. Rules.md
+   * §13 — the printed exception to §7's "your opponent's Set Cards are
+   * hidden".
+   *
+   * `to` is who gets to look: `you` is Sonia peeking (BK1-141), `both` is a
+   * reveal that shows everybody (BK1-142). Recorded in `GameState.revealed`
+   * rather than announced once, because a card turned face up for a moment
+   * and then redacted again would be a reveal the player could blink and
+   * miss.
+   */
+  | { readonly do: 'reveal'; readonly who: Selector; readonly to: 'you' | 'both' }
   /**
    * Locks a character, as an effect rather than as a cost. Rules.md §6.
    *
@@ -318,7 +403,19 @@ export type Effect =
       readonly combatOnly?: boolean;
     }
   /** Straight to the Trash, whatever its HP. Rules.md §12. */
-  | { readonly do: 'destroy'; readonly who: Selector }
+  | {
+      readonly do: 'destroy';
+      readonly who: Selector;
+      /**
+       * Draw one card for each card this destroyed — "destroy all eternal
+       * effect cards in play, then draw that many" (BK1-152).
+       *
+       * Carried on the destroy rather than left to a following `draw` with a
+       * `per`, because a `per` is counted when *it* runs: by then the cards
+       * are in the Trash and it would always count nothing.
+       */
+      readonly drawPerDestroyed?: boolean;
+    }
   /**
    * Puts a character somewhere else on the board.
    *
@@ -344,9 +441,41 @@ export type Effect =
       readonly do: 'moveTo';
       readonly who: Selector;
       readonly where: 'sourceArea' | 'chosenArea';
+      /**
+       * Take the ability's own card along (BK1-131, "move this **and**
+       * another character"). Rules.md §13.
+       *
+       * A second selector would not do: the destination is chosen relative
+       * to where the source is standing *now*, so it has to move with the
+       * companion rather than being reached separately.
+       */
+      readonly withSource?: boolean;
     }
-  /** Rules.md §11 — may not lead or join an attack. */
+  /**
+   * Rules.md §11 — may not lead or join an attack.
+   *
+   * Under `always` this is continuous and read off the board. Under any
+   * other trigger it is written onto the card as a counter and lasts the
+   * turn, like a buff — which is what BK1-149 needs, its own card having
+   * gone to the Trash by the time anybody asks.
+   */
   | { readonly do: 'cannotAttack'; readonly who: Selector }
+  /**
+   * Shifts the City Level a player opens against (BK1-116, "can only open
+   * cards as if the level were 1 lower"). Rules.md §5 and §7.
+   *
+   * Continuous and read off the board by `rules.ts:openLevelFor`, never
+   * stored — City Level itself is unchanged, because §5 defines it as the
+   * count of face-up cities and a card does not get to rewrite that. This is
+   * a restriction on *opening*, which is §7's business.
+   *
+   * `who` says whose opens are affected, read from the source's own side.
+   */
+  | {
+      readonly do: 'openLevel';
+      readonly player: 'occupier' | 'opponent';
+      readonly shift: number;
+    }
   /**
    * Replaces the number of cards §12's capture pays out, while this card is
    * among the attackers (BK1-093 draws 1 instead of 2).
@@ -419,6 +548,15 @@ export type Trigger =
   | 'turnEnd'
   /** This character has been destroyed. Rules.md §3 — it fires on the way out. */
   | 'death'
+  /**
+   * A character arrived in this card's area — opened there, or moved there
+   * (BK1-113). Rules.md §7 and §10 ④(1).
+   *
+   * Fires on the *arriving* card's behalf but is read off the card that owns
+   * the ability, so the newcomer is what a `{ scope: 'target' }` selector
+   * reaches: `fireArrival` passes it as the chosen card.
+   */
+  | 'arrival'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -540,7 +678,24 @@ export const SHIELD = 'shield';
  */
 export const SKIP_REFRESH = 'skipRefresh';
 
-export const BOOST_COUNTERS: readonly string[] = [BOOST_POWER, BOOST_HP, BOOST_MOVE, SHIELD];
+/**
+ * Barred from battle for the rest of the turn — BK1-149's "cannot
+ * participate in battle". Rules.md §11.
+ *
+ * A counter rather than a continuous reading, because the printed line is
+ * "until end of turn" and its source is a Normal Effect that goes to the
+ * Trash the moment it resolves: there would be nothing left on the board to
+ * read it off. Swept with the boosts, so it needs no timer.
+ */
+export const NO_BATTLE = 'noBattle';
+
+export const BOOST_COUNTERS: readonly string[] = [
+  BOOST_POWER,
+  BOOST_HP,
+  BOOST_MOVE,
+  SHIELD,
+  NO_BATTLE,
+];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
   power: BOOST_POWER,
@@ -1419,6 +1574,545 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
     },
   ],
 
+  'BK1-106': [
+    {
+      trigger: 'open',
+      // "This area, or an adjacent area" is Distance 1, counted from the
+      // card's own city, which is therefore included (§15).
+      target: { maxDistance: 1 },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: 'When this card is opened, target a character in this area, or an adjacent area, and deal 2 damage to it',
+    },
+  ],
+  'BK1-109': [
+    {
+      trigger: 'open',
+      target: { side: 'yours', where: 'thisArea' },
+      // One printed line doing two things for one price: one ability with a
+      // `then`, never two entries.
+      effect: { do: 'unlock', who: { scope: 'target' } },
+      then: [{ do: 'damage', who: { scope: 'target' }, amount: 2 }],
+      text: 'When this card Is opened, target 1 character you control in this area, unlock it, and deal 2 damage to it.',
+    },
+  ],
+  'BK1-117': [
+    {
+      trigger: 'open',
+      effect: { do: 'discard', player: 'opponent', count: 3 },
+      text: 'When this card is opened your opponent discards 3 cards.',
+    },
+  ],
+  'BK1-118': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea', maxLevel: 1 },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: 'When this card is opened, destroy a level 1 or lower character in this area.',
+    },
+  ],
+  'BK1-119': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: 'When this card is opened, deal 2 damage to target character in this area.',
+    },
+  ],
+  'BK1-120': [
+    {
+      trigger: 'open',
+      // "Can only be opened if" — a gate, so it is never offered otherwise
+      // rather than being opened to do nothing.
+      gate: true,
+      condition: { when: 'battleDeclaredThisArea' },
+      effect: { do: 'discard', player: 'opponent', count: 2 },
+      text: 'This card can only be opened if a battle was declared in this area this turn. Your opponent discards 2 cards.',
+    },
+  ],
+
+  /* ----------------------------------------------------------------- red */
+
+  'BK1-126': [
+    {
+      trigger: 'open',
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1, hp: 1 } },
+      text: 'When this card is opened, it gets +1/+1 until the end of the turn.',
+    },
+  ],
+  'BK1-127': [
+    {
+      trigger: 'open',
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: -1, hp: -1 } },
+      text: 'When this card is opened it gets -1/-1 until end of turn.',
+    },
+  ],
+  'BK1-132': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      // "All characters in this area" — both sides, Zodd included.
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'any', where: 'thisArea' },
+        stats: { power: -2 },
+      },
+      text: '(Quick) Tap: All characters in this area get -2/+0 until end of the turn',
+    },
+  ],
+  'BK1-133': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1R' },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: '(Quick) 1R: Target character in this area takes 2 damage.',
+    },
+  ],
+  'BK1-135': [
+    {
+      trigger: 'always',
+      // "All cavalry characters you control" — the whole board, not just here.
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'cavalry' },
+        stats: { power: 1, hp: 1 },
+      },
+      text: 'All cavalry characters you control get +1/+1',
+    },
+  ],
+  'BK1-136': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1 } },
+      text: '(Quick) 1: This character gets +1/+0 until end of turn.',
+    },
+  ],
+  'BK1-139': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '2' },
+      target: { where: 'thisArea' },
+      effect: { do: 'buff', who: { scope: 'target' }, stats: { power: -4 } },
+      text: '(Quick) 2: Target character in this area gets -4/+0 until end of turn.',
+    },
+  ],
+  'BK1-140': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '2' },
+      target: { where: 'thisArea', maxLevel: 2 },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: '(Quick) 2: Destroy a level 2 or lower character in this area.',
+    },
+  ],
+
+  'BK1-110': [
+    {
+      trigger: 'open',
+      gate: true,
+      // "A character attacked this area this turn" — a battle was declared
+      // over it (§11 ①), whoever won.
+      condition: { when: 'battleDeclaredThisArea' },
+      target: { where: 'thisArea' },
+      effect: { do: 'lock', who: { scope: 'target' } },
+      text: 'This card can only be opened if a character attacked this area this turn. Lock target character in this area.',
+    },
+  ],
+  'BK1-114': [
+    {
+      trigger: 'open',
+      // "If this area is not occupied" gates the effect rather than the open:
+      // the printed line is "when this card is opened, if …", not "can only
+      // be opened if", so it may be opened into an occupied area and do
+      // nothing. Compare BK1-110 and BK1-120, which say the other thing.
+      condition: { when: 'areaUnoccupied' },
+      effect: { do: 'lock', who: { scope: 'any', side: 'any', where: 'thisArea' } },
+      text: 'When this card is opened, if this area is not occupied, lock all characters here.',
+    },
+  ],
+  'BK1-128': [
+    {
+      trigger: 'activated',
+      cost: { pay: '1', oncePerTurn: true },
+      // A Set Card, not a character — the two populations never mix.
+      target: { where: 'thisArea', faceDown: true },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: '1: Destroy a set card here. This can only be activated once each turn.',
+    },
+  ],
+  'BK1-129': [
+    {
+      trigger: 'open',
+      // "All of your characters in play that are level 1 or less" — the whole
+      // board, and his own side only. He is Level 4, so he never hits himself.
+      effect: {
+        do: 'destroy',
+        who: { scope: 'others', side: 'yours', where: 'anywhere', maxLevel: 1 },
+      },
+      text: 'When this card is opened, eliminate all of your characters in play that are level 1 or less.',
+    },
+    {
+      trigger: 'activated',
+      cost: { pay: '1', oncePerTurn: true },
+      effect: { do: 'unlock', who: { scope: 'self' } },
+      text: '1: Unlock this character, can only be activated once each turn.',
+    },
+  ],
+  'BK1-130': [
+    {
+      trigger: 'open',
+      // "All set cards", everywhere and both sides — the widest reading the
+      // printed line allows, and it names no narrowing.
+      effect: {
+        do: 'destroy',
+        who: { scope: 'others', side: 'any', where: 'anywhere', faceDown: true },
+      },
+      text: 'When this card is opened, destroy all set cards.',
+    },
+  ],
+  'BK1-134': [
+    {
+      trigger: 'always',
+      condition: { when: 'enemyLevelHere', level: 4 },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1, hp: 1 } },
+      text: 'While an enemy character, level 4 or higher, is in this area, this card gets +1/+1',
+    },
+  ],
+  'BK1-144': [
+    {
+      trigger: 'open',
+      // Its own card is face up by the time this resolves, so `others` is not
+      // needed to keep it out — but a Set Card is the other population and it
+      // is not one any more, so it is excluded either way.
+      effect: {
+        do: 'returnToHand',
+        who: { scope: 'others', side: 'yours', where: 'anywhere', faceDown: true },
+      },
+      text: 'When this card is opened return all set cards you control to your hand.',
+    },
+  ],
+  'BK1-146': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea', faceDown: true },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: 'When this card is opened, destroy a set card in this area',
+    },
+  ],
+  'BK1-149': [
+    {
+      trigger: 'open',
+      target: { where: 'thisArea' },
+      // Written onto the card for the turn rather than read off this one:
+      // a Normal Effect is in the Trash the moment it resolves (§3).
+      effect: { do: 'cannotAttack', who: { scope: 'target' } },
+      text: 'Until end of turn, target character in this area cannot participate in battle.',
+    },
+  ],
+  'BK1-153': [
+    {
+      trigger: 'open',
+      // "Target open card" is the default population: a card standing face up.
+      target: { where: 'thisArea' },
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      text: 'When this card is opened, destroy target open card in this area',
+    },
+  ],
+
+  'BK1-111': [
+    {
+      trigger: 'open',
+      target: { side: 'yours', where: 'thisArea' },
+      area: 'youOccupyOther',
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'chosenArea' },
+      text: 'When this card is opened, move one of your character from this area to any other area you occupy.',
+    },
+  ],
+  'BK1-112': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: 'B' },
+      // By printed name, so either Forest Guardian will do. Set and opened at
+      // once, paying nothing further and outside the City Level gate.
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 1,
+        named: 'Forest Guardian',
+        to: 'setOpen',
+      },
+      text: '(Quick) B: Search your deck for a Forest Guardian card, set it in this area, and then open it. Shuffle your deck.',
+    },
+  ],
+
+  'BK1-145': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'any', where: 'thisArea' },
+        stats: { power: 1 },
+      },
+      text: 'All characters in this area gain +1/+0.',
+    },
+    {
+      trigger: 'always',
+      // Read off the board when the city changes hands, like BK1-093 — but
+      // this one stands in the city rather than among the attackers, and
+      // pays whoever takes it.
+      effect: { do: 'captureDraw', count: 3 },
+      text: 'If a player captures this area they draw 3 cards instead of 2.',
+    },
+  ],
+  'BK1-152': [
+    {
+      trigger: 'open',
+      // "In play" — both sides, every area. The draw counts what this took,
+      // so it rides on the destroy rather than following it.
+      effect: {
+        do: 'destroy',
+        who: { scope: 'others', side: 'any', where: 'anywhere', effectCards: 'eternal' },
+        drawPerDestroyed: true,
+      },
+      text: 'When this card is opened, destroy all eternal effect cards in play, then draw that many cards',
+    },
+  ],
+
+  'BK1-141': [
+    {
+      trigger: 'open',
+      // "You may look at" — she reads them, nobody else does. She is face up
+      // by the time this resolves, so `others` keeps her out of her own peek.
+      effect: {
+        do: 'reveal',
+        who: { scope: 'others', side: 'any', where: 'thisArea', faceDown: true },
+        to: 'you',
+      },
+      text: 'When this card Is opened, you may look at all set cards in this area.',
+    },
+  ],
+  'BK1-142': [
+    {
+      trigger: 'open',
+      // "Reveal" — shown to both players, everywhere, and then the Effect
+      // cards among them are destroyed. One printed line, so one ability.
+      effect: {
+        do: 'reveal',
+        who: { scope: 'others', side: 'theirs', where: 'anywhere', faceDown: true },
+        to: 'both',
+      },
+      then: [
+        {
+          do: 'destroy',
+          who: {
+            scope: 'others',
+            side: 'theirs',
+            where: 'anywhere',
+            faceDown: true,
+            effectCards: 'any',
+          },
+        },
+      ],
+      text: 'When this card is opened, reveal all enemy set cards in all areas and destroy all effect cards among them.',
+    },
+  ],
+
+  'BK1-107': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'enemyArrivedThisArea' },
+      // "That card" is the one that moved in, so the player is asked to point
+      // at it: the engine records that an arrival happened, not which card it
+      // was, and an enemy that arrived is a legal choice either way.
+      target: { side: 'theirs', where: 'thisArea' },
+      effect: { do: 'lock', who: { scope: 'target' }, skipRefresh: 1 },
+      text: 'This card can only be opened when an enemy character moved to this area this turn. That card does not unlock during the next refresh phase when it would unlock.',
+    },
+  ],
+  'BK1-108': [
+    {
+      trigger: 'open',
+      // From an adjacent area to this one: Distance 1 reaches both, and the
+      // move is a no-op for anybody already standing here.
+      target: { side: 'theirs', maxDistance: 1 },
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'sourceArea' },
+      then: [
+        { do: 'unlock', who: { scope: 'target' } },
+        { do: 'draw', player: 'you', count: 1 },
+      ],
+      text: 'When this card is opened, move an enemy character from an adjacent area to this area, unlock that character. Draw 1 card.',
+    },
+  ],
+  'BK1-143': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'openedCharacterHere' },
+      // "All your characters" — from anywhere on the board to this area.
+      effect: {
+        do: 'moveTo',
+        who: { scope: 'any', side: 'yours', where: 'anywhere' },
+        where: 'sourceArea',
+      },
+      text: 'You can only open this card if you opened a character in this area this turn. Move all your characters to this area.',
+    },
+  ],
+  'BK1-148': [
+    {
+      trigger: 'open',
+      // "Reduced to 0" is a shield nothing can exceed, written onto everybody
+      // standing here for the turn and swept with the boosts (§10 ⑤). Both
+      // sides: the printed line says "all damage in this area".
+      effect: {
+        do: 'reduceDamage',
+        who: { scope: 'any', side: 'any', where: 'thisArea' },
+        amount: 99,
+      },
+      text: 'When this card is opened, until end of turn, all damage dealt in this area is reduced to 0.',
+    },
+  ],
+
+  'BK1-113': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      // Fires for whoever turns up — opened here or moved here — and asks
+      // them for two cards or the character. Both ways in are §13's arrival.
+      trigger: 'arrival',
+      condition: { when: 'targetDoesNotOccupyThisArea' },
+      effect: { do: 'destroyOrDiscard', who: { scope: 'target' }, discard: 2 },
+      text: 'Any player who opens a character here or moves a character here while they do not occupy this area, must discard 2 cards or destroy that character.',
+    },
+  ],
+  'BK1-115': [
+    {
+      trigger: 'turnEnd',
+      // "You may" — declinable, and it looks in the Trash as well as the
+      // deck (§14 makes the Trash public, so nothing leaks by offering it).
+      effect: {
+        do: 'may',
+        effects: [
+          {
+            do: 'search',
+            player: 'you',
+            count: 1,
+            named: 'Insect Elf',
+            includeTrash: true,
+            to: 'setOpen',
+          },
+        ],
+      },
+      text: 'At the end of your turn, you may search your deck or your graveyard for an "Insect Elf" card, set it in this area, then open it. Shuffle your deck.',
+    },
+  ],
+  'BK1-116': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'always',
+      // Read off the board by `rules.ts:openLevelFor` when a card is opened.
+      // City Level itself is untouched — §5 defines it as the face-up count.
+      effect: { do: 'openLevel', player: 'occupier', shift: -1 },
+      text: 'The player who occupies this area can only open cards as if the level were 1 lower.',
+    },
+  ],
+
+  'BK1-150': [
+    {
+      trigger: 'open',
+      target: { side: 'yours', where: 'thisArea' },
+      // One printed line: destroy, then dig for a replacement, which joins
+      // the fight if the one it replaced was in it (§11 ③).
+      effect: { do: 'destroy', who: { scope: 'target' } },
+      then: [{ do: 'revealUntilCharacter', to: 'setOpen', joinsBattle: true }],
+      text: 'When this card is opened, destroy target character you control in this area. Then reveal cards from the top of your library until you reveal a character card, set that card in this area, and then open it. If the destroyed character was in battle, the newly opened card joins the battle.',
+    },
+  ],
+
+  'BK1-131': [
+    {
+      trigger: 'activated',
+      cost: { pay: '3' },
+      // "There must be another character to move for this to be used" — the
+      // companion is a required target, so with nobody else standing here
+      // `canActivate` finds no legal one and the ability is never offered.
+      // Either side's, as printed.
+      target: { where: 'thisArea', excludeSelf: true },
+      area: 'withinTwo',
+      effect: {
+        do: 'moveTo',
+        who: { scope: 'target' },
+        where: 'chosenArea',
+        withSource: true,
+      },
+      text: '3: Move this and another character from this area to another area within distance 2.',
+    },
+  ],
+
+  'BK1-011': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1', oncePerTurn: true },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1, hp: 1 } },
+      text: '(Quick) 1: This character gets +1/+1 until end of turn. Use only once per turn.',
+    },
+  ],
+  'BK1-015': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: 'W' },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 1 },
+      text: '(Quick) W: This character deals 1 damage to a target character in this area.',
+    },
+  ],
+  'BK1-019': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: 'W', oncePerTurn: true },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: -1 } },
+      text: '(Quick) W: This character gains +2/-1 until end of turn. Do this only once per turn.',
+    },
+  ],
+  'BK1-021': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      // "You may look at" — he reads them, nobody else does.
+      effect: {
+        do: 'reveal',
+        who: { scope: 'others', side: 'any', where: 'thisArea', faceDown: true },
+        to: 'you',
+      },
+      text: 'Tap: You may look at all set cards in this area.',
+    },
+  ],
+  'BK1-160': [
+    {
+      trigger: 'open',
+      // "To this area", from anywhere — the card names no Distance.
+      target: { side: 'yours', where: 'anywhere' },
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'sourceArea' },
+      text: 'When this card is opened, move a target character you control to this area.',
+    },
+  ],
   'BK1-156': [
     {
       trigger: 'always',

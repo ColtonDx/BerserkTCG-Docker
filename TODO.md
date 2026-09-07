@@ -57,30 +57,66 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    defending too?), and BK1-154's "characters that are not in this area"
    (both sides again).
 
-   **Black is 20 of its 20 transcribed lines.** The first eleven needed
-   nothing new. The other nine brought: milling the top of a deck to the
-   Trash (`mill`, BK1-089/099), `lock` as an effect rather than a cost with
-   an owed-Refresh counter that survives to a future turn (`SKIP_REFRESH`,
-   BK1-085), destroying the source to pay for its own ability
-   (`ActivationCost.destroySelf`, BK1-092), a capture that pays out less than
-   §12's two cards (`captureDraw`, BK1-093), a search that sets _and opens_
-   what it finds (`to: 'setOpen'`, BK1-091), a choice made by the player who
-   is losing the cards (`theyDestroy` and the `field` pending kind, BK1-100),
-   an either/or continuation for a declined decision (`PendingChoice.orElse`,
-   BK1-103), and `occupier` as an effect's player so a card can act on
-   whoever holds its area rather than on a side (BK1-104). `Selector` gained
-   `maxDistance` and `inCombat`, which `TargetSpec` already had.
+   **Black is complete, and red is 39 of its 41 transcribed lines** — BK1 as
+   a whole is 120 of the 140 cards that carry printed text.
 
-   Four of those read ambiguously and were settled before being built:
-   BK1-085 locks its target as well and the skip is owed however the target
-   was standing; BK1-100's opponent chooses the card, anywhere within
-   Distance 1; BK1-103 asks once per character, each answered on its own; and
-   BK1-104 takes exactly one card from whoever holds the area.
+   Black's last nine brought: milling the top of a deck to the Trash
+   (`mill`), `lock` as an effect with an owed-Refresh counter that survives to
+   a future turn (`SKIP_REFRESH`), destroying the source to pay for its own
+   ability (`ActivationCost.destroySelf`), a capture paying less than §12's
+   two cards (`captureDraw`), a search that sets _and opens_ what it finds
+   (`to: 'setOpen'`), a choice made by the player losing the cards
+   (`theyDestroy` and the `field` pending kind), an either/or continuation for
+   a declined decision (`PendingChoice.orElse`), and `occupier` as an effect's
+   player.
 
-   `destroySelf` is paid when the ability _resolves_ rather than when it is
-   used, because §14 puts it on the stack first and `resolveTop` fizzles an
-   ability whose source has left the field. `canActivate` bars a card that is
-   already pending, or it could sacrifice itself repeatedly.
+   Red brought: pointing at a face-down Set Card rather than a character
+   (`TargetSpec.faceDown`), sweeping standing Effect cards by duration
+   (`Selector.effectCards`), `cannotAttack` written onto a card for the turn
+   (`NO_BATTLE`) so a Normal Effect can impose it and leave, a reveal that
+   persists in `GameState.revealed` rather than flashing once, a City Level
+   shifted for one player without touching §5's count
+   (`rules.ts:openLevelFor`, the single implementation both gate sites now
+   call), a search reaching the Trash (`includeTrash`, safe because §14 makes
+   it public), turning cards off the deck until a character appears
+   (`revealUntilCharacter`), a move that brings its own source along
+   (`moveTo.withSource`), and an `arrival` trigger fired from all four ways a
+   character reaches a city. `captureDraw` now raises as well as lowers, and
+   reads cards standing in the city as well as the attackers. Cost-bearing
+   abilities can finally ask for an area — BK1-131 is the first that does, and
+   `useAbility` validates it rather than refusing.
+
+   **Twenty BK1 lines are still unbuilt**, and most want a ruling first:
+
+   - **"Area level"** (BK1-028, BK1-033) is not a term `Rules.md` defines.
+     City Level is global (§5), so an "area level" is either a synonym for it
+     or something per-city the rules do not have.
+   - **"Cannot participate in battle"** (BK1-035, BK1-037) — does it stop
+     defending too, or only attacking? `NO_BATTLE` currently reads as
+     `cannotAttack`, which is the narrow half.
+   - **BK1-038** "unlock all Hawk characters" — both sides, or yours?
+   - **BK1-154** "characters that are not in this area" — both sides again.
+   - **BK1-147** "target any number of characters" needs several targets for
+     one ability; the wire carries one target per _ability_, and
+     `legalActions` offers one action per legal target, so "any number" would
+     be a cross-product. It wants a different shape of choice, probably a
+     pending one answered card by card.
+   - **BK1-151** "negate all abilities of normal effects within 1 distance"
+     needs negation checked at every ability lookup — seventeen sites across
+     `rules.ts` and `reducer.ts`. Anything less is silently wrong in the
+     places it was not applied.
+   - **BK1-022** "reveal the capital to yourself" needs the Royal Capital's
+     identity revealed to one player without leaking it in `view.ts`, which
+     currently hides face-down cities from everyone.
+   - **BK1-157**, **BK1-158**, **BK1-027**, **BK1-029**, **BK1-030**,
+     **BK1-031**, **BK1-034**, **BK1-036** each want one new primitive:
+     a per-character attack restriction tied to an area, a trigger on the
+     _opponent_ capturing, redirected damage, a conditional "while defending"
+     buff, opening another Set Card as an effect, barring a Set Card from
+     being opened, "target attacking character", and unlocking specifically
+     what arrived this turn.
+   - **BK1-023**, **BK1-155**, **BK1-159** are deck manipulation — look at
+     the top _n_ and choose, set them anywhere, or reorder without shuffling.
 
 2. **The priority stack** (`Rules.md` §14) is built for what a player does —
    an open, an ability used — with two narrowings noted in `DesignNotes`

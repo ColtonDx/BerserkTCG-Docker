@@ -167,9 +167,13 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
   // the order of what they are about to shuffle.
   const revealed = revealedByPendingSearch(ctx, state, viewer);
 
+  // Cards an effect has shown this player and that they may go on seeing
+  // (BK1-141, BK1-142). Rules.md §13 — the exception to §7's redaction.
+  const shown = new Set(state.revealed[viewer] ?? []);
+
   for (const card of Object.values(state.cards)) {
     cards[card.instanceId] =
-      canSee(card, viewer) || revealed.has(card.instanceId)
+      canSee(card, viewer) || revealed.has(card.instanceId) || shown.has(card.instanceId)
         ? withCurrentStats(ctx, state, card)
         : redactCard(card);
   }
@@ -248,9 +252,14 @@ function revealedByPendingSearch(
     return new Set();
   }
   return new Set(
-    searchable(ctx, state, viewer, pending.kind.named, pending.kind.characterOnly).map(
-      (c) => c.instanceId,
-    ),
+    searchable(
+      ctx,
+      state,
+      viewer,
+      pending.kind.named,
+      pending.kind.characterOnly,
+      pending.kind.includeTrash === true,
+    ).map((c) => c.instanceId),
   );
 }
 

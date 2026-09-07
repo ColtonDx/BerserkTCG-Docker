@@ -250,6 +250,8 @@ export type PendingChoiceKind =
       readonly action: 'toHand' | 'toTrash' | 'toCity' | 'toCityOpen';
       readonly named: string | null;
       readonly characterOnly: boolean;
+      /** The Trash counts as searchable too (BK1-115). Rules.md §14. */
+      readonly includeTrash?: boolean;
       readonly city?: number;
       readonly reveal: boolean;
     }
@@ -429,6 +431,17 @@ export interface GameState {
    * optional, because the effect is already resolving. Rules.md §13.
    */
   readonly pending: PendingChoice | null;
+  /**
+   * Face-down cards a player has been shown and may go on seeing, as
+   * `playerId -> instance ids`. Rules.md §13.
+   *
+   * Sonia (BK1-141) looks at the Set Cards in her area and BK1-142 reveals
+   * the opponent's outright; §7's redaction is what they are written against,
+   * so the exception has to live in the state rather than in the client, or
+   * `viewFor` would simply hide them again. Plain JSON, so an array and not a
+   * Set.
+   */
+  readonly revealed: Readonly<Record<string, readonly CardInstanceId[]>>;
   readonly rng: Rng;
   /** Append-only log of everything that happened, for replay and the UI feed. */
   readonly log: readonly GameEvent[];
