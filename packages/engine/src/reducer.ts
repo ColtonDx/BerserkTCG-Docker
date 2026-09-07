@@ -1316,6 +1316,7 @@ function moveCharacter(
     destroy(ctx, draft, card, events);
     return ok(true);
   }
+  fireAbilities(ctx, draft, card as CardInstance, 'selfMoved', events);
   fireArrival(ctx, draft, card, events);
   return ok(true);
 }
@@ -2101,6 +2102,51 @@ function useAbility(
 }
 
 /**
+ * BK2-043 and BK2-045's price, put one payment at a time. Rules.md §13.
+ *
+ * Three ways to pay, all of them the payer's own: a card out of hand, a Set
+ * Card, or an open character. "Distributed any way" means each answer stands
+ * on its own, so the question is repeated rather than asked once for all of
+ * them. A player with nothing left to give simply pays nothing — §13 has the
+ * effect resolve regardless.
+ */
+function askToPay(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  source: CardInstance,
+  payer: PlayerId,
+  owed: number,
+  text: string,
+  events: GameEvent[],
+): boolean {
+  if (owed <= 0) return false;
+  const onField = Object.values(draft.cards)
+    .filter((card) => card.zone === 'city' && card.controller === payer)
+    // Their Set Cards and their open characters, which is what both lines
+    // name; an open Effect card of theirs is neither.
+    .filter((card) => !card.faceUp || isCharacter(ctx, card as CardInstance))
+    .map((card) => card.instanceId);
+  const inHand = [...(draft.zoneOrder[zoneKey(payer, 'hand')] ?? [])];
+  if (onField.length === 0 && inHand.length === 0) return false;
+
+  askFor(draft, events, {
+    waitingOn: payer,
+    source: source.instanceId,
+    text,
+    count: 1,
+    upTo: false,
+    kind: { zone: 'field', action: 'pay', cards: onField, hand: inHand },
+    // The rest of the price follows behind this payment. `opponent` is read
+    // from the *source card's* controller, as every effect's player is —
+    // not from whoever is answering — so it keeps naming the same payer.
+    ...(owed > 1
+      ? { then: { effects: [{ do: 'theyPay', player: 'opponent', count: owed - 1 }] } }
+      : {}),
+  });
+  return true;
+}
+
+/**
  * BK1-103's question, put for one character at a time. Rules.md §13.
  *
  * "Discard 2 cards for each character … or destroy that card" is a choice per
@@ -2744,6 +2790,12 @@ function runEffect(
       return pushed();
     }
 
+    case 'theyPay': {
+      const payer = targetPlayer(draft, controller, effect.player, source);
+      if (!payer) return false;
+      return askToPay(ctx, draft, source, payer, effect.count, text, events);
+    }
+
     case 'gatherHere': {
       const city = source.cityIndex;
       if (city === undefined) return false;
@@ -2839,7 +2891,10 @@ function runEffect(
         card.cityIndex = to;
         if (card.faceUp) arrived(draft, card.controller, to);
         events.push({ type: 'CHARACTER_MOVED', card: card.instanceId, from, to });
-        if (card.faceUp) fireArrival(ctx, draft, card, events);
+        if (card.faceUp) {
+          fireAbilities(ctx, draft, card as CardInstance, 'selfMoved', events);
+          fireArrival(ctx, draft, card, events);
+        }
       }
       // A city whose occupier has just walked away is no longer theirs
       // (Rules.md §12); `refreshBoard` runs after the action and settles it.
@@ -3077,8 +3132,6 @@ function chooseCard(
   }
 
   const card = draft.cards[cardId];
-  // A choice made on the field names cards standing in a city, so the zone it
-  // asks about is not the zone they are in.
   // The zone a choice *asks about* is not always the zone its cards are in:
   // a field choice names cards standing in a city, and a deck-top reorder
   // names cards that are still in the deck.
@@ -3086,7 +3139,10 @@ function chooseCard(
   // A search that reaches the Trash as well (BK1-115) accepts either zone;
   // `searchable` below is what says the card was really on offer.
   const searchingTrash = kind.zone === 'deck' && kind.includeTrash === true;
-  const inZone = card?.zone === wantedZone || (searchingTrash && card?.zone === 'trash');
+  // A price may be paid out of hand as well as off the field (BK2-043).
+  const payingFromHand = kind.zone === 'field' && kind.action === 'pay' && card?.zone === 'hand';
+  const inZone =
+    card?.zone === wantedZone || (searchingTrash && card?.zone === 'trash') || payingFromHand;
   if (!card || card.controller !== actor || !inZone) {
     return violation('CARD_NOT_IN_ZONE', `That card is not in your ${kind.zone}.`, '§13');
   }
@@ -3094,7 +3150,7 @@ function chooseCard(
   if (kind.zone === 'field') {
     // Exactly what was offered when the question was posed — never re-derived
     // from a selector against a board that has since moved.
-    if (!kind.cards.includes(cardId)) {
+    if (!kind.cards.includes(cardId) && !(kind.hand ?? []).includes(cardId)) {
       return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
     }
     if (kind.action === 'moveHere') {

@@ -153,9 +153,12 @@ function choosable(
       : kind.zone === 'field'
         ? // Worked out when the question was posed, so the Distance and
           // occupation checks are not re-run against a board that has moved.
-          kind.cards
+          [...kind.cards, ...(kind.action === 'pay' ? (kind.hand ?? []) : [])]
             .map((id) => state.cards[id])
-            .filter((card): card is CardInstance => card !== undefined && card.zone === 'city')
+            .filter(
+              (card): card is CardInstance =>
+                card !== undefined && (card.zone === 'city' || card.zone === 'hand'),
+            )
         : kind.zone === 'deckTop'
           ? // The cards still waiting to be named, in the order they lie.
             kind.cards

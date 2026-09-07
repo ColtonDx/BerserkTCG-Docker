@@ -962,6 +962,9 @@ function effectRelevant(
     case 'setTopOfDeck':
       // A card onto the board for free, whenever the deck still has one.
       return true;
+    case 'theyPay':
+      // Card advantage taken off the other player, worth doing anywhere.
+      return true;
     case 'gatherHere':
       // Bodies onto a contested area, which is worth doing wherever there is
       // somebody to bring.

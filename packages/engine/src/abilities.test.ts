@@ -3840,3 +3840,57 @@ describe('BK2 wards and granted subtypes (Rules.md §13)', () => {
     expect(power(state, merc.card)).toBe(beforeCeremony + 1);
   });
 });
+
+describe('BK2-045 makes the other player pay three times (Rules.md §13)', () => {
+  it('offers hand, set cards and characters, and repeats the question', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // One of each kind on their side, plus whatever is in their hand.
+    const theirCharacter = place(state, other, 'BK1-081', 3);
+    state = theirCharacter.state;
+    const theirSetCard = place(state, other, 'BK1-081', 4, { faceUp: false });
+    state = theirSetCard.state;
+    const handBefore = zoneSize(state, other, 'hand');
+    expect(handBefore).toBeGreaterThan(0);
+
+    const counter = place(state, player, 'BK2-045', 2, { faceUp: false });
+    state = openable(counter.state, player, counter.card);
+    const open = openOf(state, player, counter.card);
+    expect(open, 'Swift Counter should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // The question goes to the other player, not to whoever opened it.
+    expect(state.pending?.waitingOn).toBe(other);
+    const offered = engine
+      .legalActions(state, other)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+    // All three ways to pay are on the table at once.
+    expect(offered).toContain(theirCharacter.card);
+    expect(offered).toContain(theirSetCard.card);
+    expect(offered.some((id) => state.cards[id]?.zone === 'hand')).toBe(true);
+
+    // Pay the first with a character; the question comes straight back.
+    state = apply(state, other, { type: 'CHOOSE_CARD', card: theirCharacter.card });
+    expect(state.cards[theirCharacter.card]?.zone).toBe('trash');
+    expect(state.pending?.waitingOn).toBe(other);
+
+    // Pay the second with the Set Card...
+    state = apply(state, other, { type: 'CHOOSE_CARD', card: theirSetCard.card });
+    expect(state.cards[theirSetCard.card]?.zone).toBe('trash');
+    expect(state.pending?.waitingOn).toBe(other);
+
+    // ...and the third out of hand, which ends it: three payments, any mix.
+    const fromHand = engine
+      .legalActions(state, other)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card)
+      .find((id) => state.cards[id]?.zone === 'hand');
+    expect(fromHand, 'a card in hand should still be payable').toBeDefined();
+    state = apply(state, other, { type: 'CHOOSE_CARD', card: fromHand as CardInstanceId });
+    expect(zoneSize(state, other, 'hand')).toBe(handBefore - 1);
+    expect(state.pending).toBeNull();
+  });
+});

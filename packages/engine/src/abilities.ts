@@ -618,6 +618,17 @@ export type Effect =
    */
   | { readonly do: 'wardNextDamage'; readonly who: Selector }
   /**
+   * A price the *other* player pays, their choice of how, `count` times over
+   * (BK2-043, BK2-045). Rules.md §13.
+   *
+   * The three ways are the ones both printed lines name: discard a card,
+   * destroy one of their Set Cards, or destroy one of their open characters.
+   * Asked one payment at a time, because "distributed any way" means each
+   * answer stands on its own — and a player with only one way left is not
+   * asked which, they simply pay it.
+   */
+  | { readonly do: 'theyPay'; readonly player: EffectPlayer; readonly count: number }
+  /**
    * Discard until a hand is no bigger than `size` (BK2-042). Rules.md §13.
    *
    * Not a count: how many go depends on how many are held, so a player
@@ -798,6 +809,14 @@ export type Trigger =
    * off the *watcher* rather than the card dying.
    */
   | 'enemyDeathHere'
+  /**
+   * This card has just moved (BK2-034, BK2-039). Rules.md §10 ④(1) and §13.
+   *
+   * The mirror of `arrival`, which fires for the cards already standing
+   * where somebody turns up: this one fires for the traveller itself, so a
+   * `{ where: 'thisArea' }` selector reads its *new* area.
+   */
+  | 'selfMoved'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -3035,6 +3054,62 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         withSource: true,
       },
       text: '(Quick) Tap: Target a level 2 or lower character you control within 1 distance, move this character and that character to any single area within 2 distance.',
+    },
+  ],
+
+  'BK2-034': [
+    {
+      trigger: 'selfMoved',
+      // "You may" — declinable, and "1 other character in the area it moved
+      // to" is this card's own area by the time the trigger fires.
+      target: { where: 'thisArea', excludeSelf: true },
+      effect: {
+        do: 'may',
+        effects: [{ do: 'damage', who: { scope: 'target' }, amount: 1 }],
+      },
+      text: 'Whenever this character moves, you may select 1 other character in the area it moved to and deal 1 damage to it.',
+    },
+  ],
+  'BK2-039': [
+    {
+      trigger: 'selfMoved',
+      // Not optional, unlike BK2-034: "choose another character", so with
+      // nobody else standing there it simply finds nobody.
+      target: { where: 'thisArea', excludeSelf: true },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      text: 'Whenever this character moves, choose another character in this area and deal 3 damage to it.',
+    },
+  ],
+  'BK2-018': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'thisArea', colour: 'green' },
+        stats: { hp: 2 },
+      },
+      text: '(Quick) Tap: Until end of turn all green characters you control in this area get +0/+2',
+    },
+  ],
+  'BK2-043': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      // "They choose" — the question goes to the opponent, one of three ways
+      // to pay it, exactly once.
+      effect: { do: 'theyPay', player: 'opponent', count: 1 },
+      text: 'Tap: your opponent must discard a card or destroy a set card they control or destroy a character they control. They choose.',
+    },
+  ],
+  'BK2-045': [
+    {
+      trigger: 'open',
+      // "Distributed any way" — three separate answers, each of the three
+      // kinds, so the same question is put three times over.
+      effect: { do: 'theyPay', player: 'opponent', count: 3 },
+      text: 'When this card is opened, target a player. That player must choose one of the following effects 3 times (distributed any way): (1) discard a card (2) destroy a set card they control (3) destroy an open character they control',
     },
   ],
 
