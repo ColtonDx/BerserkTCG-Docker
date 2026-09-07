@@ -4,6 +4,7 @@ import {
   selects,
   BOOST_COUNTERS,
   NO_BATTLE,
+  SEALED,
   SHIELD,
   SKIP_REFRESH,
   targetPlayer,
@@ -360,7 +361,12 @@ function applyAction(
     // a question froze the battle until now, so it settles like any other
     // action that could have moved one on.
     case 'CHOOSE_CARD':
-      return settled(ctx, draft, events, chooseCard(ctx, draft, actor, action.card, events));
+      return settled(
+        ctx,
+        draft,
+        events,
+        chooseCard(ctx, draft, actor, action.card, events, action.city),
+      );
 
     case 'ANSWER':
       return settled(ctx, draft, events, answer(ctx, draft, actor, action.accept, events));
@@ -1129,6 +1135,10 @@ function openCard(
     );
   }
 
+  // Shut for the turn by a card that said so (BK1-031). Rules.md §7.
+  if ((card.counters[SEALED] ?? 0) > 0) {
+    return violation('WRONG_PHASE', `${def.name} cannot be opened this turn.`, '§7');
+  }
   // A card on the board may narrow what this player can open (BK1-116).
   const level = openLevelFor(ctx, draft, actor);
   if (def.level > level) {
@@ -1780,9 +1790,15 @@ function resolveTop(ctx: EngineContext, draft: Draft<GameState>, events: GameEve
   const ability = source
     ? definitionOf(ctx, source as CardInstance).abilities?.[top.ability]
     : undefined;
+  // The chosen card has to still be on the field for the effect to land. A
+  // face-down one counts as present: an ability aimed at a Set Card (§7 —
+  // BK1-031, BK1-030, BK1-128) is pointed at it *because* it is face down,
+  // so requiring `faceUp` here fizzled exactly the cards it was written for.
+  const aimedAtSetCard = (ability?.target?.faceDown ?? false) === true;
+  const chosenCard = top.chosen === undefined ? undefined : draft.cards[top.chosen];
   const chosenGone =
     top.chosen !== undefined &&
-    (draft.cards[top.chosen]?.zone !== 'city' || draft.cards[top.chosen]?.faceUp !== true);
+    (chosenCard?.zone !== 'city' || (!aimedAtSetCard && chosenCard.faceUp !== true));
   if (source && source.zone === 'city' && source.faceUp && ability && !chosenGone) {
     // "Destroy this card:" — paid now rather than at the moment it was used,
     // so §14's stack does not fizzle the ability as a source that has gone.
@@ -2288,9 +2304,12 @@ function runEffect(
         effect.named,
         effect.characterOnly === true,
         effect.includeTrash === true,
+        effect.topOfDeck,
       );
       if (found.length === 0) {
-        shuffleDeck(draft, player);
+        // Same rule as `finishChoice`: a top-of-deck look is not a search, so
+        // an empty one does not shuffle either.
+        if (effect.topOfDeck === undefined) shuffleDeck(draft, player);
         return false;
       }
       const to = effect.to ?? 'hand';
@@ -2309,10 +2328,13 @@ function runEffect(
                 ? 'toTrash'
                 : to === 'setOpen'
                   ? 'toCityOpen'
-                  : 'toCity',
+                  : to === 'setAnywhere'
+                    ? 'toCityAnywhere'
+                    : 'toCity',
           named: effect.named,
           characterOnly: effect.characterOnly === true,
           ...(effect.includeTrash === true ? { includeTrash: true } : {}),
+          ...(effect.topOfDeck !== undefined ? { topOfDeck: effect.topOfDeck } : {}),
           ...((to === 'set' || to === 'setOpen') && source.cityIndex !== undefined
             ? { city: source.cityIndex }
             : {}),
@@ -2358,6 +2380,21 @@ function runEffect(
       fireArrival(ctx, draft, found, events);
       fireAbilities(ctx, draft, found as CardInstance, 'open', events);
       refreshBoard(ctx, draft, events);
+      return pushed();
+    }
+
+    case 'reorderTop': {
+      const top = cardsInZone(draft as GameState, controller, 'deck').slice(0, effect.count);
+      // Fewer than two cards is not a decision: there is only one order.
+      if (top.length < 2) return false;
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: top.length,
+        upTo: false,
+        kind: { zone: 'deckTop', action: 'reorder', cards: top.map((c) => c.instanceId) },
+      });
       return pushed();
     }
 
@@ -2620,6 +2657,35 @@ function runEffect(
     case 'cannotAttack':
       return true;
 
+    case 'openSetCard': {
+      let opened = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        if (card.faceUp || card.cityIndex === undefined) continue;
+        card.faceUp = true;
+        card.counters = { ...card.counters, [OPENED_ON_TURN]: turnOrdinal(draft) };
+        events.push({
+          type: 'CARD_OPENED',
+          player: card.controller,
+          card: card.instanceId,
+          city: card.cityIndex,
+        });
+        fireArrival(ctx, draft, card, events);
+        fireAbilities(ctx, draft, card as CardInstance, 'open', events);
+        opened++;
+      }
+      if (opened > 0) refreshBoard(ctx, draft, events);
+      return opened > 0;
+    }
+
+    case 'seal': {
+      let sealed = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        card.counters = { ...card.counters, [SEALED]: 1 };
+        sealed++;
+      }
+      return sealed > 0;
+    }
+
     case 'cannotBattle': {
       // "Cannot participate in battle" for the rest of the turn, written onto
       // the card because the source is a Normal Effect and will be in the
@@ -2768,6 +2834,8 @@ function chooseCard(
   actor: PlayerId,
   cardId: CardInstanceId,
   events: GameEvent[],
+  /** Where it goes, for a choice that lets the player say (BK1-155). */
+  chosenCity?: number | undefined,
 ): Result<true, RuleViolation> {
   const pending = draft.pending;
   if (!pending) return violation('WRONG_PHASE', 'Nothing is waiting on a choice.', '§13');
@@ -2782,7 +2850,10 @@ function chooseCard(
   const card = draft.cards[cardId];
   // A choice made on the field names cards standing in a city, so the zone it
   // asks about is not the zone they are in.
-  const wantedZone = kind.zone === 'field' ? 'city' : kind.zone;
+  // The zone a choice *asks about* is not always the zone its cards are in:
+  // a field choice names cards standing in a city, and a deck-top reorder
+  // names cards that are still in the deck.
+  const wantedZone = kind.zone === 'field' ? 'city' : kind.zone === 'deckTop' ? 'deck' : kind.zone;
   // A search that reaches the Trash as well (BK1-115) accepts either zone;
   // `searchable` below is what says the card was really on offer.
   const searchingTrash = kind.zone === 'deck' && kind.includeTrash === true;
@@ -2818,6 +2889,20 @@ function chooseCard(
     // the effect said "open it", not "open it and point it at somebody".
     fireAbilities(ctx, draft, card as CardInstance, 'open', events);
     refreshBoard(ctx, draft, events);
+  } else if (kind.zone === 'deckTop') {
+    // Naming a card puts it back on top, so the last one named is drawn
+    // next (BK1-159). Nothing leaves the deck and nothing is shuffled.
+    if (!kind.cards.includes(cardId)) {
+      return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
+    }
+    const key = zoneKey(actor, 'deck');
+    const order = (draft.zoneOrder[key] ?? []).filter((id) => id !== cardId);
+    draft.zoneOrder[key] = toDraft([cardId, ...order]);
+    // Struck off the list still to be named, so each is placed once.
+    pending.kind = toDraft({
+      ...kind,
+      cards: kind.cards.filter((id) => id !== cardId),
+    });
   } else {
     // The restrictions are re-checked here rather than trusted from the
     // client: `legalActions` only offers matching cards, and `reduce` never
@@ -2838,8 +2923,13 @@ function chooseCard(
       events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
       events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
     } else {
-      const city = kind.city;
+      // "Set them anywhere" lets the player name the city; every other
+      // destination is fixed by the printed line to the source's own area.
+      const city = kind.action === 'toCityAnywhere' ? chosenCity : kind.city;
       if (city === undefined) return violation('WRONG_PHASE', 'Nowhere to set that card.', '§13');
+      if (kind.action === 'toCityAnywhere' && !draft.cities[city]) {
+        return violation('ILLEGAL_TARGET', 'That is not a city.', '§13');
+      }
       moveToCity(draft, cardId, city, { controller: actor, faceUp: false });
       events.push({ type: 'DECK_SEARCHED', player: actor, card: cardId });
       events.push({ type: 'CARD_SET', player: actor, card: cardId, city });
@@ -2926,7 +3016,11 @@ function answer(
 function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameEvent[]): void {
   const pending = draft.pending;
   if (!pending) return;
-  const searched = pending.kind.zone === 'deck';
+  // A "look at the top n" is not a search: the player has seen only what the
+  // card let them see, and the order of the rest is already unknown to them.
+  // BK1-159 says "do not shuffle" outright, and §13's shuffle exists to stop
+  // a searcher keeping what they learned looking through the whole deck.
+  const searched = pending.kind.zone === 'deck' && pending.kind.topOfDeck === undefined;
   const player = pending.waitingOn;
   const rest = pending.then;
   const source = draft.cards[pending.source];

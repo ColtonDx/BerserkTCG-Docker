@@ -4,6 +4,7 @@ import {
   counterFor,
   selects,
   NO_BATTLE,
+  SEALED,
   SHIELD,
   usedOnTurnCounter,
   type Ability,
@@ -534,6 +535,12 @@ export function legalTargets(
     // Rules.md §11 ③ — the participants, not merely everyone standing in the
     // contested city. With no battle on, nobody is in combat.
     if (spec.inCombat === true && !battle?.participants.includes(card.instanceId)) return false;
+    // §11 — committed *and* on the attacking side, which `inCombat` alone
+    // does not distinguish.
+    if (spec.attacking === true) {
+      if (!battle?.participants.includes(card.instanceId)) return false;
+      if (card.controller !== battle.attacker) return false;
+    }
     const def = definitionOf(ctx, card);
     if (spec.colour !== undefined && def.color !== spec.colour) return false;
     if (spec.maxLevel !== undefined && (def.level === null || def.level > spec.maxLevel)) {
@@ -565,10 +572,14 @@ export function reachedBy(
    */
   battle?: BattleState | null,
 ): CardInstance[] {
+  const aimed = (selector.scope ?? 'self') === 'target';
   return Object.values(state.cards).filter((card) => {
     if (card.zone !== 'city') return false;
     if (!card.faceUp) {
-      if (selector.faceDown !== true) return false;
+      // A chosen target is the whole selection: `legalTargets` already said
+      // what could be pointed at, and a spec with `faceDown` said Set Cards.
+      // Re-filtering by population here would drop exactly those (BK1-031).
+      if (!aimed && selector.faceDown !== true) return false;
       // A face-down selector may still narrow by what the card *is*: BK1-142
       // reveals every Set Card the enemy holds and then destroys only the
       // Effect cards among them. Without this the destroy would sweep up the
@@ -741,6 +752,18 @@ function effectRelevant(
       ) {
         return false;
       }
+      return reaches(effect.who);
+    case 'reorderTop':
+      // Knowing and arranging the next few draws is worth doing whenever the
+      // deck holds enough for the order to be a choice.
+      return true;
+    case 'openSetCard':
+      // A body onto the board for free — worth doing wherever there is one
+      // lying face down to turn up.
+      return reaches(effect.who);
+    case 'seal':
+      // Denying an open outlasts the moment, so it is worth doing whenever
+      // there is a Set Card to shut.
       return reaches(effect.who);
     case 'cannotBattle':
       // Outlasts the turn's fighting rather than a single blow, so it is
@@ -1094,6 +1117,13 @@ export function conditionHolds(
       return state.turn.arrivals.some(
         (arrival) => arrival.city === source.cityIndex && arrival.player === source.controller,
       );
+    case 'losingBadly': {
+      const mine = state.cities.filter((city) => city.occupiedBy === source.controller).length;
+      const theirs = state.cities.filter(
+        (city) => city.occupiedBy != null && city.occupiedBy !== source.controller,
+      ).length;
+      return mine === 0 && theirs >= condition.enemyAtLeast;
+    }
     case 'cityLevelAtMost':
       // "Area level" reads as City Level: §5 defines one global value.
       return cityLevel(state) <= condition.level;
@@ -1250,10 +1280,25 @@ export function searchable(
   characterOnly = false,
   /** Look in the Trash too (BK1-115). Rules.md §14 — it is public anyway. */
   includeTrash = false,
+  /**
+   * Only the top this-many cards of the deck are in reach (BK1-023, "look at
+   * the top 5"). Rules.md §13.
+   *
+   * The whole point of the limit is secrecy: `view.ts` reveals exactly what
+   * this returns, so a search that looked deeper than the card allows would
+   * show the player the rest of their deck. Undefined is the ordinary
+   * unlimited search.
+   */
+  topOfDeck?: number,
 ): CardInstance[] {
+  const wholeDeck = state.zoneOrder[zoneKey(player, 'deck')] ?? [];
   const deck = [
-    ...(state.zoneOrder[zoneKey(player, 'deck')] ?? []),
-    ...(includeTrash ? (state.zoneOrder[zoneKey(player, 'trash')] ?? []) : []),
+    ...(topOfDeck === undefined ? wholeDeck : wholeDeck.slice(0, topOfDeck)),
+    // A "top of deck" look never reaches the Trash: the two are different
+    // instructions and no card in the set asks for both.
+    ...(includeTrash && topOfDeck === undefined
+      ? (state.zoneOrder[zoneKey(player, 'trash')] ?? [])
+      : []),
   ];
   return (
     deck

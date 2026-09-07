@@ -27,6 +27,7 @@ import {
   HAND_LIMIT,
   type EngineContext,
 } from './rules.js';
+import { SEALED } from './abilities.js';
 import { MIN_KEPT_HAND } from './setup.js';
 import type { BattleState, CardInstance, GameAction, GameState, PendingChoice } from './types.js';
 import { cardsInZone, cityDistance } from './zones.js';
@@ -154,15 +155,31 @@ function choosable(
           kind.cards
             .map((id) => state.cards[id])
             .filter((card): card is CardInstance => card !== undefined && card.zone === 'city')
-        : searchable(
-            ctx,
-            state,
-            player,
-            kind.named,
-            kind.characterOnly,
-            kind.includeTrash === true,
-          );
-  actions.push(...cards.map((card) => ({ type: 'CHOOSE_CARD' as const, card: card.instanceId })));
+        : kind.zone === 'deckTop'
+          ? // The cards still waiting to be named, in the order they lie.
+            kind.cards
+              .map((id) => state.cards[id])
+              .filter((card): card is CardInstance => card !== undefined && card.zone === 'deck')
+          : searchable(
+              ctx,
+              state,
+              player,
+              kind.named,
+              kind.characterOnly,
+              kind.includeTrash === true,
+              kind.topOfDeck,
+            );
+  // "Set them anywhere" is a card *and* a destination, so every legal pair is
+  // offered — the client cannot know which cities count (BK1-155).
+  if (kind.zone === 'deck' && kind.action === 'toCityAnywhere') {
+    for (const card of cards) {
+      for (const city of state.cities) {
+        actions.push({ type: 'CHOOSE_CARD', card: card.instanceId, city: city.index });
+      }
+    }
+  } else {
+    actions.push(...cards.map((card) => ({ type: 'CHOOSE_CARD' as const, card: card.instanceId })));
+  }
   // "Up to": the player may stop here. A choice with nothing left to pick
   // from is stopped by the engine itself, so this is only ever a real option.
   if (pending.upTo && cards.length > 0) actions.push({ type: 'ANSWER', accept: false });
@@ -417,6 +434,8 @@ function openActions(
     // Cards whose printed level or cost is not yet captured cannot be opened,
     // so they are never offered. Docs/CardData.md.
     if (def.level === null || def.cost === null) continue;
+    // Shut for the turn by a card that said so (BK1-031). Rules.md §7.
+    if ((card.counters[SEALED] ?? 0) > 0) continue;
     if (def.level > openLevelFor(ctx, state, player)) continue;
     if (uniqueConflict(ctx, state, def)) continue;
 

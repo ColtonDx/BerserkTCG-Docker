@@ -247,11 +247,17 @@ export type PendingChoiceKind =
        * `toCity` sets what is found face down; `toCityOpen` sets it and opens
        * it at once, paying nothing and ignoring City Level (BK1-091).
        */
-      readonly action: 'toHand' | 'toTrash' | 'toCity' | 'toCityOpen';
+      readonly action: 'toHand' | 'toTrash' | 'toCity' | 'toCityOpen' | 'toCityAnywhere';
       readonly named: string | null;
       readonly characterOnly: boolean;
       /** The Trash counts as searchable too (BK1-115). Rules.md §14. */
       readonly includeTrash?: boolean;
+      /**
+       * Only the top this-many cards of the deck are on offer (BK1-023).
+       * `view.ts` reveals exactly what is offered, so this is what stops the
+       * rest of the deck being shown.
+       */
+      readonly topOfDeck?: number;
       readonly city?: number;
       readonly reveal: boolean;
     }
@@ -269,6 +275,20 @@ export type PendingChoiceKind =
   | {
       readonly zone: 'field';
       readonly action: 'destroy';
+      readonly cards: readonly CardInstanceId[];
+    }
+  /**
+   * Put the cards you are looking at back on the deck in an order you pick
+   * (BK1-159). Rules.md §13.
+   *
+   * `cards` is exactly what may be named — the top of the deck as it stood
+   * when the question was posed — and `view.ts` reveals precisely those, so
+   * nothing deeper is shown. Each answer goes back on top, so the last named
+   * is the one drawn next.
+   */
+  | {
+      readonly zone: 'deckTop';
+      readonly action: 'reorder';
       readonly cards: readonly CardInstanceId[];
     }
   | { readonly zone: 'decision' };
@@ -494,7 +514,18 @@ export type GameAction =
    * picked their first discard is not made to name both at once — the choice
    * counts down and the game asks again.
    */
-  | { readonly type: 'CHOOSE_CARD'; readonly card: CardInstanceId }
+  | {
+      readonly type: 'CHOOSE_CARD';
+      readonly card: CardInstanceId;
+      /**
+       * Where the card goes, for a choice that lets the player say (BK1-155,
+       * "set them anywhere"). Rules.md §13.
+       *
+       * Most choices have one destination fixed by the printed line and
+       * ignore this; only a `toCityAnywhere` search asks for it.
+       */
+      readonly city?: number;
+    }
   /** Shuffle your hand back, redraw, and bottom cards. Rules.md §9, DesignNotes 5. */
   | { readonly type: 'MULLIGAN' }
   /** Put one of the redrawn cards on the bottom of your deck. DesignNotes 5. */

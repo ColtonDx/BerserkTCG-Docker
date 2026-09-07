@@ -248,9 +248,11 @@ function revealedByPendingSearch(
   viewer: PlayerId,
 ): ReadonlySet<CardInstanceId> {
   const pending = state.pending;
-  if (!pending || pending.waitingOn !== viewer || pending.kind.zone !== 'deck') {
-    return new Set();
-  }
+  if (!pending || pending.waitingOn !== viewer) return new Set();
+  // Putting the top back in an order means seeing exactly those cards, and
+  // nothing deeper (BK1-159). The list was fixed when the question was posed.
+  if (pending.kind.zone === 'deckTop') return new Set(pending.kind.cards);
+  if (pending.kind.zone !== 'deck') return new Set();
   return new Set(
     searchable(
       ctx,
@@ -259,6 +261,7 @@ function revealedByPendingSearch(
       pending.kind.named,
       pending.kind.characterOnly,
       pending.kind.includeTrash === true,
+      pending.kind.topOfDeck,
     ).map((c) => c.instanceId),
   );
 }

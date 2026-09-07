@@ -126,6 +126,14 @@ export interface TargetSpec {
    */
   readonly inCombat?: boolean;
   /**
+   * Only characters on the attacking side of the battle running right now
+   * (BK1-034, "target attacking character"). Rules.md §11.
+   *
+   * Narrower than `inCombat`: a defender committed to the same fight is in
+   * combat but is not attacking. With no battle on, nothing qualifies.
+   */
+  readonly attacking?: boolean;
+  /**
    * Point at a face-down Set Card instead of a standing character (BK1-146,
    * "destroy a set card in this area"). Rules.md §7.
    *
@@ -230,7 +238,13 @@ export type Condition =
    */
   | { readonly when: 'cityLevelAtMost'; readonly level: number }
   /** A character its controller owns arrived in its area this turn. */
-  | { readonly when: 'allyArrivedThisArea' };
+  | { readonly when: 'allyArrivedThisArea' }
+  /**
+   * Its controller holds no cities at all and the other player holds at
+   * least `enemyAtLeast` (BK1-155). Rules.md §12 — a card for the player who
+   * is losing badly, so both halves are printed and both are checked.
+   */
+  | { readonly when: 'losingBadly'; readonly enemyAtLeast: number };
 
 /**
  * What the ability does when it applies.
@@ -309,14 +323,26 @@ export type Effect =
        * already see. The deck is still shuffled afterwards.
        */
       readonly includeTrash?: boolean;
+      /**
+       * Only the top this-many cards are looked at (BK1-023, "look at the top
+       * 5 cards … select 2"). Rules.md §13.
+       *
+       * `count` is still how many may be taken; this is how far down the deck
+       * the player is allowed to see. The deck is *not* shuffled afterwards
+       * when this is set — a card that says "look at the top n" has not
+       * searched the deck, so §13's shuffle does not apply and BK1-159 says
+       * so outright.
+       */
+      readonly topOfDeck?: number;
       readonly upTo?: boolean;
       /**
        * Where the cards go. `set` puts them face down as Set Cards (BK1-025);
        * `setOpen` sets and then opens at once, paying nothing and ignoring City
        * Level (BK1-091) — the printed line names both halves, and a card set but
-       * left face down would be a different card.
+       * left face down would be a different card. `setAnywhere` sets them face
+       * down in whichever city the player names, one card at a time (BK1-155).
        */
-      readonly to?: 'hand' | 'trash' | 'set' | 'setOpen';
+      readonly to?: 'hand' | 'trash' | 'set' | 'setOpen' | 'setAnywhere';
       readonly reveal?: boolean;
     }
   /**
@@ -483,6 +509,31 @@ export type Effect =
    * the moment they resolve (§3). Swept with the boosts at end of turn.
    */
   | { readonly do: 'cannotBattle'; readonly who: Selector }
+  /**
+   * A Set Card cannot be opened for the rest of the turn (BK1-031).
+   * Rules.md §7 — the gate is on opening, so `legalActions` stops offering
+   * it and `openCard` refuses it.
+   */
+  | { readonly do: 'seal'; readonly who: Selector }
+  /**
+   * Turn a Set Card face up at once, paying nothing and outside the City
+   * Level gate (BK1-030). Rules.md §7 and §13.
+   *
+   * Free and ungated for the same reason BK1-061's is: the printed line is
+   * what puts it into play, not the turn's one open (§10 ③), which it
+   * therefore does not spend either.
+   */
+  | { readonly do: 'openSetCard'; readonly who: Selector }
+  /**
+   * Look at the top `count` cards of your deck and put them back in an order
+   * you choose (BK1-159). Rules.md §13.
+   *
+   * The player names them one at a time, and each named card goes back on
+   * top — so the *last* one named ends up on top of the deck. Not a search:
+   * nothing is taken and nothing is shuffled, which is what the printed line
+   * says outright.
+   */
+  | { readonly do: 'reorderTop'; readonly count: number }
   /**
    * Shifts the City Level a player opens against (BK1-116, "can only open
    * cards as if the level were 1 lower"). Rules.md §5 and §7.
@@ -712,12 +763,21 @@ export const SKIP_REFRESH = 'skipRefresh';
  */
 export const NO_BATTLE = 'noBattle';
 
+/**
+ * A Set Card barred from being opened for the rest of the turn (BK1-031).
+ * Rules.md §7.
+ *
+ * Swept with the boosts, so "this turn" needs no timer of its own.
+ */
+export const SEALED = 'sealed';
+
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
   BOOST_HP,
   BOOST_MOVE,
   SHIELD,
   NO_BATTLE,
+  SEALED,
 ];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
@@ -2234,6 +2294,89 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       effect: { do: 'unlock', who: { scope: 'target' } },
       then: [{ do: 'draw', player: 'you', count: 2 }],
       text: 'When this card is opened, unlock a character that moved to this area this turn. Then draw 2 cards.',
+    },
+  ],
+
+  'BK1-023': [
+    {
+      trigger: 'open',
+      // "If you captured this area this turn" gates the effect, not the open:
+      // the printed line is "when this card is opened, if …".
+      condition: { when: 'youCapturedThisArea' },
+      // Look at five, take two. The look is what `topOfDeck` bounds — and it
+      // is what `view.ts` reveals, so the rest of the deck stays secret. No
+      // shuffle follows, because looking at the top is not a search (§13).
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 2,
+        named: null,
+        topOfDeck: 5,
+        to: 'hand',
+      },
+      text: 'When this card is opened, if you captured this area this turn, look at the top 5 cards of your library, select 2 to put into your hand.',
+    },
+  ],
+
+  'BK1-159': [
+    {
+      trigger: 'open',
+      // "Do not shuffle" is printed, and is also what the engine does anyway:
+      // looking at the top is not a search, so §13's shuffle never applies.
+      effect: { do: 'reorderTop', count: 4 },
+      text: 'When this card is opened, look at the top 4 cards of your deck and put them back in any order. Do not shuffle.',
+    },
+  ],
+
+  'BK1-155': [
+    {
+      trigger: 'open',
+      gate: true,
+      // "If you occupy no areas and your opponent occupies at least 2" — a
+      // gate, so a player who is not losing is never offered it (§13).
+      condition: { when: 'losingBadly', enemyAtLeast: 2 },
+      // Look at seven and set them all, each wherever the player says. Not a
+      // search, so nothing is shuffled afterwards.
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 7,
+        named: null,
+        topOfDeck: 7,
+        to: 'setAnywhere',
+      },
+      text: 'This card can only be opened if you occupy no areas and your opponent occupies at least 2 areas. Look at the top 7 cards of your deck and set them anywhere.',
+    },
+  ],
+
+  'BK1-030': [
+    {
+      trigger: 'open',
+      // "1 set white character card you have in this area" — face down, your
+      // own, white, and a character. Free and outside the City Level gate.
+      target: { side: 'yours', where: 'thisArea', faceDown: true, colour: 'white' },
+      effect: { do: 'openSetCard', who: { scope: 'target' } },
+      text: 'When this card Is opened, open 1 set white character card you have in this area.',
+    },
+  ],
+  'BK1-031': [
+    {
+      trigger: 'open',
+      // Either side's Set Card: the printed line names neither.
+      target: { where: 'thisArea', faceDown: true },
+      effect: { do: 'seal', who: { scope: 'target' } },
+      text: 'When this card is opened, target 1 set card in this area, it cannot be opened this turn.',
+    },
+  ],
+  'BK1-034': [
+    {
+      trigger: 'open',
+      condition: { when: 'youOccupyThisArea' },
+      // "Target attacking character" — committed, and on the attacking side.
+      // With no battle on there is nobody to point at and it does nothing.
+      target: { attacking: true },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      text: 'When this card is opened, if you occupy this area, deal 3 damage to target attacking character.',
     },
   ],
 

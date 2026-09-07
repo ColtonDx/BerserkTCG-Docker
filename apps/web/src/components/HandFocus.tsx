@@ -32,10 +32,18 @@ export type HandStep =
       readonly kind: 'choose';
       readonly owed: number;
       readonly text: string;
-      readonly from: 'hand' | 'deck' | 'field';
+      readonly from: 'hand' | 'deck' | 'field' | 'deckTop';
       /** What happens to a chosen card, which is what the prompt has to say. */
       readonly action:
-        'discard' | 'setAndOpen' | 'toHand' | 'toTrash' | 'toCity' | 'toCityOpen' | 'destroy';
+        | 'discard'
+        | 'setAndOpen'
+        | 'toHand'
+        | 'toTrash'
+        | 'toCity'
+        | 'toCityOpen'
+        | 'destroy'
+        | 'reorder'
+        | 'toCityAnywhere';
       /** The player may stop short of the count. Rules.md §13 — "up to". */
       readonly upTo: boolean;
     }
@@ -91,6 +99,8 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
   // to click a card *for*, so a click is a look: it zooms, and clicking away
   // puts it back.
   const [zoomed, setZoomed] = useState<string | null>(null);
+  // The card waiting on an area, for a choice that asks for both (BK1-155).
+  const [held, setHeld] = useState<string | null>(null);
   // Which cards are laid out. Every step but one is about the hand; a deck
   // search is about the cards the *server* revealed out of the deck, which is
   // exactly the set it offered a `CHOOSE_CARD` for. Reading them off the legal
@@ -100,7 +110,12 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
   // from the cards the server actually offered, never from a zone the client
   // holds. For the field that also keeps a face-down Set Card face-down for
   // everyone but the player being asked to give one up (BK1-100).
-  const searching = step.kind === 'choose' && (step.from === 'deck' || step.from === 'field');
+  // A deck search, a field choice, and a deck-top reorder are all laid out
+  // from the cards the server offered rather than from a zone the client
+  // holds — that is what keeps the rest of the deck out of sight.
+  const searching =
+    step.kind === 'choose' &&
+    (step.from === 'deck' || step.from === 'field' || step.from === 'deckTop');
   const shown =
     step.kind === 'decide'
       ? []
@@ -119,14 +134,30 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
 
   // A card is clickable only when the current step actually acts on cards.
   const picking = step.kind !== 'mulligan' && step.kind !== 'decide';
+  // "Set them anywhere" wants a card *and* an area (BK1-155), so the card is
+  // held here while the areas it may go to are offered.
+  const placing = step.kind === 'choose' && step.action === 'toCityAnywhere';
+  const destinations = (instanceId: string): number[] =>
+    view.legalActions
+      .filter(
+        (action) =>
+          action.type === 'CHOOSE_CARD' && action.card === instanceId && action.city !== undefined,
+      )
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).city as number);
+
   const actionFor = (instanceId: string): GameAction | null => {
     if (step.kind === 'bottom') return { type: 'BOTTOM_CARD', card: instanceId as never };
     if (step.kind === 'discard') return { type: 'DISCARD_CARD', card: instanceId as never };
-    if (step.kind === 'choose') return { type: 'CHOOSE_CARD', card: instanceId as never };
+    if (step.kind === 'choose') {
+      // Held back until an area is picked; `held` below sends it.
+      if (placing) return null;
+      return { type: 'CHOOSE_CARD', card: instanceId as never };
+    }
     return null;
   };
 
   const legal = (instanceId: string): boolean => {
+    if (placing) return destinations(instanceId).length > 0;
     const wanted = actionFor(instanceId);
     if (!wanted) return false;
     return view.legalActions.some(
@@ -170,6 +201,13 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
                     onClick={() => {
                       // A hold ends in a click; that one is not a choice.
                       if (peek.consumed()) return;
+                      if (placing && clickable) {
+                        // Pick the card now, the area next (BK1-155).
+                        setHeld((current) =>
+                          current === card.instanceId ? null : card.instanceId,
+                        );
+                        return;
+                      }
                       const action = actionFor(card.instanceId);
                       if (clickable && action) {
                         onAction(action);
@@ -215,6 +253,24 @@ export function HandFocus({ view, step, onAction, onInspect, onPeek }: Props): J
               );
             })}
           </div>
+
+          {placing && held && (
+            <div className="focus__actions">
+              {destinations(held).map((city) => (
+                <button
+                  key={city}
+                  type="button"
+                  className="focus__button"
+                  onClick={() => {
+                    onAction({ type: 'CHOOSE_CARD', card: held as never, city });
+                    setHeld(null);
+                  }}
+                >
+                  {`Area ${city + 1}`}
+                </button>
+              ))}
+            </div>
+          )}
 
           {step.kind === 'decide' && (
             <div className="focus__actions">
@@ -279,6 +335,8 @@ function title(step: HandStep): string {
   if (step.kind === 'decide') return 'A card asks';
   if (step.kind === 'choose') {
     if (step.from === 'deck') return 'Search your deck';
+    if (step.action === 'reorder') return 'Order your deck';
+    if (step.action === 'toCityAnywhere') return 'Set them anywhere';
     if (step.action === 'destroy') return 'Give up a card';
     return step.action === 'setAndOpen' ? 'Set and open' : 'Discard';
   }
@@ -301,9 +359,13 @@ function hint(step: HandStep): string {
             ? `Click ${many} to set face down in this area — your deck is shuffled afterwards.`
             : step.action === 'setAndOpen'
               ? 'Click a card to set it in this area and open it at once, paying nothing.'
-              : step.action === 'destroy'
-                ? `Click ${many} of yours to destroy.`
-                : `Click ${many} to discard, or 🔍 to read one first.`;
+              : step.action === 'toCityAnywhere'
+                ? `Click a card, then the area it goes to — ${many} to place.`
+                : step.action === 'reorder'
+                  ? 'Click the cards in the order you want them back — the last one you pick is drawn next.'
+                  : step.action === 'destroy'
+                    ? `Click ${many} of yours to destroy.`
+                    : `Click ${many} to discard, or 🔍 to read one first.`;
     return `${step.text} ${what}`;
   }
   if (step.kind === 'mulligan') {

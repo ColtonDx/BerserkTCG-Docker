@@ -2955,3 +2955,269 @@ describe('"cannot participate in battle" bars either side (Rules.md §11)', () =
     ).toBe(3);
   });
 });
+
+describe('looking at the top of the deck (Rules.md §13)', () => {
+  it('BK1-023 shows exactly five cards and takes two, without shuffling', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    const bounty = place(state, player, 'BK1-023', 2, { faceUp: false });
+    state = openable(bounty.state, player, bounty.card);
+    // "If you captured this area this turn" — §13.
+    state = { ...state, turn: { ...state.turn, capturedCities: [2] } };
+
+    // The deck order before the look, to prove it survives it.
+    const orderBefore = [...(state.zoneOrder[`${player}:deck`] ?? [])];
+
+    const open = openOf(state, player, bounty.card);
+    expect(open, 'Promised Bounty should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // Exactly the top five are on offer — never the rest of the deck.
+    const offered = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+    expect(offered).toHaveLength(5);
+    expect(offered).toEqual(orderBefore.slice(0, 5));
+
+    // And the view shows those five, and nothing deeper.
+    const seen = viewFor({ registry }, state, player);
+    expect(isHidden(seen.cards[orderBefore[5] as CardInstanceId])).toBe(true);
+    for (const id of orderBefore.slice(0, 5)) {
+      expect(isHidden(seen.cards[id])).toBe(false);
+    }
+
+    // Two of them, one at a time.
+    expect(state.pending?.count).toBe(2);
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: offered[0] as CardInstanceId });
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: offered[1] as CardInstanceId });
+    expect(state.pending).toBeNull();
+    // Both chosen cards are in hand now, and came off the deck.
+    for (const id of offered.slice(0, 2)) {
+      expect(state.cards[id]?.zone).toBe('hand');
+    }
+
+    // Looking at the top is not a search, so the rest of the deck keeps its
+    // order — §13's shuffle exists to unlearn a *whole-deck* look.
+    const orderAfter = state.zoneOrder[`${player}:deck`] ?? [];
+    expect(orderAfter).toEqual(orderBefore.slice(2));
+  });
+});
+
+describe('BK1-159 puts the top of the deck back in a chosen order', () => {
+  it('shows four, keeps them in the deck, and the last named is drawn next', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    const story = place(state, player, 'BK1-159', 2, { faceUp: false });
+    state = openable(story.state, player, story.card);
+    const orderBefore = [...(state.zoneOrder[`${player}:deck`] ?? [])];
+    const deckBefore = zoneSize(state, player, 'deck');
+
+    const open = openOf(state, player, story.card);
+    expect(open, 'Preposterous Story should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // Exactly the top four are on offer, and the view shows those only.
+    const offered = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+    expect(offered).toHaveLength(4);
+    expect(offered).toEqual(orderBefore.slice(0, 4));
+    const seen = viewFor({ registry }, state, player);
+    expect(isHidden(seen.cards[orderBefore[4] as CardInstanceId])).toBe(true);
+
+    // Name them back to front; each named card goes on top as it is placed.
+    const picked = [...offered].reverse();
+    for (const id of picked) {
+      state = apply(state, player, { type: 'CHOOSE_CARD', card: id });
+    }
+    expect(state.pending).toBeNull();
+
+    // Nothing left the deck — it is a look, not a search.
+    expect(zoneSize(state, player, 'deck')).toBe(deckBefore);
+    // The last one named sits on top, and the four are in the chosen order.
+    const after = state.zoneOrder[`${player}:deck`] ?? [];
+    expect(after.slice(0, 4)).toEqual([...picked].reverse());
+    // Everything below the fourth card is exactly where it was.
+    expect(after.slice(4)).toEqual(orderBefore.slice(4));
+  });
+});
+
+describe('BK1-155 sets the top of the deck anywhere (Rules.md §13)', () => {
+  it('is offered only to a player who holds nothing while the enemy holds two', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const cry = place(state, player, 'BK1-155', 2, { faceUp: false });
+    state = openable(cry.state, player, cry.card);
+
+    // Nobody holds anything yet: the gate is shut.
+    expect(openOf(state, player, cry.card)).toBeUndefined();
+
+    // One enemy city is still not enough.
+    const one = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 0 ? { ...city, occupiedBy: other } : city,
+      ),
+    };
+    expect(openOf(one, player, cry.card)).toBeUndefined();
+
+    // Two opens it.
+    const two = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index < 2 ? { ...city, occupiedBy: other } : city,
+      ),
+    };
+    expect(openOf(two, player, cry.card)).toBeDefined();
+
+    // And holding one of your own shuts it again, however many they hold.
+    const mine = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index < 2
+          ? { ...city, occupiedBy: other }
+          : index === 4
+            ? { ...city, occupiedBy: player }
+            : city,
+      ),
+    };
+    expect(openOf(mine, player, cry.card)).toBeUndefined();
+  });
+
+  it('places each card face down in the area the player names', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const cry = place(state, player, 'BK1-155', 2, { faceUp: false });
+    state = openable(cry.state, player, cry.card);
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index < 2 ? { ...city, occupiedBy: other } : city,
+      ),
+    };
+
+    const orderBefore = [...(state.zoneOrder[`${player}:deck`] ?? [])];
+    state = apply(state, player, openOf(state, player, cry.card) as GameAction);
+
+    // Every (card, area) pair is offered, for the top seven only.
+    const offers = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'CHOOSE_CARD') as Extract<
+      GameAction,
+      { type: 'CHOOSE_CARD' }
+    >[];
+    const cards = new Set(offers.map((action) => action.card));
+    expect(cards.size).toBe(7);
+    expect([...cards]).toEqual(expect.arrayContaining(orderBefore.slice(0, 7)));
+    // Five cities each, so a card can go anywhere on the board.
+    expect(offers.filter((action) => action.card === orderBefore[0]).length).toBe(5);
+
+    // Place the first into a far city and check it landed face down there.
+    const first = orderBefore[0] as CardInstanceId;
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: first, city: 4 });
+    expect(state.cards[first]?.zone).toBe('city');
+    expect(state.cards[first]?.cityIndex).toBe(4);
+    expect(state.cards[first]?.faceUp).toBe(false);
+    expect(state.cards[first]?.controller).toBe(player);
+
+    // Its neighbour can still go somewhere else entirely.
+    const second = orderBefore[1] as CardInstanceId;
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: second, city: 0 });
+    expect(state.cards[second]?.cityIndex).toBe(0);
+  });
+});
+
+describe('shutting and opening Set Cards (Rules.md §7)', () => {
+  it('BK1-031 shuts a Set Card for the turn, at both gates', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    const victim = place(state, player, 'BK1-023', 2, { faceUp: false });
+    state = victim.state;
+    const scouting = place(state, player, 'BK1-031', 2, { faceUp: false });
+    state = openable(scouting.state, player, scouting.card);
+
+    const open = engine
+      .legalActions(state, player)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === scouting.card &&
+          action.targets?.[0] === victim.card,
+      );
+    expect(open, 'Scouting Duty should be able to point at the Set Card').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    expect(state.cards[victim.card]?.counters['sealed']).toBe(1);
+    // Never offered...
+    expect(openOf(state, player, victim.card)).toBeUndefined();
+    // ...and refused if asked for anyway, since the client is not trusted.
+    const forced = engine.reduce(state, player, { type: 'OPEN_CARD', card: victim.card });
+    expect(forced.ok).toBe(false);
+  });
+
+  it('BK1-030 turns a set white character face up for free', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    // BK1-002 is a white character; BK1-023 a white Effect, which is not a
+    // legal choice for a line that says "set white *character* card".
+    const soldier = place(state, player, 'BK1-002', 2, { faceUp: false });
+    state = soldier.state;
+    const departure = place(state, player, 'BK1-030', 2, { faceUp: false });
+    state = openable(departure.state, player, departure.card);
+
+    const open = engine
+      .legalActions(state, player)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === departure.card &&
+          action.targets?.[0] === soldier.card,
+      );
+    expect(open, 'Midnight Departure should point at the set character').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    expect(state.cards[soldier.card]?.faceUp).toBe(true);
+    // It did not spend the turn's one open (§10 ③) — the effect put it there.
+    expect(state.cards[soldier.card]?.cityIndex).toBe(2);
+  });
+});
+
+describe('an ability aimed at a Set Card survives the stack (Rules.md §14)', () => {
+  it('BK1-146 destroys the Set Card it was pointed at', () => {
+    // `resolveTop` treats a chosen card that is not face up as gone, which is
+    // right for a character and wrong for a Set Card — the whole point of
+    // these is that the target is face down. Pinned here because the effect
+    // fizzled silently rather than erroring.
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const hidden = place(state, other, RED, 2, { faceUp: false });
+    state = hidden.state;
+    const freedom = place(state, player, 'BK1-146', 2, { faceUp: false });
+    state = openable(freedom.state, player, freedom.card);
+
+    const open = engine
+      .legalActions(state, player)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === freedom.card &&
+          action.targets?.[0] === hidden.card,
+      );
+    expect(open, 'Affirmation Of Freedom should point at the Set Card').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    expect(state.cards[hidden.card]?.zone).toBe('trash');
+  });
+});
