@@ -268,7 +268,11 @@ export type Condition =
   /** The other player has nothing at all in its area, set or open (BK2-028). */
   | { readonly when: 'enemyHasNothingHere' }
   /** The other player does not hold the area it stands in (BK2-026). §12. */
-  | { readonly when: 'enemyDoesNotOccupyThisArea' };
+  | { readonly when: 'enemyDoesNotOccupyThisArea' }
+  /** A battle is running over its area right now (BK2-052). Rules.md §11. */
+  | { readonly when: 'inBattleHere' }
+  /** The other player has more characters in its area than its controller. */
+  | { readonly when: 'outnumberedHere' };
 
 /**
  * What the ability does when it applies.
@@ -649,6 +653,22 @@ export type Effect =
    */
   | { readonly do: 'addCharges'; readonly count: number }
   /**
+   * Turns this card face down again where it stands (BK2-057, BK3-026,
+   * BK3-058). Rules.md §7 — it becomes a Set Card once more, and may be
+   * opened again later.
+   */
+  | { readonly do: 'setSelf' }
+  /** Every city loses its occupier (BK2-058). Rules.md §12. */
+  | { readonly do: 'clearOccupation' }
+  /**
+   * "Select up to N and destroy them" (BK2-059). Rules.md §13.
+   *
+   * Distinct from `destroy`, which sweeps whatever its selector reaches:
+   * this names them one at a time and may stop short, so `count` is a
+   * ceiling rather than a debt.
+   */
+  | { readonly do: 'pickAndDestroy'; readonly who: Selector; readonly count: number }
+  /**
    * A price the *other* player pays, their choice of how, `count` times over
    * (BK2-043, BK2-045). Rules.md §13.
    *
@@ -742,7 +762,11 @@ export type Effect =
    */
   | {
       readonly do: 'openLevel';
-      readonly player: 'occupier' | 'opponent';
+      /**
+       * Whose opens are shifted. `both` is a card that moves the bar for
+       * everybody (BK2-056, BK2-064) rather than for one side.
+       */
+      readonly player: 'occupier' | 'opponent' | 'both';
       readonly shift: number;
     }
   /**
@@ -3330,6 +3354,126 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       // one point, not a ward: it softens the blow rather than eating it.
       effect: { do: 'reduceDamage', who: { scope: 'self' }, amount: 1 },
       text: '(Quick) 1: Until end of turn, reduce the next damage this card would take by 1. This ability can only be activated once per turn.',
+    },
+  ],
+
+  'BK2-051': [
+    {
+      trigger: 'open',
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
+      text: 'When this card is opened it gains +2/+2 until end of turn',
+    },
+  ],
+  'BK2-052': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      // "Only during combat" — with no battle on it is not offered at all.
+      condition: { when: 'inBattleHere' },
+      target: { where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      text: '(Quick) Tap: Target character in this area takes 3 damage. This ability can only be used during combat.',
+    },
+  ],
+  'BK2-053': [
+    {
+      trigger: 'always',
+      // "For every enemy character participating in battle here" (§11 ③) —
+      // a scale of nothing is nothing, which is the printed reading.
+      effect: {
+        do: 'buff',
+        who: { scope: 'self' },
+        stats: { power: 3 },
+        per: { scope: 'any', side: 'theirs', where: 'thisArea', inCombat: true },
+      },
+      text: 'This character gains +3/+0 for every enemy character participating in battle in this area.',
+    },
+  ],
+  'BK2-055': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      effect: { do: 'returnToHand', who: { scope: 'self' } },
+      text: '(Quick) Tap: Return this card to your hand.',
+    },
+  ],
+  'BK2-056': [
+    {
+      trigger: 'always',
+      // "The area level is 1 higher" — City Level is the one global value
+      // (§5), and this widens what *both* players may open.
+      effect: { do: 'openLevel', player: 'both', shift: 1 },
+      text: 'While this card is open the area level is 1 higher.',
+    },
+  ],
+  'BK2-057': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      effect: { do: 'setSelf' },
+      text: '(Quick) Tap: Set this card',
+    },
+  ],
+  'BK2-058': [
+    {
+      trigger: 'open',
+      effect: { do: 'clearOccupation' },
+      then: [{ do: 'draw', player: 'you', count: 2 }],
+      text: 'When this card is opened, all areas become unoccupied. Draw 2 cards.',
+    },
+  ],
+  'BK2-059': [
+    {
+      trigger: 'open',
+      // "Up to 3 set cards within 1 distance" — either side's, named one at
+      // a time so the player may stop short (§13).
+      effect: {
+        do: 'pickAndDestroy',
+        who: { scope: 'others', side: 'any', maxDistance: 1, faceDown: true },
+        count: 3,
+      },
+      text: 'When this card is opened, select up to 3 set cards within 1 distance and destroy them.',
+    },
+  ],
+  'BK2-060': [
+    {
+      trigger: 'open',
+      // Both hands away, both players redraw seven.
+      effect: { do: 'discardDownTo', player: 'both', size: 0 },
+      then: [
+        { do: 'draw', player: 'you', count: 7 },
+        { do: 'draw', player: 'opponent', count: 7 },
+      ],
+      text: 'When this card is opened, both players discard their hands and draw 7 cards.',
+    },
+  ],
+  'BK2-061': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'outnumberedHere' },
+      // "All characters you control" — everywhere, as printed.
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere' },
+        stats: { power: 3, hp: 2 },
+      },
+      text: 'You can only open this card if your opponent controls more characters than you in this area. All characters you control gain +3/+2 until the end of combat.',
+    },
+  ],
+  'BK2-064': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 1 },
+      text: 'When this card is opened, draw 1 card.',
+    },
+    {
+      trigger: 'always',
+      effect: { do: 'openLevel', player: 'both', shift: 1 },
+      text: 'The Area Level is increased by 1',
     },
   ],
 

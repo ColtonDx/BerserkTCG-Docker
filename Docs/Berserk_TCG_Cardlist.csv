@@ -209,88 +209,88 @@ BK2,43,Prophecy of Death,B,no,2,,,,,no,Effect,Eternal,Tap: your opponent must di
 BK2,44,Creeping Shadow,B,no,3,,,,,no,Effect,Normal,"When this card is opened, lock a character in this area and then draw 1 card."
 BK2,45,Swift Counter,B,no,1,,,,,no,Effect,Normal,"When this card is opened, target a player. That player must choose one of the following effects 3 times (distributed any way): (1) discard a card (2) destroy a set card they control (3) destroy an open character they control"
 BK2,46,A Dream of Peace,B,no,2,,,,,no,Effect,Eternal,"While this card is open, when characters are opened, they become locked."
-BK2,47,Power of One's Death,B,no,4,,,,,yes,Effect,Normal,
-BK2,48,Overrunning Territory,B,no,2,,,,,no,Effect,Eternal,
+BK2,47,Power of One's Death,B,no,4,,,,,yes,Effect,Normal,This card can only be opened if a character you control was destroyed within 1 distance this turn. Deal  damage to a character your opponent controls in that area.
+BK2,48,Overrunning Territory,B,no,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. At the beginning of your turn if you occupy this area, your opponent puts 3 cards from their deck into the graveyard. Then you may select and destroy 1 of their set cards in this area."
 BK2,49,Mercenary,R,no,0,0,1,1,1,no,character,,
-BK2,50,Griffith,1R,yes,4,0,1,6,7,no,character,,
-BK2,51,Zodd,R,yes,3,0,2,3,3,no,character,,
-BK2,52,Grunbeld,1R,yes,4,0,1,4,5,no,character,,
-BK2,53,Locus,R,yes,4,1,1,0,3,no,character,,
+BK2,50,Griffith,1R,yes,4,0,1,6,7,no,character,,"When this card is opened, look at the top 3 cards of your deck, then you may set each of those cards in any 1 area of your choice."
+BK2,51,Zodd,R,yes,3,0,2,3,3,no,character,,When this card is opened it gains +2/+2 until end of turn
+BK2,52,Grunbeld,1R,yes,4,0,1,4,5,no,character,,(Quick) Tap: Target character in this area takes 3 damage. This ability can only be used during combat.
+BK2,53,Locus,R,yes,4,1,1,0,3,no,character,,This character gains +3/+0 for every enemy character participating in battle in this area.
 BK2,54,Irvine,R,yes,4,3,1,4,5,no,character,,
-BK2,55,Rakshas,R,yes,3,0,1,5,3,no,character,,
-BK2,56,Sonia,R,yes,1,0,1,0,1,no,character,,
-BK2,57,Mule,R,yes,1,0,1,1,2,no,character,,
-BK2,58,World's Rift,R,no,2,,,,,no,Effect,Normal,
-BK2,59,Zodd's Onslaught,R,no,4,,,,,no,Effect,Normal,
-BK2,60,Second Coming of Heroes,R,no,3,,,,,no,Effect,Normal,
-BK2,61,Pointed Arrow Battle Formation,R,no,3,,,,,yes,Effect,Normal,
-BK2,62,Farewell,R,yes,2,,,,,no,Effect,Eternal,
-BK2,63,Blade Oath,RR,no,3,,,,,no,Effect,Normal,
-BK2,64,Mythical Domain,R,yes,2,,,,,no,Effect,Eternal,
+BK2,55,Rakshas,R,yes,3,0,1,5,3,no,character,,(Quick) Tap: Return this card to your hand.
+BK2,56,Sonia,R,yes,1,0,1,0,1,no,character,,While this card is open the area level is 1 higher.
+BK2,57,Mule,R,yes,1,0,1,1,2,no,character,,(Quick) Tap: Set this card
+BK2,58,World's Rift,R,no,2,,,,,no,Effect,Normal,"When this card is opened, all areas become unoccupied. Draw 2 cards."
+BK2,59,Zodd's Onslaught,R,no,4,,,,,no,Effect,Normal,"When this card is opened, select up to 3 set cards within 1 distance and destroy them."
+BK2,60,Second Coming of Heroes,R,no,3,,,,,no,Effect,Normal,"When this card is opened, both players discard their hands and draw 7 cards."
+BK2,61,Pointed Arrow Battle Formation,R,no,3,,,,,yes,Effect,Normal,You can only open this card if your opponent controls more characters than you in this area. All characters you control gain +3/+2 until the end of combat.
+BK2,62,Farewell,R,yes,2,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. Whenever a character you control is destroyed, you may look at the top card of your deck and you may set it in any area."
+BK2,63,Blade Oath,RR,no,3,,,,,no,Effect,Normal,"When this card is opened you gain control of a level 2 or lower character in this area. Unlock that character. If you are in battle, remove that character from battle."
+BK2,64,Mythical Domain,R,yes,2,,,,,no,Effect,Eternal,"When this card is opened, draw 1 card. The Area Level is increased by 1"
 BK3,1,Mercenary,W,no,0,0,1,1,1,no,character,,
-BK3,2,Solid Supply Unit,W,no,0,0,1,1,1,no,character,,
-BK3,3,Unfortunate Guard,W,no,1,0,0,1,3,no,character,,
-BK3,4,Griffith,WW,yes,2,0,1,2,2,no,character,,
-BK3,5,Guts,W,yes,1,0,1,2,2,no,character,,
-BK3,6,Casca,W,yes,1,0,1,1,2,no,character,,
-BK3,7,Judeau,W,yes,1,0,1,1,2,no,character,,
-BK3,8,Corkus,W,yes,1,0,1,2,2,no,character,,
-BK3,9,Pippin,W,yes,1,0,1,1,3,no,character,,
-BK3,10,Rickert,W,yes,1,1,1,1,2,no,character,,
-BK3,11,The View from on High,W,no,1,,,,,yes,Effect,Normal,
-BK3,12,Audience with the Minister,W,no,2,,,,,yes,Effect,Normal,
-BK3,13,Blade's Master and Servant,W,no,2,,,,,yes,Effect,Normal,
-BK3,14,Scheming Consultation,W,no,2,,,,,no,Effect,Normal,
-BK3,15,Determination of the Sword,W,no,2,,,,,no,Effect,Normal,
-BK3,16,Quiet Evening,W,no,2,,,,,no,Effect,Normal,
+BK3,2,Solid Supply Unit,W,no,0,0,1,1,1,no,character,,Support [Green]. This card is treated as a mercenary card during deckbuilding.
+BK3,3,Unfortunate Guard,W,no,1,0,0,1,3,no,character,,Support [Green]
+BK3,4,Griffith,WW,yes,2,0,1,2,2,no,character,,"When this card is opened, all Hawk characters you control gain +2/+2 until end of turn."
+BK3,5,Guts,W,yes,1,0,1,2,2,no,character,,(Quick) 1: This card gains +2/+2 until end of turn. You may only activate this ability if there is an opponents character of level 2 or above in this area.
+BK3,6,Casca,W,yes,1,0,1,1,2,no,character,,"(Qucik) 1, Tap: Search your deck for a level 2 of lower Hawk character and open it in any area that you control a Hawk character in. Shuffle your deck. You can only activate this ability if the area level is 3 or higher."
+BK3,7,Judeau,W,yes,1,0,1,1,2,no,character,,"When this character is opened, draw 2 cards. Then if you do not occupy this area, discard 2 cards."
+BK3,8,Corkus,W,yes,1,0,1,2,2,no,character,,"When this character is opened your opponent discards 1 card. When this card is destroyed, you discard 1 card."
+BK3,9,Pippin,W,yes,1,0,1,1,3,no,character,,"Whenever another character you control is opened here, this card gains +1/+1 until end of turn."
+BK3,10,Rickert,W,yes,1,1,1,1,2,no,character,,All other characters you control in this area gain +1 range
+BK3,11,The View from on High,W,no,1,,,,,yes,Effect,Normal,You can only open this card if you captured this area this turn. Unlock a character you control in this area and draw 2 cards. That character cannot battle the rest of this turn.
+BK3,12,Audience with the Minister,W,no,2,,,,,yes,Effect,Normal,You may only open this card if you captured or defended this area this turn. Reveal all enemy set cards within 1 distance and destroy 1 of them. Draw 1 card
+BK3,13,Blade's Master and Servant,W,no,2,,,,,yes,Effect,Normal,"If you control both a Guts and Griffith card in play, they gain +3/+3 until end of turn. Draw 1 card"
+BK3,14,Scheming Consultation,W,no,2,,,,,no,Effect,Normal,"When this card is opened look at all set cards on the field, then move each of your set cards to any areas (distributed any way) of your choice.  Draw 2 cards."
+BK3,15,Determination of the Sword,W,no,2,,,,,no,Effect,Normal,"When this card is opened, search your deck for up to 2 level 1 Hawk characters, reveal them, and then set them in this area. Shuffle your deck."
+BK3,16,Quiet Evening,W,no,2,,,,,no,Effect,Normal,"When this card is opened, search your deck for up to 3 Mercenary cards, reveal them, then set each on in an area in which you control a Hawks character. Shuffle your deck. If you control a Griffith character in this area this card is treated as a quick."
 BK3,17,Mercenary,G,no,0,0,1,1,1,no,character,,
-BK3,18,Guts,G,yes,3,0,1,6,5,no,character,,
-BK3,19,Casca,G,yes,1,0,1,1,1,no,character,,
-BK3,20,Farnese,G,yes,1,0,2,1,2,no,character,,
-BK3,21,Serpico,G,yes,3,1,1,3,3,no,character,,
-BK3,22,Schierke,G,yes,3,0,1,0,2,no,character,,
-BK3,23,Isidro,G,yes,1,1,1,1,2,no,character,,
-BK3,24,Puck,G,yes,1,0,1,0,1,no,character,,
-BK3,25,Skull Knight,G,yes,5,0,3,7,9,no,character,,
-BK3,26,Atonement,G,no,2,,,,,no,Effect,Eternal,
-BK3,27,Dark Magic,G,no,4,,,,,no,Effect,Normal,
-BK3,28,Fighting Chance,G,no,2,,,,,no,Effect,Normal,
-BK3,29,Return Blow,G,no,3,,,,,yes,Effect,Normal,
-BK3,30,Sword of Actuation,G,no,5,,,,,yes,Effect,Normal,
-BK3,31,Light of Hope,G,no,4,,,,,no,Effect,Eternal,
-BK3,32,Master and Pupil,G,no,4,,,,,yes,Effect,Normal,
+BK3,18,Guts,G,yes,3,0,1,6,5,no,character,,"(Quick) Alteration. When this character is opened, deal 3 damage to an opponents character in this area. Then deal 1 damage to all other characters here (including this one)"
+BK3,19,Casca,G,yes,1,0,1,1,1,no,character,,"This character cannot be targetted by abilities. When this card is destroyed, draw 2 cards."
+BK3,20,Farnese,G,yes,1,0,2,1,2,no,character,,"(Quick) Tap: Unlock a character you control in this area that moved here this turn. If a character unlocked this way, draw 1 card. That character cannot move again this turn."
+BK3,21,Serpico,G,yes,3,1,1,3,3,no,character,,(Quick) 1: Deal 2 damage to a character participating in battle in this area. This ability can only be used once per turn.
+BK3,22,Schierke,G,yes,3,0,1,0,2,no,character,,"When this character is opened, draw 2 cards. (Quick) Tap: Deal 2 damage to all level 2 or lower characters in this area."
+BK3,23,Isidro,G,yes,1,1,1,1,2,no,character,,"While you control a Guts character, this card gains +2/+0"
+BK3,24,Puck,G,yes,1,0,1,0,1,no,character,,"(Quick) 1: Until the end of turn, reduce damage dealt to target character in this area by 2."
+BK3,25,Skull Knight,G,yes,5,0,3,7,9,no,character,,"When this card is opened, search for 1 ""Sword of Actuation"" card form your deck or graveyard and reveal it. Add that card to your hand. Shuffle your deck."
+BK3,26,Atonement,G,no,2,,,,,no,Effect,Eternal,(Quick) 1: Set this character.
+BK3,27,Dark Magic,G,no,4,,,,,no,Effect,Normal,"When this card is opened, destroy all characters your opponent controls in this area. For each character eliminated this way, eliminate 2 characters you control. Set cards from your hand equal to the amount cards you controlled that were destroyed this way."
+BK3,28,Fighting Chance,G,no,2,,,,,no,Effect,Normal,"When this card is opened, target a level 3 or higher character in this area and set it."
+BK3,29,Return Blow,G,no,3,,,,,yes,Effect,Normal,"When this card is opened, deal 3 damage to an opponents character in this area that was already dealt damage this turn (this card cannot be opened if a card was not dealt damage). If this card is discarded from your hand by an oppoenents card effect, deal 5 damage to target character"
+BK3,30,Sword of Actuation,G,no,5,,,,,yes,Effect,Normal,This card can only be opened if you control a Skull Knight character. Target all level 3 or lower enemy characters within 1 distance and set them. Draw 2  cards.
+BK3,31,Light of Hope,G,no,4,,,,,no,Effect,Eternal,When this card is opened draw 1 card. While this card is in place all characters you control that are level 2 or lower gain +2/+2
+BK3,32,Master and Pupil,G,no,4,,,,,yes,Effect,Normal,"When this card is opened, shuffle your graveyard back into your deck, then draw 1 card."
 BK3,33,Mercenary,B,no,0,0,1,1,1,no,character,,
-BK3,34,Crocodile Man,1B,no,2,0,1,3,4,no,character,,
-BK3,35,Elephant Soldier,1B,no,2,0,1,2,5,no,character,,
-BK3,36,Daka,B,no,1,0,1,2,1,no,character,,
-BK3,37,Daka,B,no,2,0,1,3,3,no,character,,
-BK3,38,Ganishka,BB,yes,3,0,2,4,5,no,character,,
-BK3,39,Silat,B,yes,2,0,1,3,2,no,character,,
-BK3,40,Tapasa,B,yes,2,0,1,2,4,no,character,,
-BK3,41,Fetal Surrounding,B,no,4,,,,,no,Effect,Normal,
-BK3,42,The Demon City Revealed,B,no,3,,,,,no,Effect,Normal,
-BK3,43,City Demonization,B,yes,1,,,,,no,Effect,Eternal,
-BK3,44,Blasphemous Proclamation,B,no,2,,,,,no,Effect,Normal,
-BK3,45,Daka Factory,B,no,2,,,,,no,Effect,Eternal,
-BK3,46,Demon Feast,B,no,3,,,,,no,Effect,Normal,
-BK3,47,Might of the Demon God,B,no,2,,,,,yes,Effect,Normal,
-BK3,48,Lightning Strike,B,no,4,,,,,yes,Effect,Normal,
+BK3,34,Crocodile Man,1B,no,2,0,1,3,4,no,character,,"When this character attacks, it gains +1/+0 until end of turn"
+BK3,35,Elephant Soldier,1B,no,2,0,1,2,5,no,character,,"When this card defends an area, it gains +0/+1 until end of turn"
+BK3,36,Daka,B,no,1,0,1,2,1,no,character,,"When this character is destroyed, your opponent must destroy 1 set card they control of their choice."
+BK3,37,Daka,B,no,2,0,1,3,3,no,character,,"When this card is destroyed, destroy a set card you control (mandatory)"
+BK3,38,Ganishka,BB,yes,3,0,2,4,5,no,character,,"B: Search your deck or graveyard for 1  ""City Demonization"" card and set it in this area, then open it. If you searched your deck, shuffle it. This ability can only be activated if you occupy this area."
+BK3,39,Silat,B,yes,2,0,1,3,2,no,character,,"(Quick) Destroy 1 set card you control here: Choose 1 of the following effects, (1) this character gain +1 range until end of turn or (2) this character gains +1/+0 until end of turn"
+BK3,40,Tapasa,B,yes,2,0,1,2,4,no,character,,(Quick): Choose up to 2 set cards you control within 1 distance and return them to you hand. This ability may be only used once each turn.
+BK3,41,Fetal Surrounding,B,no,4,,,,,no,Effect,Normal,"When this card is opened, remove all Ogre cards from your graveyard and set them here. All Ogre cards set this way are destroyed at the end of the turn. Draw 1 card"
+BK3,42,The Demon City Revealed,B,no,3,,,,,no,Effect,Normal,"When this card is opened, destroy 1 of your character or set cards. If you do, your opponent must eliminate 2 of their characters or set cards in this area. This card gains (Quick) if this area is a Demon City."
+BK3,43,City Demonization,B,yes,1,,,,,no,Effect,Eternal,"While you occupy this area, all characters you control gain +2/+2. This area becomes a Demon City in addition to its other types."
+BK3,44,Blasphemous Proclamation,B,no,2,,,,,no,Effect,Normal,"When this card is opened, search your opponents library for 2 cards and send them to their graveyard. Then draw 2 cards. This card gains (Quick) if the area is a Demon City."
+BK3,45,Daka Factory,B,no,2,,,,,no,Effect,Eternal,"(Quick) B: Search your deck for a ""Daka"" card, reveal it, and set it in this area. Then shuffle. If you occupy this area and this area is a demon city, you may search either your graveyard or deck."
+BK3,46,Demon Feast,B,no,3,,,,,no,Effect,Normal,"When this card is opened, unlcok all characters and move them to this area. This card gains (Quick) if you occupy this area and it is a demon city."
+BK3,47,Might of the Demon God,B,no,2,,,,,yes,Effect,Normal,"When this card is opened, target an area within 1 distance. During this turn, all combat damage from level 2 or lower characters in that area is reduced to 0. Draw 1 card."
+BK3,48,Lightning Strike,B,no,4,,,,,yes,Effect,Normal,"When this card is opened, deal 4 damage divided amongst any number of characters in this area. If you occupy this area and it is a demon city you may instead target characters within 1 distance."
 BK3,49,Mercenary,R,no,0,0,1,1,1,no,character,,
-BK3,50,Kushan Allegiance,R,no,0,0,1,1,1,no,character,,
-BK3,51,Unnerving Demon Army,R,no,2,0,1,1,4,no,character,,
-BK3,52,Demon Army Lancer,R,no,3,0,2,4,6,no,character,,
-BK3,53,Griffith,R,yes,5,0,2,8,8,no,character,,
-BK3,54,Zodd,1R,yes,4,0,1,6,8,no,character,,
-BK3,55,Grunbeld,R,yes,3,0,1,5,5,no,character,,
-BK3,56,Locus,1R,yes,4,2,1,7,3,no,character,,
-BK3,57,Irvine,R,yes,3,3,1,4,2,no,character,,
-BK3,58,Rakshas,R,yes,3,0,1,3,5,no,character,,
-BK3,59,Borkoff,R,yes,2,0,1,3,5,no,character,,
-BK3,60,Charlotte,R,yes,1,0,1,0,1,no,character,,
-BK3,61,Storming Entry,R,no,2,,,,,yes,Effect,Normal,
-BK3,62,Window of Salvation,R,yes,4,,,,,no,Effect,Eternal,
-BK3,63,Moonlit Truth,R,no,2,,,,,yes,Effect,Normal,
-BK3,64,Rescue the Princess,R,no,1,,,,,yes,Effect,Normal,
+BK3,50,Kushan Allegiance,R,no,0,0,1,1,1,no,character,,Support (Black). This card is treated as a mercenary during deckbuilding
+BK3,51,Unnerving Demon Army,R,no,2,0,1,1,4,no,character,,Other characters you control in this area have -1/-1
+BK3,52,Demon Army Lancer,R,no,3,0,2,4,6,no,character,,"Whenever this character locks, you may destroy 1 of your set cards. If you don't, destroy this card."
+BK3,53,Griffith,R,yes,5,0,2,8,8,no,character,,"When this character is opened, return all set cards you control to your hand."
+BK3,54,Zodd,1R,yes,4,0,1,6,8,no,character,,"(Quick) Alteration. When this character is opened, you may lock up to 2 target characters in this area."
+BK3,55,Grunbeld,R,yes,3,0,1,5,5,no,character,,"(Quick) Alteration. When is character is opened (not as a quick) destroy one of your set cards in this area. When this character is opened using Alteration, it gains +2/+2 permanently"
+BK3,56,Locus,1R,yes,4,2,1,7,3,no,character,,(Quick) Alteration. All cavalry characters you control gain +2/+2
+BK3,57,Irvine,R,yes,3,3,1,4,2,no,character,,"1, Tap: Deal 2 Damage to a character within 1 distance."
+BK3,58,Rakshas,R,yes,3,0,1,3,5,no,character,,(Quick) 1: Set this character.
+BK3,59,Borkoff,R,yes,2,0,1,3,5,no,character,,"Whenever this character locks, you may destroy one of your set cards. If you don't, destroy this card."
+BK3,60,Charlotte,R,yes,1,0,1,0,1,no,character,,"When this character is opened, look at the top 2 cards of your deck, and set each in an area of your choice. All other characters you control that are in the Royal Capital (if revealed) gain +1/+1"
+BK3,61,Storming Entry,R,no,2,,,,,yes,Effect,Normal,You may only open this card if your opponent occupies the area. This area becomes unoccupied. Draw 1 card.
+BK3,62,Window of Salvation,R,yes,4,,,,,no,Effect,Eternal,"When this card is opened, draw 2 cards. Whenever your opponent sets a card from their hand into any area, set the top card of your deck in that area."
+BK3,63,Moonlit Truth,R,no,2,,,,,yes,Effect,Normal,You may only open this card if your opponent occupies this area. Look at 3 cards from the top of your deck and set each of them in an area of your choice (doesn't have to be the same area)
+BK3,64,Rescue the Princess,R,no,1,,,,,yes,Effect,Normal,"When this card is opened, Negate the effects of all level 1 normals until end of turn"
 BK4,1,Mercenary,W,no,0,0,1,1,1,no,character,,
 BK4,2,Parading Holy Iron Chain Knights,W,no,0,0,1,0,1,no,character,,
 BK4,3,Griffith,WW,yes,2,0,1,4,3,no,character,,

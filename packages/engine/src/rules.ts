@@ -146,13 +146,16 @@ export function openLevelFor(
     if (source.zone !== 'city' || !source.faceUp) continue;
     for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'openLevel') continue;
-      const affected =
-        ability.effect.player === 'occupier'
-          ? source.cityIndex !== undefined
-            ? state.cities[source.cityIndex]?.occupiedBy
-            : null
-          : state.seats.find((seat) => seat !== source.controller);
-      if (affected !== player) continue;
+      // `both` moves the bar for everybody (BK2-056); the others name a side.
+      if (ability.effect.player !== 'both') {
+        const affected =
+          ability.effect.player === 'occupier'
+            ? source.cityIndex !== undefined
+              ? state.cities[source.cityIndex]?.occupiedBy
+              : null
+            : state.seats.find((seat) => seat !== source.controller);
+        if (affected !== player) continue;
+      }
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
       level += ability.effect.shift;
     }
@@ -971,6 +974,14 @@ function effectRelevant(
     case 'setTopOfDeck':
       // A card onto the board for free, whenever the deck still has one.
       return true;
+    case 'setSelf':
+      // Going back face down is a real move: it dodges what is coming, and
+      // the card can be opened again later (§7).
+      return true;
+    case 'clearOccupation':
+      return state.cities.some((city) => city.occupiedBy != null);
+    case 'pickAndDestroy':
+      return reaches(effect.who);
     case 'addCharges':
       // Ammunition for later, worth putting on whenever it is printed.
       return true;
@@ -1383,6 +1394,21 @@ export function conditionHolds(
     case 'enemyDoesNotOccupyThisArea': {
       const holder = cityOf(state, source)?.occupiedBy;
       return holder == null || holder === source.controller;
+    }
+    case 'inBattleHere':
+      return battle != null && battle.city === source.cityIndex;
+    case 'outnumberedHere': {
+      const here = (owner: PlayerId): number =>
+        Object.values(state.cards).filter(
+          (card) =>
+            card.zone === 'city' &&
+            card.faceUp &&
+            card.cityIndex === source.cityIndex &&
+            card.controller === owner &&
+            isCharacter(ctx, card),
+        ).length;
+      const them = state.seats.find((seat) => seat !== source.controller);
+      return them !== undefined && here(them) > here(source.controller);
     }
     case 'notInCapital':
       return source.cityIndex !== undefined && !state.cities[source.cityIndex]?.royalCapital;

@@ -2884,6 +2884,53 @@ function runEffect(
       return pushed();
     }
 
+    case 'setSelf': {
+      const self = draft.cards[source.instanceId];
+      if (!self || self.zone !== 'city' || !self.faceUp) return false;
+      // Face down again where it stands (§7): it becomes a Set Card once
+      // more, keeping nothing it had gained while it was open.
+      self.faceUp = false;
+      self.damage = 0;
+      self.counters = {};
+      events.push({
+        type: 'CARD_SET',
+        player: self.controller,
+        card: self.instanceId,
+        city: self.cityIndex as number,
+      });
+      return true;
+    }
+
+    case 'clearOccupation': {
+      let cleared = 0;
+      for (const city of draft.cities) {
+        if (city.occupiedBy == null) continue;
+        city.occupiedBy = null;
+        events.push({ type: 'CITY_OCCUPIED', city: city.index, player: null });
+        cleared++;
+      }
+      return cleared > 0;
+    }
+
+    case 'pickAndDestroy': {
+      const doomed = selected(ctx, draft, source, effect.who, chosen, chosen2);
+      if (doomed.length === 0) return false;
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: Math.min(effect.count, doomed.length),
+        // "Up to": stopping short is legal (§13).
+        upTo: true,
+        kind: {
+          zone: 'field',
+          action: 'destroy',
+          cards: doomed.map((card) => card.instanceId),
+        },
+      });
+      return pushed();
+    }
+
     case 'addCharges': {
       const self = draft.cards[source.instanceId];
       if (!self) return false;
