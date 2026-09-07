@@ -8,6 +8,7 @@ import {
   REARGUARD,
   SEALED,
   SHIELD,
+  WARD,
   usedOnTurnCounter,
   type Ability,
   type AreaKind,
@@ -138,7 +139,8 @@ export function openLevelFor(
   state: Pick<GameState, 'cards' | 'cities' | 'turn' | 'seats'>,
   player: PlayerId,
 ): number {
-  let level = cityLevel(state);
+  // A Normal Effect may have narrowed the turn for everybody (BK2-010).
+  let level = cityLevel(state) + (state.turn.openLevelShift ?? 0);
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
     for (const ability of abilitiesOf(ctx, source)) {
@@ -439,7 +441,7 @@ function continuousBonus(
       if (ability.trigger !== 'always' || ability.effect.do !== 'buff') continue;
       const change = ability.effect.stats[stat];
       if (change === undefined) continue;
-      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c, state))) continue;
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
       total += change;
     }
@@ -470,13 +472,22 @@ export function damageReduction(
     for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'reduceDamage') continue;
       if (ability.effect.combatOnly === true && !options.combat) continue;
-      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c, state))) continue;
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
       total += ability.effect.amount;
     }
   }
   return Math.max(0, total);
 }
+
+/**
+ * Is this character holding a ward that will swallow the next blow whole?
+ * Rules.md §13 — BK2-024.
+ *
+ * Asked separately from {@link damageReduction} because a ward is spent
+ * rather than subtracted: the caller has to know to take one off the card.
+ */
+export const hasWard = (card: CardInstance): boolean => (card.counters[WARD] ?? 0) > 0;
 
 /** What actually lands after {@link damageReduction}. Never below nothing. */
 export const damageAfterReduction = (
@@ -512,7 +523,7 @@ export function boostSources(
       if (ability.trigger !== 'always' || ability.effect.do !== 'buff') continue;
       const stats = ability.effect.stats;
       if (!stats.power && !stats.hp && !stats.move) continue;
-      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c, state))) continue;
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
       if (!found.includes(source.instanceId)) found.push(source.instanceId);
       break;
@@ -526,13 +537,52 @@ export function boostSources(
 }
 
 /** The printed subtype tokens of a card, e.g. `['hawk', 'leader']`. */
-export const subtypesOf = (ctx: EngineContext, card: CardInstance): readonly string[] =>
-  definitionOf(ctx, card).subtypes ?? [];
+/**
+ * Subtypes a card counts as: the printed ones, plus any a card on the board
+ * is lending it (BK2-016, "all Mercenaries you control are Hawks in addition
+ * to their other types"). Rules.md §3.
+ *
+ * Read off the board rather than written down, like every other continuous
+ * ability, so the grant lapses the moment its source leaves. `state` is
+ * optional because a few callers only have a definition to hand; without it
+ * this is the printed list, which is the narrower reading.
+ */
+export const subtypesOf = (
+  ctx: EngineContext,
+  card: CardInstance,
+  state?: Pick<GameState, 'cards'>,
+): readonly string[] => {
+  const printed = definitionOf(ctx, card).subtypes ?? [];
+  if (!state) return printed;
+  const granted: string[] = [];
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    for (const ability of abilitiesOf(ctx, source)) {
+      if (ability.trigger !== 'always' || ability.effect.do !== 'grantSubtype') continue;
+      if (printed.includes(ability.effect.subtype)) continue;
+      if (granted.includes(ability.effect.subtype)) continue;
+      // The selector is read against the printed list, so a grant cannot
+      // feed itself a second one.
+      const facts: CardFacts = {
+        subtypes: printed,
+        level: definitionOf(ctx, card).level,
+        colour: definitionOf(ctx, card).color,
+      };
+      if (!selects(ability.effect.who, source, card, () => facts)) continue;
+      granted.push(ability.effect.subtype);
+    }
+  }
+  return granted.length > 0 ? [...printed, ...granted] : printed;
+};
 
 /** Everything a selector asks about a card, from its printed definition. */
-export const factsOf = (ctx: EngineContext, card: CardInstance): CardFacts => {
+export const factsOf = (
+  ctx: EngineContext,
+  card: CardInstance,
+  state?: Pick<GameState, 'cards'>,
+): CardFacts => {
   const def = definitionOf(ctx, card);
-  return { subtypes: def.subtypes ?? [], level: def.level, colour: def.color };
+  return { subtypes: subtypesOf(ctx, card, state), level: def.level, colour: def.color };
 };
 
 /**
@@ -588,7 +638,8 @@ export function legalTargets(
       if (def.kind !== 'effect') return false;
       if (spec.effectCards !== 'any' && def.duration !== spec.effectCards) return false;
     }
-    if (spec.subtype !== undefined && !subtypesOf(ctx, card).includes(spec.subtype)) return false;
+    if (spec.subtype !== undefined && !subtypesOf(ctx, card, state).includes(spec.subtype))
+      return false;
     if (spec.unlocked === true && card.locked) return false;
     // Rules.md §11 ③ — the participants, not merely everyone standing in the
     // contested city. With no battle on, nobody is in combat.
@@ -597,6 +648,7 @@ export function legalTargets(
     // does not distinguish.
     // §11 ① — the character leading the fight running right now.
     if (spec.vanguard === true && battle?.vanguard !== card.instanceId) return false;
+    if (spec.unique === true && !definitionOf(ctx, card).unique) return false;
     if (spec.attacking === true) {
       if (!battle?.participants.includes(card.instanceId)) return false;
       if (card.controller !== battle.attacker) return false;
@@ -662,7 +714,7 @@ export function reachedBy(
     if (selector.inCombat === true && !battle?.participants.includes(card.instanceId)) {
       return false;
     }
-    return selects(selector, source, card, (c) => factsOf(ctx, c), chosen);
+    return selects(selector, source, card, (c) => factsOf(ctx, c, state), chosen);
   });
 }
 
@@ -885,6 +937,13 @@ function effectRelevant(
     case 'discardDownTo':
       // Card advantage, which §13 counts wherever it happens.
       return true;
+    case 'openLevelForTurn':
+      // Narrowing what can be opened is worth doing whenever anything could.
+      return true;
+    case 'wardNextDamage':
+      return reaches(effect.who);
+    case 'grantSubtype':
+      return ability.trigger === 'always';
     case 'openedCardsLock':
       // Continuous, read off the board where a card is opened.
       return ability.trigger === 'always';
@@ -1169,7 +1228,7 @@ export function cannotAttack(ctx: EngineContext, state: BoardView, card: CardIns
     if (source.zone !== 'city' || !source.faceUp) continue;
     for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'cannotAttack') continue;
-      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c, state))) continue;
       if (conditionHolds(ctx, state, source, ability.condition)) return true;
     }
   }
@@ -1287,6 +1346,17 @@ export function conditionHolds(
       );
     case 'selfUnlocked':
       return !source.locked;
+    case 'notInCapital':
+      return source.cityIndex !== undefined && !state.cities[source.cityIndex]?.royalCapital;
+    case 'enemyHasNothingHere':
+      // "A card (set or open)" — face down counts, so this looks at every
+      // card of theirs standing in the area, whatever it is.
+      return !Object.values(state.cards).some(
+        (card) =>
+          card.zone === 'city' &&
+          card.cityIndex === source.cityIndex &&
+          card.controller !== source.controller,
+      );
     case 'cityLevelAtMost':
       // "Area level" reads as City Level: §5 defines one global value.
       return cityLevel(state) <= condition.level;

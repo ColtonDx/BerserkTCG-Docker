@@ -138,6 +138,8 @@ export interface TargetSpec {
    * Rules.md §11 ① — with no battle on, nothing qualifies.
    */
   readonly vanguard?: boolean;
+  /** Only characters printed Unique (BK2-012). Rules.md §8. */
+  readonly unique?: boolean;
   /**
    * Point at a face-up Effect card rather than a character (BK2-014, "1
    * Eternal card within 1 distance"). Rules.md §3. Mirrors
@@ -259,7 +261,11 @@ export type Condition =
   /** Its controller has no other character in its area (BK2-003). */
   | { readonly when: 'aloneHere' }
   /** It is standing rather than locked (BK2-005). Rules.md §6. */
-  | { readonly when: 'selfUnlocked' };
+  | { readonly when: 'selfUnlocked' }
+  /** It is not standing in the Royal Capital (BK2-022). Rules.md §1. */
+  | { readonly when: 'notInCapital' }
+  /** The other player has nothing at all in its area, set or open (BK2-028). */
+  | { readonly when: 'enemyHasNothingHere' };
 
 /**
  * What the ability does when it applies.
@@ -587,6 +593,30 @@ export type Effect =
    * where a card is opened, never resolved.
    */
   | { readonly do: 'openedCardsLock' }
+  /**
+   * Shifts the City Level everyone opens against, for the rest of the turn
+   * (BK2-010). Rules.md §5 and §7.
+   *
+   * Unlike {@link openLevel}, which is continuous and read off a card
+   * standing on the board, this is a one-shot from a Normal Effect that is
+   * in the Trash the moment it resolves — so it is written onto the turn.
+   */
+  | { readonly do: 'openLevelForTurn'; readonly shift: number }
+  /**
+   * The reached cards count as an extra printed subtype while this card
+   * stands (BK2-016, "all Mercenaries you control are Hawks in addition to
+   * their other types"). Rules.md §3. Continuous: read off the board.
+   */
+  | { readonly do: 'grantSubtype'; readonly who: Selector; readonly subtype: string }
+  /**
+   * Turns aside the *next* blow this turn, whatever its size (BK2-024).
+   * Rules.md §13.
+   *
+   * Not `reduceDamage`, which softens every blow by a fixed amount: this is
+   * spent by the first damage that lands, so a big hit is wasted on it and a
+   * second hit lands in full.
+   */
+  | { readonly do: 'wardNextDamage'; readonly who: Selector }
   /**
    * Discard until a hand is no bigger than `size` (BK2-042). Rules.md §13.
    *
@@ -951,6 +981,16 @@ export const REFLECT = 'reflect';
  */
 export const NEGATED = 'negated';
 
+/**
+ * How many single blows this character will turn aside this turn (BK2-024).
+ * Rules.md §13.
+ *
+ * Distinct from {@link SHIELD}, which shrinks every blow by a fixed amount:
+ * this one is spent whole by the first damage that lands, however big.
+ * Swept with the boosts.
+ */
+export const WARD = 'ward';
+
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
   BOOST_HP,
@@ -961,6 +1001,7 @@ export const BOOST_COUNTERS: readonly string[] = [
   REARGUARD,
   REFLECT,
   NEGATED,
+  WARD,
 ];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
@@ -2905,6 +2946,95 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       trigger: 'always',
       effect: { do: 'openedCardsLock' },
       text: 'While this card is open, when characters are opened, they become locked.',
+    },
+  ],
+
+  'BK2-010': [
+    {
+      trigger: 'open',
+      // "The area level is reduced by 1" — City Level is the one global
+      // value (§5), and this narrows what *both* players may open, so it is
+      // read against everybody rather than against a side.
+      effect: { do: 'openLevelForTurn', shift: -1 },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'When this card is opened, the area level is reduced by 1. Draw 1 card.',
+    },
+  ],
+  'BK2-012': [
+    {
+      trigger: 'open',
+      // "A unique character you control within 1 distance", scaled by how
+      // many characters stand in *this* area.
+      target: { side: 'yours', maxDistance: 1, unique: true },
+      effect: {
+        do: 'buff',
+        who: { scope: 'target' },
+        stats: { power: 1, hp: 1 },
+        per: { scope: 'any', side: 'yours', where: 'thisArea' },
+      },
+      text: 'When this card is opened, choose a unique character you control within 1 distance. Until end of turns it gains +1/+1 for every character you control in this area.',
+    },
+  ],
+  'BK2-016': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'always',
+      effect: {
+        do: 'grantSubtype',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'mercenary' },
+        subtype: 'hawk',
+      },
+      text: 'All Mercenaries you control are Hawks in addition to their other types.',
+    },
+  ],
+  'BK2-022': [
+    {
+      trigger: 'activated',
+      cost: { lockSelf: true },
+      // "Cannot be used in the Capital" — the Royal Capital, §1.
+      condition: { when: 'notInCapital' },
+      effect: { do: 'damage', who: { scope: 'others', side: 'any', where: 'thisArea' }, amount: 3 },
+      text: 'Tap: All other characters in this area take 3 damage. This card cannot be used in the Capital.',
+    },
+  ],
+  'BK2-024': [
+    {
+      trigger: 'open',
+      target: { side: 'yours', maxDistance: 1 },
+      // "The next damage reduced to 0" — a shield of one blow, not a flat
+      // reduction, so it is spent by the first thing that hits.
+      effect: { do: 'wardNextDamage', who: { scope: 'target' } },
+      text: 'When this card is opened, target a character you control within 1 distance. The next damage that card would take this turn is reduced to 0.',
+    },
+  ],
+  'BK2-028': [
+    {
+      trigger: 'open',
+      gate: true,
+      // "Cannot open if your opponent controls a card (set or open) here."
+      condition: { when: 'enemyHasNothingHere' },
+      effect: { do: 'draw', player: 'you', count: 4 },
+      text: 'You cannot open this card if your opponent controls a card (set or open) in this area. Draw 4 cards.',
+    },
+  ],
+  'BK2-040': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      target: { side: 'yours', maxDistance: 1, maxLevel: 2, excludeSelf: true },
+      area: 'withinTwo',
+      effect: {
+        do: 'moveTo',
+        who: { scope: 'target' },
+        where: 'chosenArea',
+        withSource: true,
+      },
+      text: '(Quick) Tap: Target a level 2 or lower character you control within 1 distance, move this character and that character to any single area within 2 distance.',
     },
   ],
 

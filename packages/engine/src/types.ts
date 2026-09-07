@@ -353,6 +353,15 @@ export interface TurnState {
   readonly drawSkipped: boolean;
   /** Cards owed to the turn player at the end of the turn instead. */
   readonly drawAtEnd: number;
+  /**
+   * A shift to the City Level everyone opens against, for this turn only
+   * (BK2-010). Rules.md §5, §7.
+   *
+   * Lives on the turn rather than on a card because the card that sets it is
+   * a Normal Effect, in the Trash the moment it resolves — there would be
+   * nothing on the board to read it off. Cleared with the turn.
+   */
+  readonly openLevelShift?: number;
 }
 
 /**

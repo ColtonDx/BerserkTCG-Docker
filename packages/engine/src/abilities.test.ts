@@ -19,6 +19,7 @@ import {
   cityLevel,
   openLevelFor,
   opensLocked,
+  subtypesOf,
 } from './rules.js';
 import { isCityHidden, isHidden, viewFor } from './view.js';
 import type { CardInstance, GameAction, GameEvent, GameState } from './types.js';
@@ -3767,5 +3768,75 @@ describe('BK2 (Rules.md §13)', () => {
     expect(zoneSize(state, player, 'hand')).toBe(2);
     // A hand already under the size loses nothing.
     expect(zoneSize(state, other, 'hand')).toBe(1);
+  });
+});
+
+describe('BK2 wards and granted subtypes (Rules.md §13)', () => {
+  it('BK2-024 swallows one whole blow and is spent by it', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // BK1-043 Golem is green and 2/2 — Schierke's 4 damage would kill it
+    // outright, so surviving is the visible proof the ward ate the blow.
+    const ward = place(state, player, 'BK1-043', 2);
+    state = ward.state;
+
+    const respite = place(state, player, 'BK2-024', 2, { faceUp: false });
+    state = openable(respite.state, player, respite.card);
+    const open = openOf(state, player, respite.card);
+    expect(open, '3 Days Without Sun should point at an ally').toBeDefined();
+    expect(open?.targets?.[0]).toBe(ward.card);
+    state = apply(state, player, open as GameAction);
+    expect(state.cards[ward.card]?.counters['ward']).toBe(1);
+
+    // Schierke deals 4 — a shield of 1 would leave 3 through; a ward eats the
+    // whole blow and is spent. She is Level 3, so three cities must be up.
+    const schierke = place(state, other, 'BK1-053', 2, { faceUp: false });
+    state = openable(schierke.state, other, schierke.card);
+    // The Respite spent this turn's one open (§10 ③), so the strike comes on
+    // a fresh turn — the ward lasts the turn it was granted, which is what
+    // the test is actually about.
+    state = {
+      ...state,
+      turn: {
+        ...state.turn,
+        activePlayer: other,
+        priorityPlayer: other,
+        openedThisTurn: false,
+      },
+    };
+    const strike = openOf(state, other, schierke.card);
+    expect(strike, 'Schierke should be openable').toBeDefined();
+    state = apply(state, other, strike as GameAction);
+
+    expect(state.cards[ward.card]?.damage).toBe(0);
+    expect(state.cards[ward.card]?.zone).toBe('city');
+    // Spent: the next blow lands in full.
+    expect(state.cards[ward.card]?.counters['ward']).toBe(0);
+  });
+
+  it('BK2-016 makes your Mercenaries count as Hawks as well', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+
+    // BK1-001 is the white Mercenary; BK1-010 Griffith buffs other Hawks
+    // in his area, which is what makes the grant visible on the board.
+    const merc = place(state, player, 'BK1-001', 2);
+    state = merc.state;
+    expect(subtypesOf({ registry }, cardOf(state, merc.card), state)).not.toContain('hawk');
+
+    const griffith = place(state, player, 'BK1-010', 2);
+    state = griffith.state;
+    const beforeCeremony = power(state, merc.card);
+
+    const ceremony = place(state, player, 'BK2-016', 1);
+    state = ceremony.state;
+
+    // Now it is a Hawk in addition to being a Mercenary, so Griffith's aura
+    // reaches it — read off the board, nothing written down.
+    expect(subtypesOf({ registry }, cardOf(state, merc.card), state)).toContain('hawk');
+    expect(subtypesOf({ registry }, cardOf(state, merc.card), state)).toContain('mercenary');
+    expect(power(state, merc.card)).toBe(beforeCeremony + 1);
   });
 });

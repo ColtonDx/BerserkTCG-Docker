@@ -10,6 +10,7 @@ import {
   SEALED,
   SHIELD,
   SKIP_REFRESH,
+  WARD,
   targetPlayer,
   usedOnTurnCounter,
   type Ability,
@@ -40,6 +41,7 @@ import {
   opensLocked,
   conditionHolds,
   damageAfterReduction,
+  hasWard,
   definitionOf,
   hpOf,
   isCharacter,
@@ -954,6 +956,13 @@ function resolveBand(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
     // Reduction bites where the blow lands, not where it was assigned: §11 ④
     // makes the striker spend its Power exactly, so armour makes the wound
     // smaller rather than letting the attacker hold anything back.
+    // A ward swallows one blow whole and is spent by it, however big
+    // (BK2-024) — unlike a shield, which shrinks every blow by a fixed
+    // amount. Checked before reduction: the blow never lands to be reduced.
+    if (hasWard(target as CardInstance)) {
+      target.counters = { ...target.counters, [WARD]: (target.counters[WARD] ?? 0) - 1 };
+      continue;
+    }
     const amount = damageAfterReduction(ctx, draft, target as CardInstance, hit.amount, {
       combat: true,
     });
@@ -2579,6 +2588,10 @@ function runEffect(
       const scale = scaleOf(ctx, draft, source, effect.per);
       if (scale === 0) return false;
       for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        if (hasWard(card as CardInstance)) {
+          card.counters = { ...card.counters, [WARD]: (card.counters[WARD] ?? 0) - 1 };
+          continue;
+        }
         // Not combat: a card that only softens blows "during combat" says
         // nothing about a spell, and must not quietly absorb this.
         const amount = damageAfterReduction(
@@ -2654,6 +2667,26 @@ function runEffect(
       }
       return took > 0;
     }
+
+    case 'openLevelForTurn': {
+      // Written onto the turn rather than read off the board: the card that
+      // says it is a Normal Effect, gone to the Trash the moment it resolves.
+      draft.turn.openLevelShift = (draft.turn.openLevelShift ?? 0) + effect.shift;
+      return true;
+    }
+
+    case 'wardNextDamage': {
+      let warded = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        card.counters = { ...card.counters, [WARD]: (card.counters[WARD] ?? 0) + 1 };
+        warded++;
+      }
+      return warded > 0;
+    }
+
+    // Continuous: read off the board by `rules.ts:subtypesOf`, never run.
+    case 'grantSubtype':
+      return true;
 
     case 'openedCardsLock':
       // Continuous, like `cannotAttack`: asked of the board where a card is
