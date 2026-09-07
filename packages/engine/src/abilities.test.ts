@@ -3894,3 +3894,88 @@ describe('BK2-045 makes the other player pay three times (Rules.md §13)', () =>
     expect(state.pending).toBeNull();
   });
 });
+
+describe('BK2 two-target and combat removal (Rules.md §13)', () => {
+  it('BK2-029 moves one from each side to the same area', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const mine = place(state, player, GREEN, 1);
+    state = mine.state;
+    const theirs = place(state, other, GREEN, 3);
+    state = theirs.state;
+
+    const decoy = place(state, player, 'BK2-029', 2, { faceUp: false });
+    state = openable(decoy.state, player, decoy.card);
+
+    // Every legal (mine, theirs, area) combination is offered.
+    const offers = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'OPEN_CARD' && action.card === decoy.card) as Extract<
+      GameAction,
+      { type: 'OPEN_CARD' }
+    >[];
+    const pairs = offers.filter((o) => (o.targets ?? []).length === 2);
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const offer of pairs) {
+      // One of each side, never two of the same.
+      const [a, b] = offer.targets as [CardInstanceId, CardInstanceId];
+      expect(state.cards[a]?.controller).toBe(player);
+      expect(state.cards[b]?.controller).toBe(other);
+    }
+
+    // Take one that lands them both in city 2, where the card stands.
+    const chosen = pairs.find((o) => (o.areas ?? [])[0] === 2);
+    expect(chosen, 'the pair should be placeable in this area').toBeDefined();
+    state = apply(state, player, chosen as GameAction);
+
+    // Both travelled to the same area (§14 over §6: no Move spent, no lock).
+    expect(state.cards[mine.card]?.cityIndex).toBe(2);
+    expect(state.cards[theirs.card]?.cityIndex).toBe(2);
+  });
+
+  it('BK2-026 takes a defender out of the fight but leaves it standing', () => {
+    let state = started(GREEN);
+    const attacker = state.turn.activePlayer;
+    const defender = state.seats.find((seat) => seat !== attacker) as PlayerId;
+
+    const lead = place(state, attacker, GREEN, 2);
+    state = lead.state;
+    const guard = place(state, defender, GREEN, 2);
+    state = guard.state;
+    const decoy = place(state, defender, 'BK2-026', 2, { faceUp: false });
+    state = openable(decoy.state, defender, decoy.card);
+    // The gate: the opponent must not hold this area (§12). Nobody does.
+    state = {
+      ...state,
+      turn: { ...state.turn, activePlayer: attacker, priorityPlayer: attacker },
+    };
+
+    state = apply(atMain(state), attacker, { type: 'DECLARE_BATTLE', city: 2 });
+    for (let n = 0; n < 6 && state.quick; n++) {
+      state = apply(state, state.quick.waitingOn, { type: 'PASS_PRIORITY' });
+    }
+    state = apply(state, attacker, { type: 'DESIGNATE_VANGUARD', card: lead.card });
+    expect(state.battle?.participants).toContain(lead.card);
+
+    // The combat open (§11 ②) is where the defender plays it into the fight.
+    const open = engine
+      .legalActions(state, defender)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === decoy.card &&
+          (action.targets ?? [])[0] === lead.card,
+      );
+    expect(open, 'Outcome of Misconception should point at the attacker').toBeDefined();
+    const after = engine.reduce(state, defender, open as GameAction);
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+
+    // Out of the fight, but still on the board and still locked (§11 ③).
+    expect(after.value.state.battle?.participants ?? []).not.toContain(lead.card);
+    expect(after.value.state.cards[lead.card]?.zone).toBe('city');
+    expect(after.value.state.cards[lead.card]?.locked).toBe(true);
+  });
+});

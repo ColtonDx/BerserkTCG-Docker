@@ -677,6 +677,8 @@ export function reachedBy(
   source: CardInstance,
   selector: Selector,
   chosen?: CardInstanceId | undefined,
+  /** The second chosen character (BK2-029), for a `target2` selector. */
+  chosen2?: CardInstanceId | undefined,
   /**
    * The battle to read `Selector.inCombat` against. Passed rather than taken
    * off the state because `BoardView` deliberately has no battle on it —
@@ -684,7 +686,8 @@ export function reachedBy(
    */
   battle?: BattleState | null,
 ): CardInstance[] {
-  const aimed = (selector.scope ?? 'self') === 'target';
+  const scope = selector.scope ?? 'self';
+  const aimed = scope === 'target' || scope === 'target2';
   return Object.values(state.cards).filter((card) => {
     if (card.zone !== 'city') return false;
     if (!card.faceUp) {
@@ -714,7 +717,7 @@ export function reachedBy(
     if (selector.inCombat === true && !battle?.participants.includes(card.instanceId)) {
       return false;
     }
-    return selects(selector, source, card, (c) => factsOf(ctx, c, state), chosen);
+    return selects(selector, source, card, (c) => factsOf(ctx, c, state), chosen, chosen2);
   });
 }
 
@@ -821,14 +824,14 @@ function effectRelevant(
   const reaches = (who: Selector): boolean =>
     (who.scope ?? 'self') === 'target'
       ? ability.target !== undefined
-      : reachedBy(ctx, state, source, who, undefined, state.battle).length > 0;
+      : reachedBy(ctx, state, source, who, undefined, undefined, state.battle).length > 0;
 
   switch (effect.do) {
     case 'draw':
       // "For each" of nothing draws nothing.
       return (
         effect.per === undefined ||
-        reachedBy(ctx, state, source, effect.per, undefined, state.battle).length > 0
+        reachedBy(ctx, state, source, effect.per, undefined, undefined, state.battle).length > 0
       );
     case 'search':
       return (
@@ -860,7 +863,7 @@ function effectRelevant(
       if (ability.trigger !== 'always' && !inBattle) return false;
       if (
         effect.per !== undefined &&
-        reachedBy(ctx, state, source, effect.per, undefined, state.battle).length === 0
+        reachedBy(ctx, state, source, effect.per, undefined, undefined, state.battle).length === 0
       ) {
         return false;
       }
@@ -894,7 +897,7 @@ function effectRelevant(
           ? ability.target
             ? legalTargets(ctx, state, source, ability.target, state.battle)
             : []
-          : reachedBy(ctx, state, source, effect.who, undefined, state.battle);
+          : reachedBy(ctx, state, source, effect.who, undefined, undefined, state.battle);
       if (victims.length === 0) return false;
       if (inBattle) return true;
       // Outside a battle, damage clears at end of turn (§10 ⑤): it is only
@@ -962,6 +965,9 @@ function effectRelevant(
     case 'setTopOfDeck':
       // A card onto the board for free, whenever the deck still has one.
       return true;
+    case 'removeFromCombat':
+      // Only means anything inside a fight, and only reaches participants.
+      return inBattle && reaches(effect.who);
     case 'theyPay':
       // Card advantage taken off the other player, worth doing anywhere.
       return true;
@@ -1349,6 +1355,10 @@ export function conditionHolds(
       );
     case 'selfUnlocked':
       return !source.locked;
+    case 'enemyDoesNotOccupyThisArea': {
+      const holder = cityOf(state, source)?.occupiedBy;
+      return holder == null || holder === source.controller;
+    }
     case 'notInCapital':
       return source.cityIndex !== undefined && !state.cities[source.cityIndex]?.royalCapital;
     case 'enemyHasNothingHere':
@@ -1576,6 +1586,12 @@ export function areasFor(
     }
     case 'anyOther':
       return all.filter((index) => index !== source.cityIndex);
+    case 'withinOne':
+      // §15, counted from the card's own area — which is included, since
+      // "the same area within 1 distance" may well be where it stands.
+      return all.filter(
+        (index) => source.cityIndex !== undefined && cityDistance(source.cityIndex, index) <= 1,
+      );
     case 'withinTwo':
       // §15 Distance, from the card's own area — "another area", so not this.
       return all.filter(

@@ -1730,15 +1730,19 @@ function stackEffects(
     const at = asks ? asked++ : -1;
     const chosen = at >= 0 ? choices.cards[at] : undefined;
     const area = at >= 0 ? choices.areas[at] : undefined;
+    const second = at >= 0 ? choices.seconds[at] : undefined;
     // Conditions are read now, as printed: "when this card is opened, if …".
     if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) return;
     if (ability.target && chosen === undefined) return;
+    // "Must have valid targets for both" (BK2-029) — half a choice is none.
+    if (ability.target2 && second === undefined) return;
     if (ability.area && area === undefined) return;
     const entry: PendingEffect = {
       source: source.instanceId,
       controller: source.controller,
       ability: index,
       ...(chosen !== undefined ? { chosen } : {}),
+      ...(second !== undefined ? { chosen2: second } : {}),
       ...(area !== undefined ? { area } : {}),
     };
     draft.stack = toDraft([...draft.stack, entry]);
@@ -1843,7 +1847,16 @@ function resolveTop(ctx: EngineContext, draft: Draft<GameState>, events: GameEve
     if (ability.cost?.destroySelf === true) {
       destroy(ctx, draft, source, events);
     }
-    resolveEffect(ctx, draft, source as CardInstance, ability, events, top.chosen, top.area);
+    resolveEffect(
+      ctx,
+      draft,
+      source as CardInstance,
+      ability,
+      events,
+      top.chosen,
+      top.area,
+      top.chosen2,
+    );
   } else if (source && ability) {
     events.push({
       type: 'ABILITY_FIZZLED',
@@ -1889,7 +1902,11 @@ function checkTargets(
   areas: readonly number[] = [],
 ): Result<Choices, RuleViolation> {
   const asking = askingAbilities(ctx, source, 'open');
-  if (targets.length > asking.length) {
+  const wanted = asking.reduce(
+    (total, ability) => total + (ability.target ? 1 : 0) + (ability.target2 ? 1 : 0),
+    0,
+  );
+  if (targets.length > wanted) {
     return violation('ILLEGAL_TARGET', 'That card does not ask for that many targets.', '§13');
   }
   if (areas.length > asking.length) {
@@ -1898,11 +1915,17 @@ function checkTargets(
 
   const cards: (CardInstanceId | undefined)[] = [];
   const chosenAreas: (number | undefined)[] = [];
+  const seconds: (CardInstanceId | undefined)[] = [];
+  // An ability naming two characters takes the second from the slot after
+  // the first, so the wire's one-target-per-ability layout still holds for
+  // every card that names one (BK2-029 is the only one that names two).
+  let slot = 0;
 
   for (const [index, ability] of asking.entries()) {
     let picked: CardInstanceId | undefined;
     if (ability.target) {
-      picked = targets[index];
+      picked = targets[slot];
+      slot += 1;
       if (picked !== undefined) {
         const allowed = legalTargets(ctx, draft, source, ability.target, draft.battle);
         if (!allowed.some((card) => card.instanceId === picked)) {
@@ -1913,6 +1936,19 @@ function checkTargets(
       // and finds nobody.
     }
     cards.push(picked);
+
+    let second: CardInstanceId | undefined;
+    if (ability.target2) {
+      second = targets[slot];
+      slot += 1;
+      if (second !== undefined) {
+        const allowed = legalTargets(ctx, draft, source, ability.target2, draft.battle);
+        if (!allowed.some((card) => card.instanceId === second)) {
+          return violation('ILLEGAL_TARGET', 'That character cannot be targeted.', '§13');
+        }
+      }
+    }
+    seconds.push(second);
 
     // The area, where the ability asks for one. Validated against the chosen
     // character where the kind is relative to one, because "adjacent" is
@@ -1935,13 +1971,15 @@ function checkTargets(
     chosenAreas.push(area);
   }
 
-  return ok({ cards, areas: chosenAreas });
+  return ok({ cards, areas: chosenAreas, seconds });
 }
 
 /** One ability's worth of chosen character and chosen area, in printed order. */
 interface Choices {
   readonly cards: readonly (CardInstanceId | undefined)[];
   readonly areas: readonly (number | undefined)[];
+  /** Second chosen characters, for an ability naming two (BK2-029). */
+  readonly seconds: readonly (CardInstanceId | undefined)[];
 }
 
 /**
@@ -2215,7 +2253,7 @@ function fireAbilities(
   source: CardInstance,
   trigger: Trigger,
   events: GameEvent[],
-  choices: Choices = { cards: [], areas: [] },
+  choices: Choices = { cards: [], areas: [], seconds: [] },
 ): void {
   let asked = 0;
   for (const ability of abilitiesOf(ctx, source)) {
@@ -2223,12 +2261,15 @@ function fireAbilities(
     const index = ability.target !== undefined || ability.area !== undefined ? asked++ : -1;
     const chosen = index >= 0 ? choices.cards[index] : undefined;
     const area = index >= 0 ? choices.areas[index] : undefined;
+    const second = index >= 0 ? choices.seconds[index] : undefined;
     if (!conditionHolds(ctx, draft, source, ability.condition, draft.battle)) continue;
     // An ability that asked for a target and got nobody has nothing to do,
     // and one that asked for an area and got nowhere likewise.
     if (ability.target && chosen === undefined) continue;
+    // "Must have valid targets for both" (BK2-029) — half a choice is none.
+    if (ability.target2 && second === undefined) continue;
     if (ability.area && area === undefined) continue;
-    resolveEffect(ctx, draft, source, ability, events, chosen, area);
+    resolveEffect(ctx, draft, source, ability, events, chosen, area, second);
   }
 }
 
@@ -2246,6 +2287,8 @@ function resolveEffect(
   events: GameEvent[],
   chosen?: CardInstanceId | undefined,
   area?: number | undefined,
+  /** The second chosen character (BK2-029), for a `target2` selector. */
+  chosen2?: CardInstanceId | undefined,
 ): void {
   events.push({
     type: 'ABILITY_RESOLVED',
@@ -2263,6 +2306,7 @@ function resolveEffect(
     chosen,
     ability.text,
     area,
+    chosen2,
   );
 
   // Rules.md §13 resolves what it can, and sometimes that is nothing. Said
@@ -2297,16 +2341,18 @@ function runChain(
   chosen: CardInstanceId | undefined,
   text: string,
   area: number | undefined,
+  chosen2?: CardInstanceId | undefined,
 ): boolean {
   let did = false;
   for (const [index, effect] of effects.entries()) {
-    did = runEffect(ctx, draft, source, effect, events, chosen, text, area) || did;
+    did = runEffect(ctx, draft, source, effect, events, chosen, chosen2, text, area) || did;
     if (draft.pending) {
       const rest = effects.slice(index + 1);
       if (rest.length > 0) {
         const then: Continuation = {
           effects: rest,
           ...(chosen !== undefined ? { chosen } : {}),
+          ...(chosen2 !== undefined ? { chosen2 } : {}),
           ...(area !== undefined ? { area } : {}),
         };
         draft.pending.then = toDraft(then);
@@ -2329,6 +2375,8 @@ function runEffect(
   effect: Effect,
   events: GameEvent[],
   chosen?: CardInstanceId | undefined,
+  /** The second chosen character (BK2-029), for a `target2` selector. */
+  chosen2?: CardInstanceId | undefined,
   /** The printed line, quoted back at the player if this effect has to ask. */
   text = '',
   /** The area the player chose, for an effect that asked for one. §13. */
@@ -2349,7 +2397,7 @@ function runEffect(
       // Under a trigger this is "until end of turn", so it is written onto
       // the card and cleared with damage in the End phase (Rules.md §10 ⑤).
       let touched = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         touched++;
         for (const stat of ['power', 'hp', 'move'] as const) {
           const change = effect.stats[stat];
@@ -2550,7 +2598,7 @@ function runEffect(
     }
 
     case 'attach': {
-      const host = selected(ctx, draft, source, effect.who, chosen)[0];
+      const host = selected(ctx, draft, source, effect.who, chosen, chosen2)[0];
       if (!host || host.instanceId === source.instanceId) return false;
       const wearer = draft.cards[source.instanceId];
       if (!wearer) return false;
@@ -2563,7 +2611,7 @@ function runEffect(
 
     case 'unlock': {
       let freed = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         if (card.locked) freed++;
         card.locked = false;
       }
@@ -2571,7 +2619,7 @@ function runEffect(
     }
 
     case 'reveal': {
-      const seen = selected(ctx, draft, source, effect.who, chosen);
+      const seen = selected(ctx, draft, source, effect.who, chosen, chosen2);
       if (seen.length === 0) return false;
       const watchers = effect.to === 'both' ? draft.seats : [controller];
       for (const watcher of watchers) {
@@ -2589,7 +2637,7 @@ function runEffect(
 
     case 'lock': {
       let touched = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         // Unconditional: a character already locked still takes the mark,
         // because BK1-085 is about the *next* Refresh and not about now.
         if (!card.locked) touched++;
@@ -2618,7 +2666,7 @@ function runEffect(
     }
 
     case 'returnToHand': {
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         moveToZone(draft, card.instanceId, { player: card.owner, zone: 'hand' });
         events.push({ type: 'CARD_RETURNED', player: card.owner, card: card.instanceId });
       }
@@ -2633,7 +2681,7 @@ function runEffect(
       // printed behaviour of a line counting an empty area.
       const scale = scaleOf(ctx, draft, source, effect.per);
       if (scale === 0) return false;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         if (hasWard(card as CardInstance)) {
           card.counters = { ...card.counters, [WARD]: (card.counters[WARD] ?? 0) - 1 };
           continue;
@@ -2659,7 +2707,7 @@ function runEffect(
       }
       // Checked after all of it lands, so an effect that hits several
       // characters kills them together rather than one at a time.
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         if (card.damage >= hpOf(ctx, draft, card as CardInstance)) {
           destroy(ctx, draft, card, events);
         }
@@ -2668,7 +2716,7 @@ function runEffect(
     }
 
     case 'destroy': {
-      const doomed = selected(ctx, draft, source, effect.who, chosen);
+      const doomed = selected(ctx, draft, source, effect.who, chosen, chosen2);
       // Counted before anything is destroyed: "draw that many" means as many
       // as this line took off the board (BK1-152).
       const taken = doomed.length;
@@ -2683,7 +2731,7 @@ function runEffect(
 
     case 'negate': {
       let silenced = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         // Not the card doing the silencing: it is a Normal Effect resolving
         // right now, and negating itself would undo the negation.
         if (card.instanceId === source.instanceId) continue;
@@ -2723,7 +2771,7 @@ function runEffect(
 
     case 'wardNextDamage': {
       let warded = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         card.counters = { ...card.counters, [WARD]: (card.counters[WARD] ?? 0) + 1 };
         warded++;
       }
@@ -2771,7 +2819,7 @@ function runEffect(
       const seat = draft.seats.indexOf(controller);
       if (seat < 0) return false;
       let marked = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         card.counters = { ...card.counters, [REFLECT]: seat + 1 };
         marked++;
       }
@@ -2790,6 +2838,21 @@ function runEffect(
       return pushed();
     }
 
+    case 'removeFromCombat': {
+      const battle = draft.battle;
+      if (!battle) return false;
+      const leaving = selected(ctx, draft, source, effect.who, chosen, chosen2)
+        .map((card) => card.instanceId)
+        .filter((id) => battle.participants.includes(id));
+      if (leaving.length === 0) return false;
+      // Still locked and still standing there — only out of the fight.
+      battle.participants = toDraft(battle.participants.filter((id) => !leaving.includes(id)));
+      // A battle can empty out this way, so let it settle rather than
+      // leaving a step waiting on somebody who is no longer in it (§11).
+      settleBattle(ctx, draft, events);
+      return true;
+    }
+
     case 'theyPay': {
       const payer = targetPlayer(draft, controller, effect.player, source);
       if (!payer) return false;
@@ -2799,7 +2862,7 @@ function runEffect(
     case 'gatherHere': {
       const city = source.cityIndex;
       if (city === undefined) return false;
-      const reachable = selected(ctx, draft, source, effect.who, chosen).filter(
+      const reachable = selected(ctx, draft, source, effect.who, chosen, chosen2).filter(
         // Somebody already standing here has nowhere to be moved to.
         (card) => card.cityIndex !== city,
       );
@@ -2826,7 +2889,7 @@ function runEffect(
       // The choice belongs to whoever owns the cards, not to the player who
       // used the ability (BK1-100). Nothing in reach is not an error — the
       // effect simply finds nobody, like any other.
-      const reachable = selected(ctx, draft, source, effect.who, chosen);
+      const reachable = selected(ctx, draft, source, effect.who, chosen, chosen2);
       if (reachable.length === 0) return false;
       const owner = reachable[0]?.controller;
       if (!owner) return false;
@@ -2851,7 +2914,7 @@ function runEffect(
     case 'destroyOrDiscard': {
       // BK1-103 — one question per character they have in the fight here,
       // asked one at a time because each answer is independent.
-      const victims = selected(ctx, draft, source, effect.who, chosen)
+      const victims = selected(ctx, draft, source, effect.who, chosen, chosen2)
         .map((card) => card.instanceId)
         .filter((id): id is CardInstanceId => id !== undefined);
       if (victims.length === 0) return false;
@@ -2875,7 +2938,7 @@ function runEffect(
       // already checked against the chosen character by `checkTargets`.
       const to = effect.where === 'chosenArea' ? area : source.cityIndex;
       if (to === undefined) return false;
-      const travelling = selected(ctx, draft, source, effect.who, chosen);
+      const travelling = selected(ctx, draft, source, effect.who, chosen, chosen2);
       // "Move this and another character" — the source comes too (BK1-131).
       if (effect.withSource === true) {
         const self = draft.cards[source.instanceId];
@@ -2906,7 +2969,7 @@ function runEffect(
       // and swept with the boosts. The continuous kind never reaches here —
       // it is read off the board by `damageReduction` as each blow lands.
       let shielded = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         shielded++;
         card.counters[SHIELD] = (card.counters[SHIELD] ?? 0) + effect.amount;
       }
@@ -2920,7 +2983,7 @@ function runEffect(
 
     case 'openSetCard': {
       let opened = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         if (card.faceUp || card.cityIndex === undefined) continue;
         card.faceUp = true;
         card.counters = { ...card.counters, [OPENED_ON_TURN]: turnOrdinal(draft) };
@@ -2945,7 +3008,7 @@ function runEffect(
       const amount = effect.stats.power ?? effect.stats.hp ?? 0;
       if (amount === 0) return false;
       let granted = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         card.counters = {
           ...card.counters,
           [REARGUARD]: (card.counters[REARGUARD] ?? 0) + amount,
@@ -2957,7 +3020,7 @@ function runEffect(
 
     case 'seal': {
       let sealed = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         card.counters = { ...card.counters, [SEALED]: 1 };
         sealed++;
       }
@@ -2969,7 +3032,7 @@ function runEffect(
       // the card because the source is a Normal Effect and will be in the
       // Trash before anybody asks (§3).
       let marked = 0;
-      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
         card.counters = { ...card.counters, [NO_BATTLE]: 1 };
         marked++;
       }
@@ -3016,8 +3079,10 @@ function selected(
   source: CardInstance,
   selector: Selector,
   chosen?: CardInstanceId | undefined,
+  /** The second chosen character (BK2-029), for a `target2` selector. */
+  chosen2?: CardInstanceId | undefined,
 ): Draft<CardInstance>[] {
-  return reachedBy(ctx, draft as GameState, source, selector, chosen, draft.battle)
+  return reachedBy(ctx, draft as GameState, source, selector, chosen, chosen2, draft.battle)
     .map((card) => draft.cards[card.instanceId])
     .filter((card): card is Draft<CardInstance> => card !== undefined);
 }
@@ -3343,6 +3408,7 @@ function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameE
       rest.chosen,
       text,
       rest.area,
+      rest.chosen2,
     );
   } // The choice may have come out of an effect resolving off the stack
   // (Rules.md §14); whatever is still pending there gets its round now, and

@@ -52,7 +52,7 @@ export interface Selector {
    * `self` is the source; `others` excludes it; `any` includes it; `target`
    * is whichever character the player chose, and reaches nothing on its own.
    */
-  readonly scope?: 'self' | 'others' | 'any' | 'target';
+  readonly scope?: 'self' | 'others' | 'any' | 'target' | 'target2';
   readonly side?: 'yours' | 'theirs' | 'any';
   /**
    * `thisArea` is the source's own city, `anywhere` the whole board, and
@@ -193,7 +193,8 @@ export interface TargetSpec {
  * The choice travels in `OPEN_CARD.areas` / `USE_ABILITY.areas`, not in
  * `targets`: an area is not a card, and an ability may want either or both.
  */
-export type AreaKind = 'adjacent' | 'anyOther' | 'enemyLevel3' | 'youOccupyOther' | 'withinTwo';
+export type AreaKind =
+  'adjacent' | 'anyOther' | 'enemyLevel3' | 'youOccupyOther' | 'withinTwo' | 'withinOne';
 
 /** What has to be true for the ability to apply. */
 export type Condition =
@@ -265,7 +266,9 @@ export type Condition =
   /** It is not standing in the Royal Capital (BK2-022). Rules.md §1. */
   | { readonly when: 'notInCapital' }
   /** The other player has nothing at all in its area, set or open (BK2-028). */
-  | { readonly when: 'enemyHasNothingHere' };
+  | { readonly when: 'enemyHasNothingHere' }
+  /** The other player does not hold the area it stands in (BK2-026). §12. */
+  | { readonly when: 'enemyDoesNotOccupyThisArea' };
 
 /**
  * What the ability does when it applies.
@@ -629,6 +632,16 @@ export type Effect =
    */
   | { readonly do: 'theyPay'; readonly player: EffectPlayer; readonly count: number }
   /**
+   * Takes a character out of the fight without moving or unlocking it
+   * (BK2-026). Rules.md §11 ③.
+   *
+   * "Leave it locked, but not participating" is exactly what dropping it
+   * from `battle.participants` does: `stillFighting` reads that list, so it
+   * stops dealing and taking damage and stops counting towards the result,
+   * while standing where it stands.
+   */
+  | { readonly do: 'removeFromCombat'; readonly who: Selector }
+  /**
    * Discard until a hand is no bigger than `size` (BK2-042). Rules.md §13.
    *
    * Not a count: how many go depends on how many are held, so a player
@@ -904,6 +917,15 @@ export interface Ability {
    * else — an ability with a target and no legal one simply does nothing.
    */
   readonly target?: TargetSpec;
+  /**
+   * A *second* character to choose, for a printed line that names one from
+   * each side (BK2-029). Rules.md §13.
+   *
+   * Reached by a `{ scope: 'target2' }` selector. Only meaningful with a
+   * `target`, and the line requires both — "must have valid targets for
+   * both" — so the ability is not offered unless each has somebody.
+   */
+  readonly target2?: TargetSpec;
   /** What using it costs. Only meaningful under the `activated` trigger. */
   readonly cost?: ActivationCost;
   /**
@@ -3113,6 +3135,54 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
     },
   ],
 
+  'BK2-015': [
+    {
+      trigger: 'open',
+      // Reveal everything of theirs, then take one that is not a character —
+      // an Effect card lying face down. `effectCards: 'any'` is what narrows
+      // the target to the "isn't a character" half of the population.
+      target: { side: 'theirs', where: 'anywhere', faceDown: true, effectCards: 'any' },
+      effect: {
+        do: 'reveal',
+        who: { scope: 'others', side: 'theirs', where: 'anywhere', faceDown: true },
+        to: 'both',
+      },
+      then: [
+        { do: 'destroy', who: { scope: 'target' } },
+        { do: 'draw', player: 'you', count: 2 },
+      ],
+      text: "When this card is opened, reveal all enemy set cards in all areas. Select 1 of them that isn't a character and destroy it. Then draw 2 cards.",
+    },
+  ],
+  'BK2-026': [
+    {
+      trigger: 'open',
+      gate: true,
+      // "Only if your opponent does not occupy this area" (§12).
+      condition: { when: 'enemyDoesNotOccupyThisArea' },
+      // "A character your opponent controls that is involved in combat"
+      // (§11 ③) — with no battle on there is nobody to point at.
+      target: { side: 'theirs', inCombat: true },
+      effect: { do: 'removeFromCombat', who: { scope: 'target' } },
+      text: 'You can only open this card if your opponent does not occupy this area. Choose a character your opponent controls that is involved in combat, and remove it from combat.',
+    },
+  ],
+
+  'BK2-029': [
+    {
+      trigger: 'open',
+      // One from each side. "Must have valid targets for both" is why
+      // `fireAbilities` skips the ability unless each has somebody.
+      target: { side: 'yours', maxDistance: 1 },
+      target2: { side: 'theirs', maxDistance: 1 },
+      // "To the same area within 1 distance" — one area, both travellers.
+      area: 'withinOne',
+      effect: { do: 'moveTo', who: { scope: 'target' }, where: 'chosenArea' },
+      then: [{ do: 'moveTo', who: { scope: 'target2' }, where: 'chosenArea' }],
+      text: 'Target a character you control and a character your opponent controls, move them to the same area within 1 distance.',
+    },
+  ],
+
   'BK1-156': [
     {
       trigger: 'always',
@@ -3148,10 +3218,13 @@ export function selects(
   card: CardInstance,
   factsOf: (card: CardInstance) => CardFacts,
   chosen?: CardInstanceId | undefined,
+  /** The second chosen character, for a line naming one from each side. */
+  chosen2?: CardInstanceId | undefined,
 ): boolean {
   const scope = selector.scope ?? 'self';
   // A chosen target is the whole selection: the player already narrowed it.
   if (scope === 'target') return chosen !== undefined && card.instanceId === chosen;
+  if (scope === 'target2') return chosen2 !== undefined && card.instanceId === chosen2;
   if (scope === 'self') return card.instanceId === source.instanceId;
   if (scope === 'others' && card.instanceId === source.instanceId) return false;
 

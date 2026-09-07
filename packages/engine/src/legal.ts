@@ -495,12 +495,44 @@ function openActions(
       const options = ability.target
         ? legalTargets(ctx, state, card, ability.target, state.battle)
         : [];
+      // A line naming one character from each side offers every legal pair
+      // (BK2-029) — the client cannot work out which combinations are legal.
+      const seconds = ability.target2
+        ? legalTargets(ctx, state, card, ability.target2, state.battle)
+        : [];
+      if (ability.target2 && seconds.length === 0) {
+        // "Must have valid targets for both": with nobody on one side the
+        // line does nothing, so it is offered with no targets at all.
+        actions.push({ type: 'OPEN_CARD', card: card.instanceId, pay: payment });
+        continue;
+      }
       // Nobody to point at is not a reason to refuse the open: the ability
       // resolves and finds nobody (Rules.md §13).
       if (options.length === 0) {
         actions.push({ type: 'OPEN_CARD', card: card.instanceId, pay: payment });
       } else {
         for (const option of options) {
+          if (ability.target2) {
+            for (const second of seconds) {
+              if (second.instanceId === option.instanceId) continue;
+              // The area, where the line also asks for one — both travellers
+              // go to the same one (BK2-029), so it is chosen once per pair.
+              const pairAreas =
+                ability.area === undefined
+                  ? [undefined]
+                  : areasFor(ctx, state, ability.area, card, option.instanceId);
+              for (const area of pairAreas.length > 0 ? pairAreas : [undefined]) {
+                actions.push({
+                  type: 'OPEN_CARD',
+                  card: card.instanceId,
+                  pay: payment,
+                  targets: [option.instanceId, second.instanceId],
+                  ...(area === undefined ? {} : { areas: [area] }),
+                });
+              }
+            }
+            continue;
+          }
           // An ability that also asks for an area gets one offer per legal
           // (character, area) pair — "move it to an adjacent area" is two
           // different plays at a middle city, and the client cannot work out

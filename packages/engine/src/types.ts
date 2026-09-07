@@ -151,6 +151,8 @@ export interface PendingEffect {
   /** Index of the ability on its card, as `abilityKey` names it. */
   readonly ability: number;
   readonly chosen?: CardInstanceId;
+  /** The second chosen character (BK2-029), for a `target2` selector. */
+  readonly chosen2?: CardInstanceId;
   readonly area?: number;
 }
 
@@ -218,6 +220,8 @@ export interface PendingChoice {
 export interface Continuation {
   readonly effects: readonly Effect[];
   readonly chosen?: CardInstanceId;
+  /** The second chosen character (BK2-029), for a `target2` selector. */
+  readonly chosen2?: CardInstanceId;
   readonly area?: number;
 }
 
