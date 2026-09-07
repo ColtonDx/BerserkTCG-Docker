@@ -210,7 +210,13 @@ export interface TargetSpec {
  * `targets`: an area is not a card, and an ability may want either or both.
  */
 export type AreaKind =
-  'adjacent' | 'anyOther' | 'enemyLevel3' | 'youOccupyOther' | 'withinTwo' | 'withinOne';
+  | 'adjacent'
+  | 'anyOther'
+  | 'enemyLevel3'
+  | 'youOccupyOther'
+  | 'withinTwo'
+  | 'withinOne'
+  | 'anyArea';
 
 /** What has to be true for the ability to apply. */
 export type Condition =
@@ -304,7 +310,9 @@ export type Condition =
   /** Its controller holds the area *and* it is a Demon City (BK3-045, -046). */
   | { readonly when: 'occupiedDemonCity' }
   /** Its controller took or held this area against an attack this turn. */
-  | { readonly when: 'capturedOrDefendedThisArea' };
+  | { readonly when: 'capturedOrDefendedThisArea' }
+  /** A card of this name stands in its *own area* (BK3-016). Rules.md §8. */
+  | { readonly when: 'youControlNameHere'; readonly name: string };
 
 /**
  * What the ability does when it applies.
@@ -376,6 +384,10 @@ export type Effect =
       readonly count: number;
       readonly named: string | null;
       readonly characterOnly?: boolean;
+      /** Only cards carrying this printed subtype (BK3-015). Rules.md §3. */
+      readonly subtype?: string;
+      /** Only cards at or below this printed Level (BK3-015). Rules.md §7. */
+      readonly maxLevel?: number;
       /**
        * Look in the Trash as well as the deck (BK1-115, "search your deck or
        * your graveyard"). Rules.md §14 — all Trash cards are public, so
@@ -756,6 +768,16 @@ export type Effect =
   /** "Choose up to N … and return them to your hand" (BK3-040). §13. */
   | { readonly do: 'pickAndReturn'; readonly who: Selector; readonly count: number }
   /**
+   * Take control of a character (BK2-063). Rules.md §13 — it changes sides
+   * where it stands, keeping its damage and counters.
+   */
+  | { readonly do: 'seize'; readonly who: Selector }
+  /**
+   * The reached characters may not move again this turn (BK3-020).
+   * Rules.md §10 ④(1).
+   */
+  | { readonly do: 'cannotMoveAgain'; readonly who: Selector }
+  /**
    * The rest of a printed line, run only while its controller has a card of
    * this name on the field (BK3-013). Rules.md §13.
    *
@@ -1005,6 +1027,11 @@ export type Trigger =
    * Rules.md §11 ③ — the mirror of `attack`.
    */
   | 'defend'
+  /**
+   * A character its controller owns has been destroyed, anywhere (BK2-062).
+   * Rules.md §3 — the watcher answers, not the card that died.
+   */
+  | 'allyDeath'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -1266,6 +1293,12 @@ export const CHARGES = 'charges';
 export const ALTERED = 'altered';
 
 /**
+ * Barred from moving again this turn (BK3-020). Rules.md §10 ④(1). Swept
+ * with the boosts, so "this turn" needs no timer.
+ */
+export const NO_MOVE = 'noMove';
+
+/**
  * Permanent boosts, which the End phase does not sweep (BK3-055). Rules.md
  * §13 — read alongside the temporary ones by `statOf`.
  */
@@ -1283,6 +1316,7 @@ export const BOOST_COUNTERS: readonly string[] = [
   REFLECT,
   NEGATED,
   WARD,
+  NO_MOVE,
 ];
 
 /**
@@ -4234,6 +4268,190 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       },
       effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1 } },
       text: '(Quick) Destroy 1 set card you control here: this character gains +1/+0 until end of turn',
+    },
+  ],
+
+  'BK3-015': [
+    {
+      trigger: 'open',
+      // "Up to 2 level 1 Hawk characters" — set here, face down, revealed on
+      // the way (§13). The deck is shuffled, since this searches it.
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 2,
+        named: null,
+        characterOnly: true,
+        subtype: 'hawk',
+        maxLevel: 1,
+        upTo: true,
+        reveal: true,
+        to: 'set',
+      },
+      text: 'When this card is opened, search your deck for up to 2 level 1 Hawk characters, reveal them, and then set them in this area. Shuffle your deck.',
+    },
+  ],
+  'BK3-016': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 3,
+        named: 'Mercenary',
+        upTo: true,
+        reveal: true,
+        to: 'setAnywhere',
+        intoAreasWith: 'hawk',
+      },
+      text: 'When this card is opened, search your deck for up to 3 Mercenary cards, reveal them, then set each one in an area in which you control a Hawk character. Shuffle your deck.',
+    },
+    {
+      trigger: 'always',
+      grantsQuick: true,
+      condition: { when: 'youControlNameHere', name: 'Griffith' },
+      effect: { do: 'demonCity' },
+      text: 'If you control a Griffith character in this area this card is treated as a quick.',
+    },
+  ],
+  'BK3-025': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 1,
+        named: 'Sword of Actuation',
+        includeTrash: true,
+        reveal: true,
+        to: 'hand',
+      },
+      text: 'When this card is opened, search for 1 "Sword of Actuation" card from your deck or graveyard and reveal it. Add that card to your hand. Shuffle your deck.',
+    },
+  ],
+  'BK3-030': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'youControlName', name: 'Skull Knight' },
+      // "Target all" — every one of them, so a selector rather than a pick.
+      effect: {
+        do: 'setCard',
+        who: { scope: 'any', side: 'theirs', maxDistance: 1, maxLevel: 3 },
+      },
+      then: [{ do: 'draw', player: 'you', count: 2 }],
+      text: 'This card can only be opened if you control a Skull Knight character. Target all level 3 or lower enemy characters within 1 distance and set them. Draw 2 cards.',
+    },
+  ],
+  'BK3-038': [
+    {
+      trigger: 'activated',
+      cost: { pay: 'B' },
+      condition: { when: 'youOccupyThisArea' },
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 1,
+        named: 'City Demonization',
+        includeTrash: true,
+        to: 'setOpen',
+      },
+      text: 'B: Search your deck or graveyard for 1 "City Demonization" card and set it in this area, then open it. This ability can only be activated if you occupy this area.',
+    },
+  ],
+  'BK3-045': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: 'B' },
+      // RULES: the printed line widens the search to the graveyard only in
+      // an occupied Demon City. `includeTrash` is not conditional, so the
+      // wider reading is taken — it never offers a card the narrow one
+      // would have, only more of them. Noted in TODO.md.
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 1,
+        named: 'Daka',
+        includeTrash: true,
+        reveal: true,
+        to: 'set',
+      },
+      text: '(Quick) B: Search your deck for a "Daka" card, reveal it, and set it in this area. Then shuffle.',
+    },
+  ],
+  'BK3-020': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      // "A character you control here that moved here this turn" — the
+      // engine records that an arrival happened rather than which card, so
+      // the player points at one of their own standing here.
+      condition: { when: 'allyArrivedThisArea' },
+      target: { side: 'yours', where: 'thisArea' },
+      effect: { do: 'unlock', who: { scope: 'target' } },
+      then: [
+        { do: 'draw', player: 'you', count: 1 },
+        { do: 'cannotMoveAgain', who: { scope: 'target' } },
+      ],
+      text: '(Quick) Tap: Unlock a character you control in this area that moved here this turn. If a character unlocked this way, draw 1 card. That character cannot move again this turn.',
+    },
+  ],
+  'BK3-042': [
+    {
+      trigger: 'open',
+      // "Destroy 1 of your character or set cards. If you do, your opponent
+      // must eliminate 2 of theirs in this area."
+      effect: {
+        do: 'pickAndDestroy',
+        who: { scope: 'others', side: 'yours', where: 'anywhere' },
+        count: 1,
+        mandatory: true,
+      },
+      then: [
+        {
+          do: 'theyDestroy',
+          who: { scope: 'any', side: 'theirs', where: 'thisArea' },
+          count: 2,
+        },
+      ],
+      text: 'When this card is opened, destroy 1 of your character or set cards. If you do, your opponent must eliminate 2 of their characters or set cards in this area.',
+    },
+    {
+      trigger: 'always',
+      grantsQuick: true,
+      condition: { when: 'inDemonCity' },
+      effect: { do: 'demonCity' },
+      text: 'This card gains (Quick) if this area is a Demon City.',
+    },
+  ],
+  'BK2-062': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'allyDeath',
+      effect: {
+        do: 'may',
+        effects: [{ do: 'setTopOfDeck', where: 'chosenArea' }],
+      },
+      area: 'anyArea',
+      text: 'Whenever a character you control is destroyed, you may look at the top card of your deck and you may set it in any area.',
+    },
+  ],
+  'BK2-063': [
+    {
+      trigger: 'open',
+      target: { side: 'theirs', where: 'thisArea', maxLevel: 2 },
+      effect: { do: 'seize', who: { scope: 'target' } },
+      then: [
+        { do: 'unlock', who: { scope: 'target' } },
+        { do: 'removeFromCombat', who: { scope: 'target' } },
+      ],
+      text: 'When this card is opened you gain control of a level 2 or lower character in this area. Unlock that character. If you are in battle, remove that character from battle.',
     },
   ],
 

@@ -4,6 +4,7 @@ import {
   selects,
   ALTERED,
   BOOST_COUNTERS,
+  NO_MOVE,
   PERMANENT_HP,
   PERMANENT_POWER,
   CHARGES,
@@ -54,6 +55,7 @@ import {
   nextRangeBand,
   powerOf,
   cannotBattle,
+  cannotMove,
   diesIfItLeaves,
   presenceIn,
   quickCardRelevant,
@@ -1343,6 +1345,11 @@ function moveCharacter(
     );
   }
 
+  // Barred from moving again this turn (BK3-020). Rules.md §10 ④(1).
+  if (cannotMove(card as CardInstance)) {
+    return violation('WRONG_PHASE', 'That character cannot move again this turn.', '§10');
+  }
+
   // BK1-157 — pinned in place: leaving destroys it. Checked before the move,
   // because the clause is read off the two standing together (§13).
   const doomedByLeaving = diesIfItLeaves(ctx, draft, card as CardInstance);
@@ -2503,6 +2510,8 @@ function runEffect(
         effect.characterOnly === true,
         effect.includeTrash === true,
         effect.topOfDeck,
+        effect.subtype,
+        effect.maxLevel,
       );
       if (found.length === 0) {
         // Same rule as `finishChoice`: a top-of-deck look is not a search, so
@@ -2533,6 +2542,8 @@ function runEffect(
           characterOnly: effect.characterOnly === true,
           ...(effect.includeTrash === true ? { includeTrash: true } : {}),
           ...(effect.topOfDeck !== undefined ? { topOfDeck: effect.topOfDeck } : {}),
+          ...(effect.subtype !== undefined ? { subtype: effect.subtype } : {}),
+          ...(effect.maxLevel !== undefined ? { maxLevel: effect.maxLevel } : {}),
           ...((to === 'set' || to === 'setOpen') && source.cityIndex !== undefined
             ? { city: source.cityIndex }
             : {}),
@@ -3020,6 +3031,27 @@ function runEffect(
       return pushed();
     }
 
+    case 'seize': {
+      let taken = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
+        if (card.controller === controller) continue;
+        // Changes sides where it stands, keeping its damage and counters.
+        card.controller = controller;
+        taken++;
+      }
+      if (taken > 0) refreshBoard(ctx, draft, events);
+      return taken > 0;
+    }
+
+    case 'cannotMoveAgain': {
+      let barred = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
+        card.counters = { ...card.counters, [NO_MOVE]: 1 };
+        barred++;
+      }
+      return barred > 0;
+    }
+
     case 'ifYouControl': {
       // The tail of a printed line, run only while a card of this name is
       // standing on its controller's side (BK3-013).
@@ -3295,6 +3327,13 @@ function destroy(
   moveToZone(draft, card.instanceId, { player: card.owner, zone: 'trash' });
   events.push({ type: 'CHARACTER_DESTROYED', card: card.instanceId });
   if (fellIn !== undefined) fireEnemyDeath(ctx, draft, fallen, fellIn, events);
+  // Cards answering for one of their own side falling, anywhere (BK2-062).
+  for (const watcher of Object.values(draft.cards)) {
+    if (watcher.zone !== 'city' || !watcher.faceUp) continue;
+    if (watcher.controller !== fallen) continue;
+    if (watcher.instanceId === card.instanceId) continue;
+    fireAbilities(ctx, draft, watcher as CardInstance, 'allyDeath', events);
+  }
 }
 
 /** The cards on the field an effect's selector reaches, as drafts to write to. */

@@ -4,6 +4,7 @@ import {
   counterFor,
   selects,
   NEGATED,
+  NO_MOVE,
   PERMANENT_HP,
   PERMANENT_POWER,
   NO_BATTLE,
@@ -171,6 +172,9 @@ export function isDemonCity(
   }
   return false;
 }
+
+/** Barred from moving again this turn (BK3-020)? Rules.md §10 ④(1). */
+export const cannotMove = (card: CardInstance): boolean => (card.counters[NO_MOVE] ?? 0) > 0;
 
 export function untargetable(
   ctx: EngineContext,
@@ -1153,6 +1157,8 @@ function effectRelevant(
     case 'pickAndDestroy':
     case 'pickAndLock':
     case 'pickAndReturn':
+    case 'seize':
+    case 'cannotMoveAgain':
       return reaches(effect.who);
     case 'ifYouControl':
       return effect.effects.some((inner) =>
@@ -1580,6 +1586,15 @@ export function conditionHolds(
           (state.turn.declaredCities.includes(source.cityIndex) &&
             state.cities[source.cityIndex]?.occupiedBy === source.controller))
       );
+    case 'youControlNameHere':
+      return Object.values(state.cards).some(
+        (card) =>
+          card.zone === 'city' &&
+          card.faceUp &&
+          card.cityIndex === source.cityIndex &&
+          card.controller === source.controller &&
+          definitionOf(ctx, card).name === condition.name,
+      );
     case 'inDemonCity':
       return source.cityIndex !== undefined && isDemonCity(ctx, state, source.cityIndex);
     case 'occupiedDemonCity':
@@ -1799,6 +1814,10 @@ export function searchable(
    * unlimited search.
    */
   topOfDeck?: number,
+  /** Only cards with this printed subtype (BK3-015). Rules.md §3. */
+  subtype?: string,
+  /** Only cards at or below this printed Level (BK3-015). Rules.md §7. */
+  maxLevel?: number,
 ): CardInstance[] {
   const wholeDeck = state.zoneOrder[zoneKey(player, 'deck')] ?? [];
   const deck = [
@@ -1817,6 +1836,12 @@ export function searchable(
       // printing of Serpico the deck happens to be holding.
       .filter((card) => named === null || definitionOf(ctx, card).name === named)
       .filter((card) => !characterOnly || isCharacter(ctx, card))
+      .filter((card) => subtype === undefined || subtypesOf(ctx, card, state).includes(subtype))
+      .filter((card) => {
+        if (maxLevel === undefined) return true;
+        const level = definitionOf(ctx, card).level;
+        return level !== null && level <= maxLevel;
+      })
   );
 }
 
@@ -1843,6 +1868,8 @@ export function areasFor(
     }
     case 'anyOther':
       return all.filter((index) => index !== source.cityIndex);
+    case 'anyArea':
+      return all;
     case 'withinOne':
       // §15, counted from the card's own area — which is included, since
       // "the same area within 1 distance" may well be where it stands.

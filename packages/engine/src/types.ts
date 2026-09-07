@@ -278,6 +278,10 @@ export type PendingChoiceKind =
       readonly cities?: readonly number[];
       /** Open what was set, once placed (BK2-002). */
       readonly thenOpen?: boolean;
+      /** Only cards with this printed subtype (BK3-015). */
+      readonly subtype?: string;
+      /** Only cards at or below this printed Level (BK3-015). */
+      readonly maxLevel?: number;
       readonly city?: number;
       readonly reveal: boolean;
     }

@@ -13,6 +13,7 @@ import {
   settable,
   canActivate,
   canCommit,
+  cannotMove,
   canVanguard,
   legalTargets,
   moveOf,
@@ -174,6 +175,8 @@ function choosable(
               kind.characterOnly,
               kind.includeTrash === true,
               kind.topOfDeck,
+              kind.subtype,
+              kind.maxLevel,
             );
   // "Set them anywhere" is a card *and* a destination, so every legal pair is
   // offered — the client cannot know which cities count (BK1-155).
@@ -688,6 +691,8 @@ function moveActions(ctx: EngineContext, state: GameState, player: PlayerId): Ga
   );
 
   for (const card of characters) {
+    // Barred from moving again this turn by a card that said so (BK3-020).
+    if (cannotMove(card)) continue;
     const from = card.cityIndex ?? -1;
     const move = moveOf(ctx, state, card);
     for (const city of state.cities) {

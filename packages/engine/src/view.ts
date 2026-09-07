@@ -273,6 +273,8 @@ function revealedByPendingSearch(
       pending.kind.characterOnly,
       pending.kind.includeTrash === true,
       pending.kind.topOfDeck,
+      pending.kind.subtype,
+      pending.kind.maxLevel,
     ).map((c) => c.instanceId),
   );
 }
