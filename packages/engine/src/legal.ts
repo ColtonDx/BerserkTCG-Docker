@@ -180,6 +180,17 @@ function choosable(
             );
   // "Set them anywhere" is a card *and* a destination, so every legal pair is
   // offered — the client cannot know which cities count (BK1-155).
+  // A card *and* a destination: every legal pair is offered, since the
+  // client cannot know which cities count (BK1-155, BK3-014).
+  if (kind.zone === 'field' && kind.action === 'scatter') {
+    for (const card of cards) {
+      for (const city of state.cities) {
+        actions.push({ type: 'CHOOSE_CARD', card: card.instanceId, city: city.index });
+      }
+    }
+    if (pending.upTo && cards.length > 0) actions.push({ type: 'ANSWER', accept: false });
+    return actions;
+  }
   if (kind.zone === 'deck' && kind.action === 'toCityAnywhere') {
     // Where the printed line narrows where it may go (BK2-002), only those.
     const cities = kind.cities ?? state.cities.map((city) => city.index);

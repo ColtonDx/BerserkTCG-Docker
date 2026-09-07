@@ -4291,3 +4291,64 @@ describe('BK3-052 answers for every way it goes down (Rules.md §6)', () => {
     expect(state.cards[lancer.card]?.zone).toBe('trash');
   });
 });
+
+describe('BK3 damage divided and control seized (Rules.md §13)', () => {
+  it('BK3-048 spends four points one at a time, wherever the player says', () => {
+    let state = started('BK1-081');
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // Two 1/1 bodies: four points is enough to kill both and spare nobody.
+    const first = place(state, other, 'BK1-081', 2);
+    state = first.state;
+    const second = place(state, other, 'BK1-081', 2);
+    state = second.state;
+
+    const strike = place(state, player, 'BK3-048', 2, { faceUp: false });
+    state = openable(strike.state, player, strike.card);
+    state = apply(state, player, openOf(state, player, strike.card) as GameAction);
+
+    // Four points owed, spent a point at a time.
+    expect(state.pending?.count).toBe(4);
+    state = apply(state, player, { type: 'CHOOSE_CARD', card: first.card });
+    // A 1/1 dies to the first point, and is no longer on offer.
+    expect(state.cards[first.card]?.zone).toBe('trash');
+    const left = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'CHOOSE_CARD')
+      .map((action) => (action as Extract<GameAction, { type: 'CHOOSE_CARD' }>).card);
+    expect(left).not.toContain(first.card);
+    expect(left).toContain(second.card);
+  });
+
+  it('BK2-063 takes control of a small character and stands it up', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const prize = place(state, other, RED, 2);
+    state = prize.state;
+    state = {
+      ...state,
+      cards: { ...state.cards, [prize.card]: { ...cardOf(state, prize.card), locked: true } },
+    };
+
+    const oath = place(state, player, 'BK2-063', 2, { faceUp: false });
+    state = openable(oath.state, player, oath.card);
+    const open = engine
+      .legalActions(state, player)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === oath.card &&
+          (action.targets ?? [])[0] === prize.card,
+      );
+    expect(open, 'Blade Oath should point at a small enemy').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // It changed sides where it stands, and was unlocked.
+    expect(state.cards[prize.card]?.controller).toBe(player);
+    expect(state.cards[prize.card]?.cityIndex).toBe(2);
+    expect(state.cards[prize.card]?.locked).toBe(false);
+  });
+});

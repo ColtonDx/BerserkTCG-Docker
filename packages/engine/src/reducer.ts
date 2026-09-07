@@ -347,7 +347,7 @@ function applyAction(
       return endPhase(ctx, draft, actor, events);
 
     case 'SET_CARD':
-      return setCard(draft, actor, action.card, action.city, events);
+      return setCard(ctx, draft, actor, action.card, action.city, events);
 
     case 'OPEN_CARD':
       return settled(
@@ -1056,6 +1056,7 @@ function endBattle(
 
 /** Rules.md §10 ④(2) — set one card from hand face-down in any city. */
 function setCard(
+  ctx: EngineContext,
   draft: Draft<GameState>,
   actor: PlayerId,
   cardId: CardInstanceId,
@@ -1076,6 +1077,19 @@ function setCard(
 
   moveToCity(draft, cardId, city, { controller: actor, faceUp: false });
   events.push({ type: 'CARD_SET', player: actor, card: cardId, city });
+  // Cards answering for the *other* player setting one (BK3-062). The area
+  // they set into travels as the chosen area.
+  for (const watcher of Object.values(draft.cards)) {
+    if (watcher.zone !== 'city' || !watcher.faceUp) continue;
+    if (watcher.controller === actor) continue;
+    for (const ability of abilitiesOf(ctx, watcher as CardInstance)) {
+      if (ability.trigger !== 'enemySet') continue;
+      if (!conditionHolds(ctx, draft, watcher as CardInstance, ability.condition, draft.battle)) {
+        continue;
+      }
+      resolveEffect(ctx, draft, watcher as CardInstance, ability, events, undefined, city);
+    }
+  }
   return ok(true);
 }
 
@@ -3031,6 +3045,47 @@ function runEffect(
       return pushed();
     }
 
+    case 'pickAndScatter': {
+      const movable = selected(ctx, draft, source, effect.who, chosen, chosen2);
+      if (movable.length === 0) return false;
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: Math.min(effect.count, movable.length),
+        // "Each" — but stopping short is harmless and keeps the question
+        // from stalling once the player has moved what they wanted.
+        upTo: true,
+        kind: {
+          zone: 'field',
+          action: 'scatter',
+          cards: movable.map((card) => card.instanceId),
+        },
+      });
+      return pushed();
+    }
+
+    case 'divideDamage': {
+      const victims = selected(ctx, draft, source, effect.who, chosen, chosen2);
+      if (victims.length === 0) return false;
+      // One point at a time, so "divided amongst any number" is the player
+      // naming a target for each — the same shape as §11 ④'s damage step.
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text,
+        count: effect.amount,
+        upTo: false,
+        kind: {
+          zone: 'field',
+          action: 'hit',
+          cards: victims.map((card) => card.instanceId),
+          hits: 1,
+        },
+      });
+      return pushed();
+    }
+
     case 'seize': {
       let taken = 0;
       for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
@@ -3472,7 +3527,11 @@ function chooseCard(
   const payingFromHand = kind.zone === 'field' && kind.action === 'pay' && card?.zone === 'hand';
   const inZone =
     card?.zone === wantedZone || (searchingTrash && card?.zone === 'trash') || payingFromHand;
-  if (!card || card.controller !== actor || !inZone) {
+  // Most choices name the answering player's own cards, but damage divided
+  // among enemies (BK3-048) names theirs — the offered list is what says
+  // which, and it was fixed when the question was posed.
+  const mustOwn = !(kind.zone === 'field' && kind.action === 'hit');
+  if (!card || (mustOwn && card.controller !== actor) || !inZone) {
     return violation('CARD_NOT_IN_ZONE', `That card is not in your ${kind.zone}.`, '§13');
   }
 
@@ -3482,7 +3541,36 @@ function chooseCard(
     if (!kind.cards.includes(cardId) && !(kind.hand ?? []).includes(cardId)) {
       return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
     }
-    if (kind.action === 'toHand') {
+    if (kind.action === 'scatter') {
+      // A card *and* a destination: the city rides on the answer, exactly
+      // as it does for "set them anywhere" (BK1-155).
+      if (chosenCity === undefined || !draft.cities[chosenCity]) {
+        return violation('ILLEGAL_TARGET', 'That card needs an area to go to.', '§13');
+      }
+      card.cityIndex = chosenCity;
+      events.push({ type: 'CARD_SET', player: card.controller, card: cardId, city: chosenCity });
+      // Struck off, so each card is named once.
+      pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });
+    } else if (kind.action === 'hit') {
+      // A point of the pool, landing like any other effect damage: it
+      // accumulates, kills at HP and clears at end of turn (§3).
+      const amount = damageAfterReduction(ctx, draft, card as CardInstance, kind.hits ?? 1, {
+        combat: false,
+      });
+      if (amount > 0) {
+        card.damage += amount;
+        events.push({
+          type: 'DAMAGE_DEALT',
+          source: pending.source,
+          target: cardId,
+          amount,
+          combat: false,
+        });
+        if (card.damage >= hpOf(ctx, draft, card as CardInstance)) {
+          destroy(ctx, draft, card, events);
+        }
+      }
+    } else if (kind.action === 'toHand') {
       moveToZone(draft, cardId, { player: card.owner, zone: 'hand' });
       events.push({ type: 'CARD_RETURNED', player: card.owner, card: cardId });
       // Struck off, so each card is named once.

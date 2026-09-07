@@ -1159,6 +1159,8 @@ function effectRelevant(
     case 'pickAndReturn':
     case 'seize':
     case 'cannotMoveAgain':
+    case 'divideDamage':
+    case 'pickAndScatter':
       return reaches(effect.who);
     case 'ifYouControl':
       return effect.effects.some((inner) =>
@@ -1642,6 +1644,8 @@ export function conditionHolds(
           card.cityIndex === source.cityIndex &&
           card.controller !== source.controller,
       );
+    case 'cityLevelAtLeast':
+      return cityLevel(state) >= condition.level;
     case 'cityLevelAtMost':
       // "Area level" reads as City Level: §5 defines one global value.
       return cityLevel(state) <= condition.level;

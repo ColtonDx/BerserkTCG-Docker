@@ -47,7 +47,8 @@ export type HandStep =
         | 'moveHere'
         | 'pay'
         | 'lock'
-        | 'toHand';
+        | 'hit'
+        | 'scatter';
       /** The player may stop short of the count. Rules.md §13 — "up to". */
       readonly upTo: boolean;
     }

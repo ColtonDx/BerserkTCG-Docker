@@ -309,7 +309,7 @@ export type PendingChoiceKind =
        * on offer are the player's own Set Cards and open characters, and a
        * card from hand may be discarded instead.
        */
-      readonly action: 'destroy' | 'moveHere' | 'pay' | 'lock' | 'toHand';
+      readonly action: 'destroy' | 'moveHere' | 'pay' | 'lock' | 'toHand' | 'hit' | 'scatter';
       readonly cards: readonly CardInstanceId[];
       /** Where they go, for `moveHere`. */
       readonly city?: number;
@@ -317,6 +317,11 @@ export type PendingChoiceKind =
       readonly unlock?: boolean;
       /** Cards in hand that may be discarded instead, for `pay`. */
       readonly hand?: readonly CardInstanceId[];
+      /**
+       * How much damage each pick lands, for `hit` (BK3-048). The pool is
+       * spent a point at a time, so the player divides it as they like.
+       */
+      readonly hits?: number;
     }
   /**
    * Put the cards you are looking at back on the deck in an order you pick

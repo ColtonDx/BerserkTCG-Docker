@@ -86,48 +86,54 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    abilities can finally ask for an area — BK1-131 is the first that does, and
    `useAbility` validates it rather than refusing.
 
-   **BK1 and BK2 are complete: 140 and 42 cards carry printed text, and
-   every one is built.** The rest of the set is transcription —
-   `Docs/Berserk_TCG_Cardlist.csv` has no effect text yet for BK3 onwards,
-   and a card with no entry stays inert rather than being approximated.
+   **BK1 is complete (140), BK2 is 57 of 58, BK3 is 55 of 60.** The rest of
+   the set is transcription — the cardlist has no effect text for BK4
+   onwards, and a card with no entry stays inert rather than approximated.
 
-   **One printed keyword is deliberately unbuilt.** BK2-018 and BK2-039 both
-   print "(Quick) Alteration.", which `Rules.md` does not define. Every
-   other clause on both cards is built; the keyword is left out rather than
-   guessed at, so those two cards are complete apart from it. Ask before
-   building it.
+   **Support is unbuilt and wants a ruling.** BK3-002, BK3-003 and BK3-050
+   print "Support [Green]" / "Support (Black)", which `Rules.md` does not
+   define. Their other clauses are built.
+
+   **BK2-047's damage is missing from the source** — "Deal damage to a
+   character your opponent controls" has no number in the cardlist.
+
+   RULES: three lines are built to their narrower reading, because a
+   `Selector` cannot be conditional and the wider one would need a second
+   shape of the same effect:
+
+   - **BK3-045** widens its search to the graveyard only in an occupied
+     Demon City; the engine always allows it, which only ever offers _more_
+     than the narrow reading.
+   - **BK3-048** widens its reach to Distance 1 in an occupied Demon City;
+     the engine keeps it to this area.
+   - **BK3-041** sets every Ogre from the graveyard and destroys them at end
+     of turn; the engine sets them and they stay.
+   - **BK3-027** and **BK3-029** are unbuilt: the first counts destructions
+     to decide how many more to make, the second needs "was already dealt
+     damage this turn" and an effect that fires from the _hand_.
 
    The machinery worth knowing about:
 
    - **`rules.ts:abilitiesOf` is the only way to read a card's abilities.**
      Every lookup goes through it, which is what makes BK1-151's negation
-     honest: applied at some lookups and forgotten at others it would be
-     silently wrong exactly where it was missed. Keep new lookups going
-     through it.
-   - **`chooseMode`** is "choose one of the following", where refusing the
-     first is choosing the second (BK2-025) — unlike `may`, whose decline
-     means nothing happens. It rides the same `then`/`orElse` pair BK1-103
-     introduced.
-   - **`Ability.target2`** is a second chosen character for a line naming
-     one from each side (BK2-029). `targets` is walked positionally, so
-     every card naming one is unaffected, and "must have valid targets for
-     both" means the ability is skipped unless each side has somebody.
+     honest. Keep new lookups going through it.
+   - **`rules.ts:altersFor`** is the single implementation of Alteration
+     (§7): a card may be opened by sacrificing another of the same printed
+     _name_ in the same area, instead of paying its cost. `uniqueConflict`
+     ignores the departing card, which is what lets a Unique upgrade itself
+     — the whole point of the keyword.
+   - **`lockCard`** is the only way a character is locked, so BK3-052 and
+     BK3-059 answer for every route down. There were twelve.
+   - **Board-read keywords**: `isDemonCity` (BK3-043 confers it),
+     `isQuickNow` (a card can gain Quick conditionally), `untargetable`,
+     `opensLocked`, `openLevelFor`.
    - **Counters that outlive their effect**, swept with the boosts unless
      noted: `SKIP_REFRESH`, `NO_BATTLE`, `SEALED`, `REARGUARD`, `REFLECT`,
-     `NEGATED`, `WARD` (eats one whole blow, unlike `SHIELD` which shrinks
-     every blow), and `CHARGES` — which is _not_ swept, because BK2-023
-     puts two on and spends one a turn.
-   - **`GameState.revealed` and `citiesSeen`** are the printed exceptions to
-     §7's redaction and §5's hidden capital, honoured in `view.ts` for one
-     player at a time. `HiddenCity.royalCapital` is optional so that
-     forgetting to set it cannot leak anything.
-   - **Triggers beyond the turn edges**: `arrival` (fired from all five ways
-     a character reaches a city), `selfMoved` (the traveller itself),
-     `ownCapture` / `enemyCapture`, `enemyDeathHere`.
-   - **`ActivationCost`** now carries `destroySelf` (paid at resolution, or
-     §14's stack fizzles it), `destroyAlly` (paid at once), `spendCharges`,
-     and `oncePerTurnGroup` — which is how one printed ability with two
-     modes shares a single use per turn (BK2-021).
+     `NEGATED`, `WARD`, `NO_MOVE`. Not swept: `CHARGES` (BK2-023 spends one
+     a turn), `ALTERED`, `PERMANENT_POWER`/`PERMANENT_HP` (BK3-055).
+   - **Choices answered card by card** share one `field` pending kind:
+     destroy, lock, return to hand, move here, pay a price, take a point of
+     damage, scatter to a chosen area.
 
 2. **The priority stack** (`Rules.md` §14) is built for what a player does —
    an open, an ability used — with two narrowings noted in `DesignNotes`

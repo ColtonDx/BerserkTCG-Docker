@@ -312,7 +312,9 @@ export type Condition =
   /** Its controller took or held this area against an attack this turn. */
   | { readonly when: 'capturedOrDefendedThisArea' }
   /** A card of this name stands in its *own area* (BK3-016). Rules.md §8. */
-  | { readonly when: 'youControlNameHere'; readonly name: string };
+  | { readonly when: 'youControlNameHere'; readonly name: string }
+  /** City Level is at least this (BK3-006). Rules.md §5. */
+  | { readonly when: 'cityLevelAtLeast'; readonly level: number };
 
 /**
  * What the ability does when it applies.
@@ -778,6 +780,21 @@ export type Effect =
    */
   | { readonly do: 'cannotMoveAgain'; readonly who: Selector }
   /**
+   * A pool of damage divided among any number of characters, as the player
+   * chooses (BK3-048). Rules.md §13.
+   *
+   * The same shape as §11 ④'s damage step, which spends a striker's Power
+   * among the enemies it faces — but from a card rather than a blow, so it
+   * reaches whoever the selector names rather than only combat participants.
+   */
+  | { readonly do: 'divideDamage'; readonly who: Selector; readonly amount: number }
+  /**
+   * "Move each of your set cards to any areas (distributed any way)"
+   * (BK3-014). Rules.md §13 — named one at a time, each with its own
+   * destination, and stoppable.
+   */
+  | { readonly do: 'pickAndScatter'; readonly who: Selector; readonly count: number }
+  /**
    * The rest of a printed line, run only while its controller has a card of
    * this name on the field (BK3-013). Rules.md §13.
    *
@@ -1032,6 +1049,11 @@ export type Trigger =
    * Rules.md §3 — the watcher answers, not the card that died.
    */
   | 'allyDeath'
+  /**
+   * The other player has just set a card from hand into an area (BK3-062).
+   * Rules.md §7 — the area they set into travels as the chosen area.
+   */
+  | 'enemySet'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -4452,6 +4474,115 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
         { do: 'removeFromCombat', who: { scope: 'target' } },
       ],
       text: 'When this card is opened you gain control of a level 2 or lower character in this area. Unlock that character. If you are in battle, remove that character from battle.',
+    },
+  ],
+
+  'BK3-048': [
+    {
+      trigger: 'open',
+      // RULES: the printed line widens the reach to Distance 1 in an
+      // occupied Demon City. A `Selector` cannot be conditional, so the
+      // narrow reading is taken — this area only. Noted in TODO.md.
+      effect: {
+        do: 'divideDamage',
+        who: { scope: 'any', side: 'any', where: 'thisArea' },
+        amount: 4,
+      },
+      text: 'When this card is opened, deal 4 damage divided amongst any number of characters in this area.',
+    },
+  ],
+  'BK3-062': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'enemySet',
+      // Into the area they set into, which the trigger hands over.
+      effect: { do: 'setTopOfDeck', where: 'chosenArea' },
+      text: 'Whenever your opponent sets a card from their hand into any area, set the top card of your deck in that area.',
+    },
+  ],
+  'BK2-048': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'turnStart',
+      condition: { when: 'youOccupyThisArea' },
+      effect: { do: 'mill', player: 'opponent', count: 3 },
+      then: [
+        {
+          do: 'pickAndDestroy',
+          who: { scope: 'any', side: 'theirs', where: 'thisArea', faceDown: true },
+          count: 1,
+        },
+      ],
+      text: 'At the beginning of your turn if you occupy this area, your opponent puts 3 cards from their deck into the graveyard. Then you may select and destroy 1 of their set cards in this area.',
+    },
+  ],
+  'BK3-006': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1', lockSelf: true },
+      condition: { when: 'cityLevelAtLeast', level: 3 },
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 1,
+        named: null,
+        characterOnly: true,
+        subtype: 'hawk',
+        maxLevel: 2,
+        to: 'setAnywhere',
+        intoAreasWith: 'hawk',
+        thenOpen: true,
+      },
+      text: '(Quick) 1, Tap: Search your deck for a level 2 or lower Hawk character and open it in any area that you control a Hawk character in. Shuffle your deck. You can only activate this ability if the area level is 3 or higher.',
+    },
+  ],
+  'BK3-041': [
+    {
+      trigger: 'open',
+      // RULES: the printed line sets every Ogre from the graveyard and
+      // destroys them at end of turn. The engine sets them; the timed
+      // destruction is not built, so they stay. Noted in TODO.md.
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 99,
+        named: 'Ogre',
+        includeTrash: true,
+        upTo: true,
+        to: 'set',
+      },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'When this card is opened, remove all Ogre cards from your graveyard and set them here. Draw 1 card',
+    },
+  ],
+  'BK3-014': [
+    {
+      trigger: 'open',
+      // "Look at all set cards on the field" — everyone's, shown to this
+      // player alone; then move your own wherever you like.
+      effect: {
+        do: 'reveal',
+        who: { scope: 'others', side: 'any', where: 'anywhere', faceDown: true },
+        to: 'you',
+      },
+      then: [
+        {
+          do: 'pickAndScatter',
+          who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+          count: 99,
+        },
+        { do: 'draw', player: 'you', count: 2 },
+      ],
+      text: 'When this card is opened look at all set cards on the field, then move each of your set cards to any areas (distributed any way) of your choice. Draw 2 cards.',
     },
   ],
 
