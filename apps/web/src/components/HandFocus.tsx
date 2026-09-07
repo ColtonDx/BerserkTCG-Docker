@@ -45,7 +45,8 @@ export type HandStep =
         | 'reorder'
         | 'toCityAnywhere'
         | 'moveHere'
-        | 'pay';
+        | 'pay'
+        | 'lock';
       /** The player may stop short of the count. Rules.md §13 — "up to". */
       readonly upTo: boolean;
     }
@@ -341,6 +342,7 @@ function title(step: HandStep): string {
     if (step.action === 'toCityAnywhere') return 'Set them anywhere';
     if (step.action === 'moveHere') return 'Call them in';
     if (step.action === 'pay') return 'Pay the price';
+    if (step.action === 'lock') return 'Lock them down';
     if (step.action === 'destroy') return 'Give up a card';
     return step.action === 'setAndOpen' ? 'Set and open' : 'Discard';
   }
@@ -363,17 +365,19 @@ function hint(step: HandStep): string {
             ? `Click ${many} to set face down in this area — your deck is shuffled afterwards.`
             : step.action === 'setAndOpen'
               ? 'Click a card to set it in this area and open it at once, paying nothing.'
-              : step.action === 'pay'
-                ? 'Click a card to give up — one from your hand, a set card, or a character.'
-                : step.action === 'moveHere'
-                  ? `Click up to ${step.owed} to bring here and unlock, or stop when you are done.`
-                  : step.action === 'toCityAnywhere'
-                    ? `Click a card, then the area it goes to — ${many} to place.`
-                    : step.action === 'reorder'
-                      ? 'Click the cards in the order you want them back — the last one you pick is drawn next.'
-                      : step.action === 'destroy'
-                        ? `Click ${many} of yours to destroy.`
-                        : `Click ${many} to discard, or 🔍 to read one first.`;
+              : step.action === 'lock'
+                ? `Click up to ${step.owed} to lock, or stop when you are done.`
+                : step.action === 'pay'
+                  ? 'Click a card to give up — one from your hand, a set card, or a character.'
+                  : step.action === 'moveHere'
+                    ? `Click up to ${step.owed} to bring here and unlock, or stop when you are done.`
+                    : step.action === 'toCityAnywhere'
+                      ? `Click a card, then the area it goes to — ${many} to place.`
+                      : step.action === 'reorder'
+                        ? 'Click the cards in the order you want them back — the last one you pick is drawn next.'
+                        : step.action === 'destroy'
+                          ? `Click ${many} of yours to destroy.`
+                          : `Click ${many} to discard, or 🔍 to read one first.`;
     return `${step.text} ${what}`;
   }
   if (step.kind === 'mulligan') {

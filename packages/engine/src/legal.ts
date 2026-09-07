@@ -7,6 +7,7 @@ import {
   activationCost,
   areasFor,
   abilitiesOf,
+  altersFor,
   askingAbilities,
   conditionHolds,
   settable,
@@ -451,10 +452,26 @@ function openActions(
     // Shut for the turn by a card that said so (BK1-031). Rules.md §7.
     if ((card.counters[SEALED] ?? 0) > 0) continue;
     if (def.level > openLevelFor(ctx, state, player)) continue;
-    if (uniqueConflict(ctx, state, def)) continue;
 
-    const payment = choosePayment(ctx, def.cost, hand);
-    if (!payment) continue;
+    // Alteration pays with a body instead of the printed cost (§7), so a
+    // card that cannot be afforded from hand may still be openable — and a
+    // Unique already on the field is no obstacle when *that* card is the one
+    // being sacrificed, which is what the keyword is for (§8).
+    const alters = altersFor(ctx, state, card).filter(
+      (body) => !uniqueConflict(ctx, state, def, body.instanceId),
+    );
+    const affordable = uniqueConflict(ctx, state, def)
+      ? undefined
+      : choosePayment(ctx, def.cost, hand);
+    if (!affordable && alters.length === 0) continue;
+    const payment = affordable ?? [];
+
+    // Everything below builds this card's offers once, against the cost it
+    // would pay from hand. `routes` then repeats them for each Alteration —
+    // the choice of *how* to pay is orthogonal to targets and areas, and
+    // duplicating the enumeration for it would be a second place to get the
+    // targeting rules wrong.
+    const before = actions.length;
 
     // "This card can only be opened if …" — a shut gate is not an offer.
     // Rules.md §13, `Ability.gate`.
@@ -572,9 +589,37 @@ function openActions(
       pay: payment,
       ...(targets.length > 0 ? { targets } : {}),
     });
+
+    fanOutAlterations(actions, before, alters, affordable !== undefined);
   }
 
   return actions;
+}
+
+/**
+ * Repeats the offers made for one card, once per character that could pay
+ * its Alteration. Rules.md §7.
+ *
+ * The offers from `from` onwards are this card's, built against the printed
+ * cost; each is copied with `alter` set and `pay` emptied, because an
+ * Alteration pays a body *instead of* the cost. When the cost could not be
+ * afforded from hand at all, the originals are dropped — they were only
+ * built so that targets and areas would be enumerated in one place.
+ */
+function fanOutAlterations(
+  actions: GameAction[],
+  from: number,
+  alters: readonly CardInstance[],
+  affordable: boolean,
+): void {
+  if (alters.length === 0) return;
+  const mine = actions.slice(from).filter((a) => a.type === 'OPEN_CARD');
+  if (!affordable) actions.length = from;
+  for (const alter of alters) {
+    for (const offer of mine) {
+      actions.push({ ...offer, pay: [], alter: alter.instanceId });
+    }
+  }
 }
 
 /**

@@ -305,7 +305,7 @@ export type PendingChoiceKind =
        * on offer are the player's own Set Cards and open characters, and a
        * card from hand may be discarded instead.
        */
-      readonly action: 'destroy' | 'moveHere' | 'pay';
+      readonly action: 'destroy' | 'moveHere' | 'pay' | 'lock';
       readonly cards: readonly CardInstanceId[];
       /** Where they go, for `moveHere`. */
       readonly city?: number;
@@ -544,6 +544,14 @@ export type GameAction =
       readonly type: 'OPEN_CARD';
       readonly card: CardInstanceId;
       readonly pay: readonly CardInstanceId[];
+      /**
+       * Alteration: a character of the same name standing in the same area,
+       * sacrificed *instead* of paying the printed cost. Rules.md §7 and
+       * §13 — see `Ability.alteration`.
+       *
+       * When this is set the cost is not paid at all, so `pay` is empty.
+       */
+      readonly alter?: CardInstanceId;
       /**
        * One chosen character per on-open ability that asks for a target, in
        * the order those abilities are printed. Rules.md §13. Like `pay`, the

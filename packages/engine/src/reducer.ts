@@ -2,7 +2,10 @@ import {
   abilityKey,
   counterFor,
   selects,
+  ALTERED,
   BOOST_COUNTERS,
+  PERMANENT_HP,
+  PERMANENT_POWER,
   CHARGES,
   NEGATED,
   NO_BATTLE,
@@ -31,6 +34,7 @@ import {
   areasFor,
   askingAbilities,
   abilitiesOf,
+  altersFor,
   battleResult,
   captureDrawFor,
   canActivate,
@@ -357,6 +361,7 @@ function applyAction(
           action.targets ?? [],
           action.areas ?? [],
           events,
+          action.alter,
         ),
       );
 
@@ -1105,6 +1110,8 @@ function openCard(
   targets: readonly CardInstanceId[],
   areas: readonly number[],
   events: GameEvent[],
+  /** Alteration: a same-named character here, spent instead of the cost. */
+  alter?: CardInstanceId | undefined,
 ): Result<true, RuleViolation> {
   const card = draft.cards[cardId];
   if (!card) return violation('UNKNOWN_CARD', 'No such card.');
@@ -1175,7 +1182,9 @@ function openCard(
       '§7',
     );
   }
-  if (uniqueConflict(ctx, draft, def)) {
+  // A Unique already standing is no obstacle when it is the very card being
+  // sacrificed to this Alteration (§7, §8).
+  if (uniqueConflict(ctx, draft, def, alter)) {
     return violation('ILLEGAL_TARGET', `${def.name} is Unique and already on the field.`, '§8');
   }
   // "This card can only be opened if …" — Rules.md §13, `Ability.gate`. The
@@ -1205,14 +1214,34 @@ function openCard(
     payCards.push(payCard as CardInstance);
   }
 
-  const payment = validatePayment(ctx, def.cost, payCards);
-  if (!payment.ok) return payment;
+  // Alteration (§7): a character of the same name standing here is spent
+  // *instead of* the printed cost, so the cost is not validated at all.
+  if (alter !== undefined) {
+    if (pay.length > 0) {
+      return violation('ILLEGAL_TARGET', 'An Alteration pays a character, not a cost.', '§7');
+    }
+    const allowed = altersFor(ctx, draft as GameState, card as CardInstance);
+    if (!allowed.some((option) => option.instanceId === alter)) {
+      return violation('ILLEGAL_TARGET', 'That character cannot alter this card.', '§7');
+    }
+  } else {
+    const payment = validatePayment(ctx, def.cost, payCards);
+    if (!payment.ok) return payment;
+  }
 
   for (const id of pay) {
     moveToZone(draft, id, { player: actor, zone: 'trash' });
     events.push({ type: 'CARD_TRASHED', player: actor, card: id });
   }
   if (pay.length > 0) events.push({ type: 'COST_PAID', player: actor, cards: [...pay] });
+  if (alter !== undefined) {
+    // Spent before the card comes up, as a cost is — and it goes out through
+    // `destroy`, so its own death abilities still fire (§3).
+    const spent = draft.cards[alter];
+    if (spent) destroy(ctx, draft, spent, events);
+    // Remembered, so a card can tell how it arrived (BK3-055).
+    card.counters[ALTERED] = 1;
+  }
 
   card.faceUp = true;
   // Remembered so "the turn it is opened" can still be asked later in the
@@ -2916,6 +2945,21 @@ function runEffect(
       return runChain(ctx, draft, source, effect.effects, events, chosen, text, area, chosen2);
     }
 
+    case 'buffPermanent': {
+      let boosted = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
+        if (effect.stats.power !== undefined) {
+          card.counters[PERMANENT_POWER] =
+            (card.counters[PERMANENT_POWER] ?? 0) + effect.stats.power;
+        }
+        if (effect.stats.hp !== undefined) {
+          card.counters[PERMANENT_HP] = (card.counters[PERMANENT_HP] ?? 0) + effect.stats.hp;
+        }
+        boosted++;
+      }
+      return boosted > 0;
+    }
+
     case 'setSelf': {
       const self = draft.cards[source.instanceId];
       if (!self || self.zone !== 'city' || !self.faceUp) return false;
@@ -2946,20 +2990,22 @@ function runEffect(
       return cleared > 0;
     }
 
-    case 'pickAndDestroy': {
-      const doomed = selected(ctx, draft, source, effect.who, chosen, chosen2);
-      if (doomed.length === 0) return false;
+    case 'pickAndDestroy':
+    case 'pickAndLock': {
+      const picked = selected(ctx, draft, source, effect.who, chosen, chosen2);
+      if (picked.length === 0) return false;
+      const locking = effect.do === 'pickAndLock';
       askFor(draft, events, {
         waitingOn: controller,
         source: source.instanceId,
         text,
-        count: Math.min(effect.count, doomed.length),
+        count: Math.min(effect.count, picked.length),
         // "Up to": stopping short is legal, unless the line says otherwise.
-        upTo: effect.mandatory !== true,
+        upTo: locking || effect.mandatory !== true,
         kind: {
           zone: 'field',
-          action: 'destroy',
-          cards: doomed.map((card) => card.instanceId),
+          action: locking ? 'lock' : 'destroy',
+          cards: picked.map((card) => card.instanceId),
         },
       });
       return pushed();
@@ -3372,7 +3418,11 @@ function chooseCard(
     if (!kind.cards.includes(cardId) && !(kind.hand ?? []).includes(cardId)) {
       return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
     }
-    if (kind.action === 'moveHere') {
+    if (kind.action === 'lock') {
+      card.locked = true;
+      // Struck off, so each card is named once.
+      pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });
+    } else if (kind.action === 'moveHere') {
       const to = kind.city;
       if (to === undefined) return violation('WRONG_PHASE', 'Nowhere to move it to.', '§13');
       const from = card.cityIndex;
@@ -3389,6 +3439,10 @@ function chooseCard(
       }
       // Struck off, so each card is named once.
       pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });
+    } else if (kind.action === 'pay' && card.zone === 'hand') {
+      // A price paid out of hand rather than off the field (BK2-043).
+      moveToZone(draft, cardId, { player: actor, zone: 'trash' });
+      events.push({ type: 'CARD_TRASHED', player: actor, card: cardId });
     } else {
       destroy(ctx, draft, card, events);
     }

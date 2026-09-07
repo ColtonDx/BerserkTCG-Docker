@@ -8,6 +8,7 @@ import {
   rangeOf,
   stillFighting,
   abilitiesOf,
+  altersFor,
   cannotAttack,
   cannotBattle,
   canVanguard,
@@ -4177,5 +4178,91 @@ describe('BK2-025 recycles whichever graveyard is chosen (Rules.md §13)', () =>
     // Their graveyard is untouched.
     expect(zoneSize(state, other, 'trash')).toBe(3);
     expect(zoneSize(state, other, 'hand')).toBe(theirHand);
+  });
+});
+
+describe('Alteration opens a card by sacrificing its own kind (Rules.md §7)', () => {
+  it('spends a same-named character here instead of paying the cost', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    // BK3-056 Locus prints Alteration. Another Locus standing here is what
+    // pays for it — "another creature of the same type in the same area".
+    const elder = place(state, player, 'BK1-135', 2);
+    state = elder.state;
+    const altered = place(state, player, 'BK3-056', 2, { faceUp: false });
+    state = openable(altered.state, player, altered.card);
+
+    const offers = engine
+      .legalActions(state, player)
+      .filter((action) => action.type === 'OPEN_CARD' && action.card === altered.card) as Extract<
+      GameAction,
+      { type: 'OPEN_CARD' }
+    >[];
+    const byAlteration = offers.filter((offer) => offer.alter !== undefined);
+    expect(byAlteration.length).toBeGreaterThan(0);
+    // The elder Locus is what may be spent, and an Alteration pays no cost.
+    expect(byAlteration[0]?.alter).toBe(elder.card);
+    expect(byAlteration[0]?.pay).toEqual([]);
+
+    const handBefore = zoneSize(state, player, 'hand');
+    state = apply(state, player, byAlteration[0] as GameAction);
+
+    // The sacrifice is gone, the new card is up, and no cost left the hand.
+    expect(state.cards[elder.card]?.zone).toBe('trash');
+    expect(state.cards[altered.card]?.faceUp).toBe(true);
+    expect(zoneSize(state, player, 'hand')).toBe(handBefore);
+    // Remembered, so a card can tell how it arrived (BK3-055).
+    expect(state.cards[altered.card]?.counters['altered']).toBe(1);
+  });
+
+  it('refuses a body of the wrong name, or one standing elsewhere', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    // A different character here, and a matching one a city away: neither
+    // may pay, since the printed line wants the same name *in this area*.
+    const stranger = place(state, player, RED, 2);
+    state = stranger.state;
+    const distant = place(state, player, 'BK1-135', 4);
+    state = distant.state;
+    const altered = place(state, player, 'BK3-056', 2, { faceUp: false });
+    state = openable(altered.state, player, altered.card);
+
+    expect(altersFor({ registry }, state, cardOf(state, altered.card))).toHaveLength(0);
+    // And the reducer refuses either, whatever the client sends.
+    for (const wrong of [stranger.card, distant.card]) {
+      const forced = engine.reduce(state, player, {
+        type: 'OPEN_CARD',
+        card: altered.card,
+        pay: [],
+        alter: wrong,
+      });
+      expect(forced.ok).toBe(false);
+    }
+  });
+
+  it('BK3-055 tells the two ways in apart', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    const elder = place(state, player, 'BK3-055', 2);
+    state = elder.state;
+    const altered = place(state, player, 'BK3-055', 2, { faceUp: false });
+    state = openable(altered.state, player, altered.card);
+
+    const byAlteration = (
+      engine.legalActions(state, player).filter((action) => action.type === 'OPEN_CARD') as Extract<
+        GameAction,
+        { type: 'OPEN_CARD' }
+      >[]
+    ).find((offer) => offer.card === altered.card && offer.alter !== undefined);
+    expect(byAlteration, 'a matching Grunbeld should be able to alter').toBeDefined();
+    state = apply(state, player, byAlteration as GameAction);
+
+    // Opened by Alteration, so it keeps +2/+2 for good — printed 5/5.
+    expect(state.cards[altered.card]?.counters['permPower']).toBe(2);
+    expect(power(state, altered.card)).toBe(7);
+    expect(hp(state, altered.card)).toBe(7);
   });
 });

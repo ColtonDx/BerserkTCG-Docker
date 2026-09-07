@@ -4,9 +4,12 @@ import {
   counterFor,
   selects,
   NEGATED,
+  PERMANENT_HP,
+  PERMANENT_POWER,
   NO_BATTLE,
   REARGUARD,
   SEALED,
+  ALTERED,
   CHARGES,
   SHIELD,
   WARD,
@@ -81,6 +84,45 @@ export function opensLocked(ctx: EngineContext, state: Pick<GameState, 'cards'>)
  * Read off the board like every other continuous ability, and asked by
  * `legalTargets` so such a card is simply never offered.
  */
+/**
+ * Does this card print Alteration? Rules.md §7.
+ *
+ * Carried on an ability entry because the registry is keyed that way, but
+ * it is a property of the *card* — any entry declaring it makes the card
+ * alterable.
+ */
+export const hasAlteration = (ctx: EngineContext, card: CardInstance): boolean =>
+  abilitiesOf(ctx, card).some((ability) => ability.alteration === true);
+
+/**
+ * The characters that could pay this card's Alteration. Rules.md §7.
+ *
+ * "Sacrificing another creature of the same type in the same area" — same
+ * printed *name*, so any printing of Guts alters into any other, standing
+ * face up in the city this card is set in, and never the card itself.
+ *
+ * The single implementation, so `legalActions` and `reduce` cannot disagree
+ * about what may be spent.
+ */
+export function altersFor(
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards'>,
+  card: CardInstance,
+): CardInstance[] {
+  if (!hasAlteration(ctx, card)) return [];
+  const name = definitionOf(ctx, card).name;
+  return Object.values(state.cards).filter(
+    (other) =>
+      other.zone === 'city' &&
+      other.faceUp &&
+      other.cityIndex === card.cityIndex &&
+      other.controller === card.controller &&
+      other.instanceId !== card.instanceId &&
+      isCharacter(ctx, other) &&
+      definitionOf(ctx, other).name === name,
+  );
+}
+
 export function untargetable(
   ctx: EngineContext,
   state: Pick<GameState, 'cards'>,
@@ -210,10 +252,21 @@ export function uniqueConflict(
   ctx: EngineContext,
   state: Pick<GameState, 'cards'>,
   def: CardDefinition,
+  /**
+   * A character about to be sacrificed to an Alteration, which therefore
+   * does not conflict: it leaves the field as the new card arrives, and
+   * upgrading a Unique you already control is the whole point of the
+   * keyword (Rules.md §7, §8).
+   */
+  leaving?: CardInstanceId | undefined,
 ): boolean {
   if (!def.unique || !def.name) return false;
   return Object.values(state.cards).some(
-    (card) => card.zone === 'city' && card.faceUp && definitionOf(ctx, card).name === def.name,
+    (card) =>
+      card.zone === 'city' &&
+      card.faceUp &&
+      card.instanceId !== leaving &&
+      definitionOf(ctx, card).name === def.name,
   );
 }
 
@@ -374,6 +427,14 @@ const statOf = (
 ): number => {
   const printed = definitionOf(ctx, card).stats?.[stat] ?? 0;
   const boost = card.counters[counterFor(stat)] ?? 0;
+  // Boosts that do not wear off (BK3-055's "permanently"), kept in counters
+  // the End phase does not sweep.
+  const permanent =
+    stat === 'power'
+      ? (card.counters[PERMANENT_POWER] ?? 0)
+      : stat === 'hp'
+        ? (card.counters[PERMANENT_HP] ?? 0)
+        : 0;
   // "While defending" — paid only while its holder is actually in a fight on
   // the defending side (BK1-029). Rules.md §11.
   const rearguard =
@@ -383,7 +444,10 @@ const statOf = (
     state.battle.participants.includes(card.instanceId)
       ? (card.counters[REARGUARD] ?? 0)
       : 0;
-  return Math.max(0, printed + boost + rearguard + continuousBonus(ctx, state, card, stat));
+  return Math.max(
+    0,
+    printed + boost + permanent + rearguard + continuousBonus(ctx, state, card, stat),
+  );
 };
 
 export const powerOf = (ctx: EngineContext, state: BoardView, card: CardInstance): number =>
@@ -1003,6 +1067,9 @@ function effectRelevant(
     case 'setTopOfDeck':
       // A card onto the board for free, whenever the deck still has one.
       return true;
+    case 'buffPermanent':
+      // Outlasts the turn, so unlike a boost it is worth doing anywhere.
+      return reaches(effect.who);
     case 'setCard':
       return reaches(effect.who);
     case 'untargetable':
@@ -1018,6 +1085,7 @@ function effectRelevant(
     case 'clearOccupation':
       return state.cities.some((city) => city.occupiedBy != null);
     case 'pickAndDestroy':
+    case 'pickAndLock':
       return reaches(effect.who);
     case 'addCharges':
       // Ammunition for later, worth putting on whenever it is printed.
@@ -1432,6 +1500,10 @@ export function conditionHolds(
       const holder = cityOf(state, source)?.occupiedBy;
       return holder == null || holder === source.controller;
     }
+    case 'openedByAlteration':
+      return (source.counters[ALTERED] ?? 0) > 0;
+    case 'openedNormally':
+      return (source.counters[ALTERED] ?? 0) === 0;
     case 'targetIsAlly': {
       if (!chosen) return false;
       const newcomer = state.cards[chosen];

@@ -286,7 +286,11 @@ export type Condition =
    * not the source itself (BK3-009). Rules.md §13 — read against the chosen
    * card, which an `arrival` trigger supplies.
    */
-  | { readonly when: 'targetIsAlly' };
+  | { readonly when: 'targetIsAlly' }
+  /** It was opened by paying its Alteration (BK3-055). Rules.md §7. */
+  | { readonly when: 'openedByAlteration' }
+  /** It was *not* opened by Alteration — the other half of BK3-055. */
+  | { readonly when: 'openedNormally' };
 
 /**
  * What the ability does when it applies.
@@ -667,6 +671,13 @@ export type Effect =
    */
   | { readonly do: 'addCharges'; readonly count: number }
   /**
+   * A boost that does not wear off (BK3-055's "permanently"). Rules.md §13.
+   *
+   * Written onto the card like an ordinary buff but into counters the End
+   * phase does not sweep, so it survives the turn it was granted on.
+   */
+  | { readonly do: 'buffPermanent'; readonly who: Selector; readonly stats: StatLine }
+  /**
    * Turns this card face down again where it stands (BK2-057, BK3-026,
    * BK3-058). Rules.md §7 — it becomes a Set Card once more, and may be
    * opened again later.
@@ -711,6 +722,14 @@ export type Effect =
       /** "(mandatory)" — the player must pay it out in full (BK3-037). */
       readonly mandatory?: boolean;
     }
+  /**
+   * "Lock up to N target characters" (BK3-054). Rules.md §6, §13.
+   *
+   * The same shape as {@link pickAndDestroy} — named one at a time, and the
+   * count is a ceiling — but the chosen cards are locked rather than
+   * destroyed.
+   */
+  | { readonly do: 'pickAndLock'; readonly who: Selector; readonly count: number }
   /**
    * A price the *other* player pays, their choice of how, `count` times over
    * (BK2-043, BK2-045). Rules.md §13.
@@ -1059,6 +1078,20 @@ export interface Ability {
    * card — BK1-045 Guts is not a Quick *card*, but his ability is Quick.
    */
   readonly quick?: boolean;
+  /**
+   * "(Quick) Alteration." — this card may be opened by sacrificing another
+   * character of the same *name* standing in the same area, instead of
+   * paying its printed cost. Rules.md §7.
+   *
+   * Printed on the card rather than on one ability, but carried here
+   * because the registry is keyed by ability; `rules.ts:canAlter` is the
+   * single implementation and reads it off whichever entry declares it.
+   *
+   * It also makes the open a Quick one, which is what lets an Alteration
+   * come down out of turn — the keyword is printed with "(Quick)" on every
+   * card in the set that has it.
+   */
+  readonly alteration?: boolean;
   /** The printed line this stands for. Display and review only. */
   readonly text: string;
 }
@@ -1166,6 +1199,22 @@ export const WARD = 'ward';
  * so they have to survive to a later turn to be worth anything.
  */
 export const CHARGES = 'charges';
+
+/**
+ * Set on a card opened by paying its Alteration rather than its cost
+ * (BK3-055 reads it). Rules.md §7.
+ *
+ * Not swept at end of turn: the card it marks stays on the field, and
+ * BK3-055's bonus for arriving this way is printed "permanently".
+ */
+export const ALTERED = 'altered';
+
+/**
+ * Permanent boosts, which the End phase does not sweep (BK3-055). Rules.md
+ * §13 — read alongside the temporary ones by `statOf`.
+ */
+export const PERMANENT_POWER = 'permPower';
+export const PERMANENT_HP = 'permHp';
 
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
@@ -3750,6 +3799,7 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
   'BK3-056': [
     {
       trigger: 'always',
+      alteration: true,
       effect: {
         do: 'buff',
         who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'cavalry' },
@@ -3784,6 +3834,55 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       effect: { do: 'clearOccupation', where: 'thisArea' },
       then: [{ do: 'draw', player: 'you', count: 1 }],
       text: 'You may only open this card if your opponent occupies the area. This area becomes unoccupied. Draw 1 card.',
+    },
+  ],
+
+  'BK3-018': [
+    {
+      trigger: 'open',
+      alteration: true,
+      // The named victim takes 3, then everybody here takes 1 — this card
+      // included, which is why the second half reaches `any` and not
+      // `others`.
+      target: { side: 'theirs', where: 'thisArea' },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 3 },
+      then: [{ do: 'damage', who: { scope: 'any', side: 'any', where: 'thisArea' }, amount: 1 }],
+      text: '(Quick) Alteration. When this character is opened, deal 3 damage to an opponents character in this area. Then deal 1 damage to all other characters here (including this one)',
+    },
+  ],
+  'BK3-054': [
+    {
+      trigger: 'open',
+      alteration: true,
+      // "Up to 2 target characters" — named one at a time, stoppable.
+      effect: {
+        do: 'pickAndLock',
+        who: { scope: 'others', side: 'any', where: 'thisArea' },
+        count: 2,
+      },
+      text: '(Quick) Alteration. When this character is opened, you may lock up to 2 target characters in this area.',
+    },
+  ],
+  'BK3-055': [
+    {
+      trigger: 'open',
+      alteration: true,
+      // Opened the ordinary way, it costs you a Set Card here...
+      condition: { when: 'openedNormally' },
+      effect: {
+        do: 'pickAndDestroy',
+        who: { scope: 'any', side: 'yours', where: 'thisArea', faceDown: true },
+        count: 1,
+        mandatory: true,
+      },
+      text: '(Quick) Alteration. When this character is opened (not as a quick) destroy one of your set cards in this area.',
+    },
+    {
+      trigger: 'open',
+      // ...and opened by Alteration, it keeps the bonus for good.
+      condition: { when: 'openedByAlteration' },
+      effect: { do: 'buffPermanent', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
+      text: 'When this character is opened using Alteration, it gains +2/+2 permanently',
     },
   ],
 
