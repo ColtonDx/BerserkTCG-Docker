@@ -2884,6 +2884,38 @@ function runEffect(
       return pushed();
     }
 
+    case 'setCard': {
+      let set = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen, chosen2)) {
+        if (card.zone !== 'city' || !card.faceUp || card.cityIndex === undefined) continue;
+        // Face down again where it stands (§7), keeping nothing it gained.
+        card.faceUp = false;
+        card.damage = 0;
+        card.counters = {};
+        events.push({
+          type: 'CARD_SET',
+          player: card.controller,
+          card: card.instanceId,
+          city: card.cityIndex,
+        });
+        set++;
+      }
+      if (set > 0) refreshBoard(ctx, draft, events);
+      return set > 0;
+    }
+
+    // Continuous: read off the board by `rules.ts:untargetable`, never run.
+    case 'untargetable':
+      return true;
+
+    case 'ifNotOccupied': {
+      // The tail of a printed line, run only where its controller does not
+      // hold the area (BK3-007).
+      if (source.cityIndex === undefined) return false;
+      if (draft.cities[source.cityIndex]?.occupiedBy === controller) return false;
+      return runChain(ctx, draft, source, effect.effects, events, chosen, text, area, chosen2);
+    }
+
     case 'setSelf': {
       const self = draft.cards[source.instanceId];
       if (!self || self.zone !== 'city' || !self.faceUp) return false;
@@ -2905,6 +2937,8 @@ function runEffect(
       let cleared = 0;
       for (const city of draft.cities) {
         if (city.occupiedBy == null) continue;
+        // Just this card's own area, where the printed line says so.
+        if (effect.where === 'thisArea' && city.index !== source.cityIndex) continue;
         city.occupiedBy = null;
         events.push({ type: 'CITY_OCCUPIED', city: city.index, player: null });
         cleared++;
@@ -2920,8 +2954,8 @@ function runEffect(
         source: source.instanceId,
         text,
         count: Math.min(effect.count, doomed.length),
-        // "Up to": stopping short is legal (§13).
-        upTo: true,
+        // "Up to": stopping short is legal, unless the line says otherwise.
+        upTo: effect.mandatory !== true,
         kind: {
           zone: 'field',
           action: 'destroy',

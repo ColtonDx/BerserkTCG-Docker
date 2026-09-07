@@ -29,6 +29,12 @@ export interface StatLine {
   readonly power?: number;
   readonly hp?: number;
   readonly move?: number;
+  /**
+   * Range. Printed-only for most of the set, so it has no counter and is
+   * carried by continuous abilities and attachments alone (BK1-076,
+   * BK3-010) — see `rules.ts:rangeOf`.
+   */
+  readonly range?: number;
 }
 
 /**
@@ -140,6 +146,8 @@ export interface TargetSpec {
   readonly vanguard?: boolean;
   /** Only characters printed Unique (BK2-012). Rules.md §8. */
   readonly unique?: boolean;
+  /** Only characters at or above this printed Level (BK3-028). Rules.md §7. */
+  readonly minLevel?: number;
   /**
    * Point at a face-up Effect card rather than a character (BK2-014, "1
    * Eternal card within 1 distance"). Rules.md §3. Mirrors
@@ -272,7 +280,13 @@ export type Condition =
   /** A battle is running over its area right now (BK2-052). Rules.md §11. */
   | { readonly when: 'inBattleHere' }
   /** The other player has more characters in its area than its controller. */
-  | { readonly when: 'outnumberedHere' };
+  | { readonly when: 'outnumberedHere' }
+  /**
+   * The card this ability was fired about belongs to its controller and is
+   * not the source itself (BK3-009). Rules.md §13 — read against the chosen
+   * card, which an `arrival` trigger supplies.
+   */
+  | { readonly when: 'targetIsAlly' };
 
 /**
  * What the ability does when it applies.
@@ -659,7 +673,30 @@ export type Effect =
    */
   | { readonly do: 'setSelf' }
   /** Every city loses its occupier (BK2-058). Rules.md §12. */
-  | { readonly do: 'clearOccupation' }
+  | {
+      readonly do: 'clearOccupation';
+      /** Just this card's own area, rather than every city (BK3-061). */
+      readonly where?: 'thisArea';
+    }
+  /**
+   * Turns the chosen card face down where it stands (BK3-028). Rules.md §7.
+   * The same thing {@link setSelf} does, but to somebody else.
+   */
+  | { readonly do: 'setCard'; readonly who: Selector }
+  /**
+   * The reached cards cannot be chosen by any ability (BK3-019). Rules.md
+   * §13. Continuous: read off the board by `legalTargets`.
+   */
+  | { readonly do: 'untargetable'; readonly who: Selector }
+  /**
+   * The rest of a printed line, run only where its controller does *not*
+   * hold the area (BK3-007). Rules.md §12.
+   *
+   * A condition on the ability gates the whole thing; this gates the tail
+   * alone, which is what "draw 2. Then if you do not occupy this area,
+   * discard 2" needs.
+   */
+  | { readonly do: 'ifNotOccupied'; readonly effects: readonly Effect[] }
   /**
    * "Select up to N and destroy them" (BK2-059). Rules.md §13.
    *
@@ -667,7 +704,13 @@ export type Effect =
    * this names them one at a time and may stop short, so `count` is a
    * ceiling rather than a debt.
    */
-  | { readonly do: 'pickAndDestroy'; readonly who: Selector; readonly count: number }
+  | {
+      readonly do: 'pickAndDestroy';
+      readonly who: Selector;
+      readonly count: number;
+      /** "(mandatory)" — the player must pay it out in full (BK3-037). */
+      readonly mandatory?: boolean;
+    }
   /**
    * A price the *other* player pays, their choice of how, `count` times over
    * (BK2-043, BK2-045). Rules.md §13.
@@ -1137,13 +1180,18 @@ export const BOOST_COUNTERS: readonly string[] = [
   WARD,
 ];
 
-const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
+/**
+ * Which counter carries a boost to each stat. Range is absent on purpose:
+ * nothing in the set moves it for a turn, only continuously (BK1-076's
+ * attachment, BK3-010's aura), so there is nothing to write onto a card.
+ */
+const COUNTER_FOR: Readonly<Record<'power' | 'hp' | 'move', string>> = {
   power: BOOST_POWER,
   hp: BOOST_HP,
   move: BOOST_MOVE,
 };
 
-export const counterFor = (stat: keyof StatLine): string => COUNTER_FOR[stat];
+export const counterFor = (stat: 'power' | 'hp' | 'move'): string => COUNTER_FOR[stat];
 
 /**
  * Which turn an ability was last used on, for "once per turn".
@@ -3474,6 +3522,268 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       trigger: 'always',
       effect: { do: 'openLevel', player: 'both', shift: 1 },
       text: 'The Area Level is increased by 1',
+    },
+  ],
+
+  /* ================================================================ BK3 */
+
+  'BK3-004': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'hawk' },
+        stats: { power: 2, hp: 2 },
+      },
+      text: 'When this card is opened, all Hawk characters you control gain +2/+2 until end of turn.',
+    },
+  ],
+  'BK3-005': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1' },
+      // "Only if there is an opponent's character of level 2 or above here."
+      condition: { when: 'enemyLevelHere', level: 2 },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
+      text: '(Quick) 1: This card gains +2/+2 until end of turn. You may only activate this ability if there is an opponents character of level 2 or above in this area.',
+    },
+  ],
+  'BK3-007': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      // "Then if you do not occupy this area" — a second, conditional half of
+      // the same printed line, so it rides as a `then` with its own gate.
+      then: [
+        {
+          do: 'ifNotOccupied',
+          effects: [{ do: 'discard', player: 'you', count: 2 }],
+        },
+      ],
+      text: 'When this character is opened, draw 2 cards. Then if you do not occupy this area, discard 2 cards.',
+    },
+  ],
+  'BK3-008': [
+    {
+      trigger: 'open',
+      effect: { do: 'discard', player: 'opponent', count: 1 },
+      text: 'When this character is opened your opponent discards 1 card.',
+    },
+    {
+      trigger: 'death',
+      effect: { do: 'discard', player: 'you', count: 1 },
+      text: 'When this card is destroyed, you discard 1 card.',
+    },
+  ],
+  'BK3-009': [
+    {
+      trigger: 'arrival',
+      // Only an ally turning up here, and never itself.
+      condition: { when: 'targetIsAlly' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1, hp: 1 } },
+      text: 'Whenever another character you control is opened here, this card gains +1/+1 until end of turn.',
+    },
+  ],
+  'BK3-010': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'others', side: 'yours', where: 'thisArea' },
+        stats: { range: 1 },
+      },
+      text: 'All other characters you control in this area gain +1 range',
+    },
+  ],
+  'BK3-019': [
+    {
+      trigger: 'always',
+      effect: { do: 'untargetable', who: { scope: 'self' } },
+      text: 'This character cannot be targetted by abilities.',
+    },
+    {
+      trigger: 'death',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this card is destroyed, draw 2 cards.',
+    },
+  ],
+  'BK3-021': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1', oncePerTurn: true },
+      target: { where: 'thisArea', inCombat: true },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: '(Quick) 1: Deal 2 damage to a character participating in battle in this area. This ability can only be used once per turn.',
+    },
+  ],
+  'BK3-022': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 2 },
+      text: 'When this character is opened, draw 2 cards.',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { lockSelf: true },
+      effect: {
+        do: 'damage',
+        who: { scope: 'any', side: 'any', where: 'thisArea', maxLevel: 2 },
+        amount: 2,
+      },
+      text: '(Quick) Tap: Deal 2 damage to all level 2 or lower characters in this area.',
+    },
+  ],
+  'BK3-023': [
+    {
+      trigger: 'always',
+      condition: { when: 'youControlName', name: 'Guts' },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 2 } },
+      text: 'While you control a Guts character, this card gains +2/+0',
+    },
+  ],
+  'BK3-024': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1' },
+      target: { where: 'thisArea' },
+      effect: { do: 'reduceDamage', who: { scope: 'target' }, amount: 2 },
+      text: '(Quick) 1: Until the end of turn, reduce damage dealt to target character in this area by 2.',
+    },
+  ],
+  'BK3-026': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1' },
+      effect: { do: 'setSelf' },
+      text: '(Quick) 1: Set this character.',
+    },
+  ],
+  'BK3-028': [
+    {
+      trigger: 'open',
+      // "Set it" — face down again where it stands (§7), whoever owns it.
+      target: { where: 'thisArea', minLevel: 3 },
+      effect: { do: 'setCard', who: { scope: 'target' } },
+      text: 'When this card is opened, target a level 3 or higher character in this area and set it.',
+    },
+  ],
+  'BK3-031': [
+    {
+      trigger: 'open',
+      effect: { do: 'draw', player: 'you', count: 1 },
+      text: 'When this card is opened draw 1 card.',
+    },
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', maxLevel: 2 },
+        stats: { power: 2, hp: 2 },
+      },
+      text: 'While this card is in place all characters you control that are level 2 or lower gain +2/+2',
+    },
+  ],
+  'BK3-032': [
+    {
+      trigger: 'open',
+      effect: { do: 'recycleTrash', player: 'you', count: 99, draw: 1 },
+      text: 'When this card is opened, shuffle your graveyard back into your deck, then draw 1 card.',
+    },
+  ],
+  'BK3-034': [
+    {
+      trigger: 'attack',
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1 } },
+      text: 'When this character attacks, it gains +1/+0 until end of turn',
+    },
+  ],
+  'BK3-036': [
+    {
+      trigger: 'death',
+      effect: {
+        do: 'theyDestroy',
+        who: { scope: 'any', side: 'theirs', where: 'anywhere', faceDown: true },
+        count: 1,
+      },
+      text: 'When this character is destroyed, your opponent must destroy 1 set card they control of their choice.',
+    },
+  ],
+  'BK3-037': [
+    {
+      trigger: 'death',
+      // Mandatory, and the player picks which of their own goes.
+      effect: {
+        do: 'pickAndDestroy',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+        count: 1,
+        mandatory: true,
+      },
+      text: 'When this card is destroyed, destroy a set card you control (mandatory)',
+    },
+  ],
+  'BK3-051': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'others', side: 'yours', where: 'thisArea' },
+        stats: { power: -1, hp: -1 },
+      },
+      text: 'Other characters you control in this area have -1/-1',
+    },
+  ],
+  'BK3-053': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'returnToHand',
+        who: { scope: 'others', side: 'yours', where: 'anywhere', faceDown: true },
+      },
+      text: 'When this character is opened, return all set cards you control to your hand.',
+    },
+  ],
+  'BK3-056': [
+    {
+      trigger: 'always',
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere', subtype: 'cavalry' },
+        stats: { power: 2, hp: 2 },
+      },
+      text: 'All cavalry characters you control gain +2/+2',
+    },
+  ],
+  'BK3-057': [
+    {
+      trigger: 'activated',
+      cost: { pay: '1', lockSelf: true },
+      target: { maxDistance: 1 },
+      effect: { do: 'damage', who: { scope: 'target' }, amount: 2 },
+      text: '1, Tap: Deal 2 Damage to a character within 1 distance.',
+    },
+  ],
+  'BK3-058': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { pay: '1' },
+      effect: { do: 'setSelf' },
+      text: '(Quick) 1: Set this character.',
+    },
+  ],
+  'BK3-061': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'enemyOccupiesThisArea' },
+      effect: { do: 'clearOccupation', where: 'thisArea' },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'You may only open this card if your opponent occupies the area. This area becomes unoccupied. Draw 1 card.',
     },
   ],
 

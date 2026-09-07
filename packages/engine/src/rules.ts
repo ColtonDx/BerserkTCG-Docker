@@ -74,6 +74,29 @@ export function opensLocked(ctx: EngineContext, state: Pick<GameState, 'cards'>)
   return false;
 }
 
+/**
+ * Is this card beyond the reach of an ability's choice? Rules.md §13 —
+ * BK3-019, "cannot be targetted by abilities".
+ *
+ * Read off the board like every other continuous ability, and asked by
+ * `legalTargets` so such a card is simply never offered.
+ */
+export function untargetable(
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards'>,
+  card: CardInstance,
+): boolean {
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    for (const ability of abilitiesOf(ctx, source)) {
+      if (ability.trigger !== 'always' || ability.effect.do !== 'untargetable') continue;
+      if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c, state))) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
 export function abilitiesOf(ctx: EngineContext, card: CardInstance): readonly Ability[] {
   if ((card.counters[NEGATED] ?? 0) > 0) return [];
   return definitionOf(ctx, card).abilities ?? [];
@@ -653,6 +676,12 @@ export function legalTargets(
     // §11 ① — the character leading the fight running right now.
     if (spec.vanguard === true && battle?.vanguard !== card.instanceId) return false;
     if (spec.unique === true && !definitionOf(ctx, card).unique) return false;
+    if (spec.minLevel !== undefined) {
+      const level = definitionOf(ctx, card).level;
+      if (level === null || level < spec.minLevel) return false;
+    }
+    // §13 — a card that cannot be chosen by an ability is never offered.
+    if (untargetable(ctx, state, card)) return false;
     if (spec.attacking === true) {
       if (!battle?.participants.includes(card.instanceId)) return false;
       if (card.controller !== battle.attacker) return false;
@@ -974,6 +1003,14 @@ function effectRelevant(
     case 'setTopOfDeck':
       // A card onto the board for free, whenever the deck still has one.
       return true;
+    case 'setCard':
+      return reaches(effect.who);
+    case 'untargetable':
+      return ability.trigger === 'always';
+    case 'ifNotOccupied':
+      return effect.effects.some((inner) =>
+        effectRelevant(ctx, state, source, ability, inner, inBattle),
+      );
     case 'setSelf':
       // Going back face down is a real move: it dodges what is coming, and
       // the card can be opened again later (§7).
@@ -1394,6 +1431,15 @@ export function conditionHolds(
     case 'enemyDoesNotOccupyThisArea': {
       const holder = cityOf(state, source)?.occupiedBy;
       return holder == null || holder === source.controller;
+    }
+    case 'targetIsAlly': {
+      if (!chosen) return false;
+      const newcomer = state.cards[chosen];
+      return (
+        newcomer !== undefined &&
+        newcomer.controller === source.controller &&
+        newcomer.instanceId !== source.instanceId
+      );
     }
     case 'inBattleHere':
       return battle != null && battle.city === source.cityIndex;
