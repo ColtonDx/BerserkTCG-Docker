@@ -105,6 +105,14 @@ export interface Selector {
    * and is a legitimate thing to sweep off it.
    */
   readonly effectCards?: 'eternal' | 'normal' | 'any';
+  /** Only cards of this printed name (BK3-013). Rules.md §8. */
+  readonly named?: string;
+  /**
+   * Only characters standing in the Royal Capital (BK3-060). Rules.md §1,
+   * §5 — a face-down capital is hidden from everyone, so this counts only
+   * once the city is face up.
+   */
+  readonly inCapital?: boolean;
 }
 
 /**
@@ -294,7 +302,9 @@ export type Condition =
   /** The area it stands in is a Demon City (BK3-042, -044). Rules.md §5. */
   | { readonly when: 'inDemonCity' }
   /** Its controller holds the area *and* it is a Demon City (BK3-045, -046). */
-  | { readonly when: 'occupiedDemonCity' };
+  | { readonly when: 'occupiedDemonCity' }
+  /** Its controller took or held this area against an attack this turn. */
+  | { readonly when: 'capturedOrDefendedThisArea' };
 
 /**
  * What the ability does when it applies.
@@ -743,6 +753,17 @@ export type Effect =
    * destroyed.
    */
   | { readonly do: 'pickAndLock'; readonly who: Selector; readonly count: number }
+  /** "Choose up to N … and return them to your hand" (BK3-040). §13. */
+  | { readonly do: 'pickAndReturn'; readonly who: Selector; readonly count: number }
+  /**
+   * The rest of a printed line, run only while its controller has a card of
+   * this name on the field (BK3-013). Rules.md §13.
+   *
+   * A `condition` gates the whole ability and can only name one card; this
+   * gates the tail, which is what "if you control both a Guts *and* a
+   * Griffith" needs.
+   */
+  | { readonly do: 'ifYouControl'; readonly name: string; readonly effects: readonly Effect[] }
   /**
    * A price the *other* player pays, their choice of how, `count` times over
    * (BK2-043, BK2-045). Rules.md §13.
@@ -979,6 +1000,11 @@ export type Trigger =
    * way it can go down.
    */
   | 'selfLocked'
+  /**
+   * This card was committed to a battle on the defending side (BK3-035).
+   * Rules.md §11 ③ — the mirror of `attack`.
+   */
+  | 'defend'
   /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
@@ -4052,6 +4078,165 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
     },
   ],
 
+  'BK2-050': [
+    {
+      trigger: 'open',
+      // "You may set each" — up to three, named one at a time, each into any
+      // area. Looking at the top is not a search, so nothing is shuffled.
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 3,
+        named: null,
+        topOfDeck: 3,
+        to: 'setAnywhere',
+        upTo: true,
+      },
+      text: 'When this card is opened, look at the top 3 cards of your deck, then you may set each of those cards in any 1 area of your choice.',
+    },
+  ],
+  'BK3-063': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'enemyOccupiesThisArea' },
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 3,
+        named: null,
+        topOfDeck: 3,
+        to: 'setAnywhere',
+      },
+      text: 'You may only open this card if your opponent occupies this area. Look at 3 cards from the top of your deck and set each of them in an area of your choice.',
+    },
+  ],
+  'BK3-060': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'search',
+        player: 'you',
+        count: 2,
+        named: null,
+        topOfDeck: 2,
+        to: 'setAnywhere',
+      },
+      text: 'When this character is opened, look at the top 2 cards of your deck, and set each in an area of your choice.',
+    },
+    {
+      trigger: 'always',
+      // "In the Royal Capital (if revealed)" — a face-down capital is hidden
+      // from everyone (§5), so the aura only counts once it is face up.
+      effect: {
+        do: 'buff',
+        who: { scope: 'others', side: 'yours', where: 'anywhere', inCapital: true },
+        stats: { power: 1, hp: 1 },
+      },
+      text: 'All other characters you control that are in the Royal Capital (if revealed) gain +1/+1',
+    },
+  ],
+  'BK3-013': [
+    {
+      trigger: 'open',
+      // "If you control both" — one condition can only name one, so the
+      // second rides as a gate on the buff itself.
+      condition: { when: 'youControlName', name: 'Guts' },
+      effect: {
+        do: 'ifYouControl',
+        name: 'Griffith',
+        effects: [
+          {
+            do: 'buff',
+            who: { scope: 'any', side: 'yours', where: 'anywhere', named: 'Guts' },
+            stats: { power: 3, hp: 3 },
+          },
+          {
+            do: 'buff',
+            who: { scope: 'any', side: 'yours', where: 'anywhere', named: 'Griffith' },
+            stats: { power: 3, hp: 3 },
+          },
+        ],
+      },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'If you control both a Guts and Griffith card in play, they gain +3/+3 until end of turn. Draw 1 card',
+    },
+  ],
+  'BK3-011': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'youCapturedThisArea' },
+      target: { side: 'yours', where: 'thisArea' },
+      effect: { do: 'unlock', who: { scope: 'target' } },
+      then: [
+        { do: 'draw', player: 'you', count: 2 },
+        { do: 'cannotBattle', who: { scope: 'target' } },
+      ],
+      text: 'You can only open this card if you captured this area this turn. Unlock a character you control in this area and draw 2 cards. That character cannot battle the rest of this turn.',
+    },
+  ],
+  'BK3-012': [
+    {
+      trigger: 'open',
+      gate: true,
+      condition: { when: 'capturedOrDefendedThisArea' },
+      target: { side: 'theirs', maxDistance: 1, faceDown: true },
+      effect: {
+        do: 'reveal',
+        who: { scope: 'others', side: 'theirs', maxDistance: 1, faceDown: true },
+        to: 'both',
+      },
+      then: [
+        { do: 'destroy', who: { scope: 'target' } },
+        { do: 'draw', player: 'you', count: 1 },
+      ],
+      text: 'You may only open this card if you captured or defended this area this turn. Reveal all enemy set cards within 1 distance and destroy 1 of them. Draw 1 card',
+    },
+  ],
+  'BK3-035': [
+    {
+      trigger: 'defend',
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { hp: 1 } },
+      text: 'When this card defends an area, it gains +0/+1 until end of turn',
+    },
+  ],
+  'BK3-040': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: { oncePerTurn: true },
+      effect: {
+        do: 'pickAndReturn',
+        who: { scope: 'any', side: 'yours', maxDistance: 1, faceDown: true },
+        count: 2,
+      },
+      text: '(Quick): Choose up to 2 set cards you control within 1 distance and return them to you hand. This ability may be only used once each turn.',
+    },
+  ],
+  'BK3-039': [
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: {
+        destroyAlly: { side: 'yours', where: 'thisArea', faceDown: true },
+        oncePerTurnGroup: 'silat',
+      },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { range: 1 } },
+      text: '(Quick) Destroy 1 set card you control here: this character gains +1 range until end of turn',
+    },
+    {
+      trigger: 'activated',
+      quick: true,
+      cost: {
+        destroyAlly: { side: 'yours', where: 'thisArea', faceDown: true },
+        oncePerTurnGroup: 'silat',
+      },
+      effect: { do: 'buff', who: { scope: 'self' }, stats: { power: 1 } },
+      text: '(Quick) Destroy 1 set card you control here: this character gains +1/+0 until end of turn',
+    },
+  ],
+
   'BK1-156': [
     {
       trigger: 'always',
@@ -4079,6 +4264,10 @@ export interface CardFacts {
   readonly subtypes: readonly string[];
   readonly level: number | null;
   readonly colour: CardColor;
+  /** The printed name, for a selector that asks for one (BK3-013). */
+  readonly name?: string;
+  /** Whether it stands in a face-up Royal Capital (BK3-060). */
+  readonly inCapital?: boolean;
 }
 
 export function selects(
@@ -4119,6 +4308,8 @@ export function selects(
   const facts = factsOf(card);
   if (selector.subtype !== undefined && !facts.subtypes.includes(selector.subtype)) return false;
   if (selector.colour !== undefined && facts.colour !== selector.colour) return false;
+  if (selector.named !== undefined && facts.name !== selector.named) return false;
+  if (selector.inCapital === true && facts.inCapital !== true) return false;
   if (
     selector.maxLevel !== undefined &&
     (facts.level === null || facts.level > selector.maxLevel)

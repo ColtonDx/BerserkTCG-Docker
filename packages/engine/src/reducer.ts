@@ -760,6 +760,8 @@ function beginCommit(ctx: EngineContext, draft: Draft<GameState>, events: GameEv
         card: card.instanceId,
         player: battle.defender,
       });
+      // Committed for them, but defending all the same (BK3-035).
+      fireAbilities(ctx, draft, card as CardInstance, 'defend', events);
     }
   }
 
@@ -792,10 +794,15 @@ function commitCharacter(
   battle.participants.push(cardId);
   battle.passes = 0;
   events.push({ type: 'CHARACTER_COMMITTED', card: cardId, player: actor });
-  // §13 — joining the attack is attacking, for a character on that side.
-  if (actor === battle.attacker) {
-    fireAbilities(ctx, draft, card as CardInstance, 'attack', events);
-  }
+  // §13 — joining the attack is attacking, for a character on that side,
+  // and joining the defence is defending (BK3-035).
+  fireAbilities(
+    ctx,
+    draft,
+    card as CardInstance,
+    actor === battle.attacker ? 'attack' : 'defend',
+    events,
+  );
 
   battleStep(draft, 'commit', otherSide(battle, actor), events);
   return ok(true);
@@ -2995,24 +3002,36 @@ function runEffect(
     }
 
     case 'pickAndDestroy':
-    case 'pickAndLock': {
+    case 'pickAndLock':
+    case 'pickAndReturn': {
       const picked = selected(ctx, draft, source, effect.who, chosen, chosen2);
       if (picked.length === 0) return false;
-      const locking = effect.do === 'pickAndLock';
+      const action =
+        effect.do === 'pickAndLock' ? 'lock' : effect.do === 'pickAndReturn' ? 'toHand' : 'destroy';
       askFor(draft, events, {
         waitingOn: controller,
         source: source.instanceId,
         text,
         count: Math.min(effect.count, picked.length),
         // "Up to": stopping short is legal, unless the line says otherwise.
-        upTo: locking || effect.mandatory !== true,
-        kind: {
-          zone: 'field',
-          action: locking ? 'lock' : 'destroy',
-          cards: picked.map((card) => card.instanceId),
-        },
+        upTo: effect.do !== 'pickAndDestroy' || effect.mandatory !== true,
+        kind: { zone: 'field', action, cards: picked.map((card) => card.instanceId) },
       });
       return pushed();
+    }
+
+    case 'ifYouControl': {
+      // The tail of a printed line, run only while a card of this name is
+      // standing on its controller's side (BK3-013).
+      const has = Object.values(draft.cards).some(
+        (card) =>
+          card.zone === 'city' &&
+          card.faceUp &&
+          card.controller === controller &&
+          definitionOf(ctx, card as CardInstance).name === effect.name,
+      );
+      if (!has) return false;
+      return runChain(ctx, draft, source, effect.effects, events, chosen, text, area, chosen2);
     }
 
     case 'addCharges': {
@@ -3424,7 +3443,12 @@ function chooseCard(
     if (!kind.cards.includes(cardId) && !(kind.hand ?? []).includes(cardId)) {
       return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
     }
-    if (kind.action === 'lock') {
+    if (kind.action === 'toHand') {
+      moveToZone(draft, cardId, { player: card.owner, zone: 'hand' });
+      events.push({ type: 'CARD_RETURNED', player: card.owner, card: cardId });
+      // Struck off, so each card is named once.
+      pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });
+    } else if (kind.action === 'lock') {
       lockCard(ctx, draft, card, events);
       // Struck off, so each card is named once.
       pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });

@@ -46,7 +46,8 @@ export type HandStep =
         | 'toCityAnywhere'
         | 'moveHere'
         | 'pay'
-        | 'lock';
+        | 'lock'
+        | 'toHand';
       /** The player may stop short of the count. Rules.md §13 — "up to". */
       readonly upTo: boolean;
     }

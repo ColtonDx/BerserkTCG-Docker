@@ -28,7 +28,14 @@ import {
 import type { Draft } from './draft.js';
 import type { CardInstanceId, PlayerId } from './ids.js';
 import { ok, violation, type Result, type RuleViolation } from './result.js';
-import type { BattleResult, BattleState, CardInstance, GameEvent, GameState } from './types.js';
+import type {
+  BattleResult,
+  BattleState,
+  CardInstance,
+  City,
+  GameEvent,
+  GameState,
+} from './types.js';
 import { cardsInCity, cityDistance, moveToZone, zoneKey } from './zones.js';
 
 /**
@@ -712,10 +719,26 @@ export const subtypesOf = (
 export const factsOf = (
   ctx: EngineContext,
   card: CardInstance,
-  state?: Pick<GameState, 'cards'>,
+  state?: Pick<GameState, 'cards'> & { readonly cities?: readonly City[] },
 ): CardFacts => {
+  const cities = state?.cities;
   const def = definitionOf(ctx, card);
-  return { subtypes: subtypesOf(ctx, card, state), level: def.level, colour: def.color };
+  return {
+    subtypes: subtypesOf(ctx, card, state),
+    level: def.level,
+    colour: def.color,
+    ...(def.name !== undefined ? { name: def.name } : {}),
+    // §5 — a face-down capital is hidden from everyone, so a card standing
+    // in one does not count until the city is turned up.
+    inCapital: inFaceUpCapital(cities, card),
+  };
+};
+
+/** Is this card standing in a Royal Capital that is face up? §1, §5. */
+const inFaceUpCapital = (cities: readonly City[] | undefined, card: CardInstance): boolean => {
+  if (!cities || card.cityIndex === undefined) return false;
+  const city = cities[card.cityIndex];
+  return city?.royalCapital === true && city.faceUp;
 };
 
 /**
@@ -1129,7 +1152,12 @@ function effectRelevant(
       return state.cities.some((city) => city.occupiedBy != null);
     case 'pickAndDestroy':
     case 'pickAndLock':
+    case 'pickAndReturn':
       return reaches(effect.who);
+    case 'ifYouControl':
+      return effect.effects.some((inner) =>
+        effectRelevant(ctx, state, source, ability, inner, inBattle),
+      );
     case 'addCharges':
       // Ammunition for later, worth putting on whenever it is printed.
       return true;
@@ -1543,6 +1571,15 @@ export function conditionHolds(
       const holder = cityOf(state, source)?.occupiedBy;
       return holder == null || holder === source.controller;
     }
+    case 'capturedOrDefendedThisArea':
+      // Took it this turn (§12), or a battle was declared here by the other
+      // player and it is still held — either way the ground was contested.
+      return (
+        source.cityIndex !== undefined &&
+        (state.turn.capturedCities.includes(source.cityIndex) ||
+          (state.turn.declaredCities.includes(source.cityIndex) &&
+            state.cities[source.cityIndex]?.occupiedBy === source.controller))
+      );
     case 'inDemonCity':
       return source.cityIndex !== undefined && isDemonCity(ctx, state, source.cityIndex);
     case 'occupiedDemonCity':

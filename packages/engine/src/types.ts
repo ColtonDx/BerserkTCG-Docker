@@ -305,7 +305,7 @@ export type PendingChoiceKind =
        * on offer are the player's own Set Cards and open characters, and a
        * card from hand may be discarded instead.
        */
-      readonly action: 'destroy' | 'moveHere' | 'pay' | 'lock';
+      readonly action: 'destroy' | 'moveHere' | 'pay' | 'lock' | 'toHand';
       readonly cards: readonly CardInstanceId[];
       /** Where they go, for `moveHere`. */
       readonly city?: number;
