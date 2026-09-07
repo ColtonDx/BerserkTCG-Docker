@@ -419,6 +419,21 @@ export type Effect =
    */
   | { readonly do: 'may'; readonly effects: readonly Effect[] }
   /**
+   * "Choose one of the following": two named outcomes, one of which happens
+   * (BK2-025). Rules.md §13.
+   *
+   * Distinct from {@link may}, where declining means nothing happens: here
+   * refusing the first is choosing the second, so both branches are printed
+   * instructions. `prompt` is what the player is actually being asked, since
+   * a bare yes/no over the printed line would not say which is which.
+   */
+  | {
+      readonly do: 'chooseMode';
+      readonly prompt: string;
+      readonly effects: readonly Effect[];
+      readonly orElse: readonly Effect[];
+    }
+  /**
    * Give up this turn's Draw phase and draw `atEnd` cards at the end of the
    * turn instead (BK1-066). Only meaningful at the start of a turn, before
    * the Draw phase has run.
@@ -3239,11 +3254,16 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
   'BK2-025': [
     {
       trigger: 'open',
-      // RULES: the printed line offers a choice of *whose* graveyard, and
-      // the wire has no way to ask it — the engine takes the opponent's,
-      // which is the reading that does something to somebody. Worth
-      // confirming; see TODO.md.
-      effect: { do: 'recycleTrash', player: 'opponent', count: 3, draw: 3 },
+      // Two outcomes, one of which happens: whichever graveyard is chosen,
+      // that player is the one who shuffles and the one who draws. Refusing
+      // the first is choosing the second, so this is `chooseMode` rather
+      // than `may` — neither branch is "nothing happens".
+      effect: {
+        do: 'chooseMode',
+        prompt: "Recycle your opponent's graveyard? Decline to recycle your own instead.",
+        effects: [{ do: 'recycleTrash', player: 'opponent', count: 3, draw: 3 }],
+        orElse: [{ do: 'recycleTrash', player: 'you', count: 3, draw: 3 }],
+      },
       text: 'When this card is opened, choose 3 cards from your graveyard or 3 cards from your opponents graveyard and shuffle them back into their owners deck. Then that player draws 3 cards.',
     },
   ],

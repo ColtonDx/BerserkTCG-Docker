@@ -2617,6 +2617,22 @@ function runEffect(
       return pushed();
     }
 
+    case 'chooseMode': {
+      // Accepting takes the first branch, declining the second — both are
+      // printed instructions, unlike `may` where a no means nothing happens.
+      askFor(draft, events, {
+        waitingOn: controller,
+        source: source.instanceId,
+        text: effect.prompt,
+        count: 1,
+        upTo: false,
+        kind: { zone: 'decision' },
+        then: { effects: effect.effects, ...(chosen !== undefined ? { chosen } : {}) },
+        orElse: { effects: effect.orElse, ...(chosen !== undefined ? { chosen } : {}) },
+      });
+      return pushed();
+    }
+
     case 'skipDraw': {
       // Only the turn player's own Draw phase, and only before it has run:
       // the trigger that carries this fires at the start of the turn.

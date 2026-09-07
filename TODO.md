@@ -97,10 +97,6 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    guessed at, so those two cards are complete apart from it. Ask before
    building it.
 
-   RULES: BK2-025 offers a choice of _whose_ graveyard to recycle, and the
-   wire has no way to put that question — the engine takes the opponent's,
-   which is the reading that does something to somebody. Worth confirming.
-
    The machinery worth knowing about:
 
    - **`rules.ts:abilitiesOf` is the only way to read a card's abilities.**
@@ -108,6 +104,10 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
      honest: applied at some lookups and forgotten at others it would be
      silently wrong exactly where it was missed. Keep new lookups going
      through it.
+   - **`chooseMode`** is "choose one of the following", where refusing the
+     first is choosing the second (BK2-025) — unlike `may`, whose decline
+     means nothing happens. It rides the same `then`/`orElse` pair BK1-103
+     introduced.
    - **`Ability.target2`** is a second chosen character for a line naming
      one from each side (BK2-029). `targets` is walked positionally, so
      every card naming one is unaffected, and "must have valid targets for

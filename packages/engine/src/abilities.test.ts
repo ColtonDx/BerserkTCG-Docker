@@ -4105,3 +4105,77 @@ describe('BK2-021 offers two modes that share one use (Rules.md §13)', () => {
     ).toBe(false);
   });
 });
+
+describe('BK2-025 recycles whichever graveyard is chosen (Rules.md §13)', () => {
+  /** Puts `count` cards of a player's into their Trash, out of their deck. */
+  function fillTrash(state: GameState, player: PlayerId, count: number): GameState {
+    let next = state;
+    const deck = [...(next.zoneOrder[`${player}:deck`] ?? [])].slice(0, count);
+    for (const id of deck) {
+      next = {
+        ...next,
+        cards: { ...next.cards, [id]: { ...cardOf(next, id), zone: 'trash' as const } },
+        zoneOrder: {
+          ...next.zoneOrder,
+          [`${player}:deck`]: (next.zoneOrder[`${player}:deck`] ?? []).filter((c) => c !== id),
+          [`${player}:trash`]: [...(next.zoneOrder[`${player}:trash`] ?? []), id],
+        },
+      };
+    }
+    return next;
+  }
+
+  it("accepting takes the opponent's graveyard, and they draw", () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    state = fillTrash(state, other, 3);
+    state = fillTrash(state, player, 3);
+    const theirHand = zoneSize(state, other, 'hand');
+    const myHand = zoneSize(state, player, 'hand');
+
+    const elf = place(state, player, 'BK2-025', 2, { faceUp: false });
+    state = openable(elf.state, player, elf.card);
+    state = apply(state, player, openOf(state, player, elf.card) as GameAction);
+
+    // A real choice, not a "you may".
+    expect(state.pending?.kind.zone).toBe('decision');
+    state = apply(state, player, { type: 'ANSWER', accept: true });
+
+    // Their Trash emptied, their deck grew, and *they* drew the three.
+    expect(zoneSize(state, other, 'trash')).toBe(0);
+    expect(zoneSize(state, other, 'hand')).toBe(theirHand + 3);
+    // Nothing was recycled on this side: the three planted cards are still
+    // there, alongside whatever opening the card cost (§7).
+    expect(zoneSize(state, player, 'trash')).toBeGreaterThanOrEqual(3);
+    // And crucially the draw went to *them*, not to whoever opened it.
+    expect(zoneSize(state, player, 'hand')).toBeLessThan(myHand + 3);
+  });
+
+  it('declining takes your own graveyard, and you draw', () => {
+    let state = started(GREEN);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    state = fillTrash(state, other, 3);
+    state = fillTrash(state, player, 3);
+    const theirHand = zoneSize(state, other, 'hand');
+
+    const elf = place(state, player, 'BK2-025', 2, { faceUp: false });
+    state = openable(elf.state, player, elf.card);
+    state = apply(state, player, openOf(state, player, elf.card) as GameAction);
+    // Measured after the open, so the cost it paid is already accounted for
+    // and what follows is exactly the three cards this branch draws.
+    const myHand = zoneSize(state, player, 'hand');
+    state = apply(state, player, { type: 'ANSWER', accept: false });
+
+    // Declining is choosing the other branch, not doing nothing: three came
+    // out of the graveyard, so what is left is only what opening it cost.
+    expect(zoneSize(state, player, 'trash')).toBeLessThan(3);
+    expect(zoneSize(state, player, 'hand')).toBe(myHand + 3);
+    // Their graveyard is untouched.
+    expect(zoneSize(state, other, 'trash')).toBe(3);
+    expect(zoneSize(state, other, 'hand')).toBe(theirHand);
+  });
+});

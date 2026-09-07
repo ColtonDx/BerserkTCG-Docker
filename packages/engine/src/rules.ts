@@ -845,6 +845,11 @@ function effectRelevant(
       return effect.effects.some((inner) =>
         effectRelevant(ctx, state, source, ability, inner, inBattle),
       );
+    case 'chooseMode':
+      // Either branch being worth taking makes the question worth asking.
+      return [...effect.effects, ...effect.orElse].some((inner) =>
+        effectRelevant(ctx, state, source, ability, inner, inBattle),
+      );
     case 'skipDraw':
       return true;
     case 'attach':
