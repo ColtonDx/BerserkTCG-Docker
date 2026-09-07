@@ -835,6 +835,15 @@ function effectRelevant(
       // Continuations, never printed on a card and never offered on their
       // own — they only ever run from inside a choice already under way.
       return false;
+    case 'seeCapital':
+      // Knowing where the capital is bears on §1's whole win condition, so
+      // it is worth having whenever it is still hidden from you.
+      return true;
+    case 'mark':
+    case 'markedCannotAttackHere':
+    case 'markedDiesIfItLeaves':
+      // Pinning an enemy down is worth doing wherever there is one to pin.
+      return ability.target !== undefined;
     case 'reflectDamage':
       // Only bites inside a fight, where blows are actually struck.
       return inBattle && reaches(effect.who);
@@ -1041,6 +1050,58 @@ export const targetingAbilities = (
  */
 export function cannotBattle(state: Pick<GameState, 'cards'>, card: CardInstance): boolean {
   return (card.counters[NO_BATTLE] ?? 0) > 0;
+}
+
+/**
+ * Is this card barred from attacking one particular city? Rules.md §11.
+ *
+ * Narrower than {@link cannotAttack}, which is about attacking at all:
+ * BK1-157 pins one enemy out of one area and leaves it free everywhere
+ * else. Read off the board — the Eternal doing the pinning is standing
+ * there, and remembers whom it named in `CardInstance.marked`.
+ */
+export function cannotAttackArea(
+  ctx: EngineContext,
+  state: BoardView,
+  card: CardInstance,
+  cityIndex: number,
+): boolean {
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    if (source.marked !== card.instanceId) continue;
+    // "Cannot attack *this area*" — the one the watching card stands in.
+    if (source.cityIndex !== cityIndex) continue;
+    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+      if (ability.trigger !== 'always') continue;
+      if (ability.effect.do !== 'markedCannotAttackHere') continue;
+      if (!conditionHolds(ctx, state, source, ability.condition)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Would moving out of its area destroy this character? Rules.md §13.
+ *
+ * BK1-157's second clause. Read the same way as the first, off the card
+ * that named it.
+ */
+export function diesIfItLeaves(ctx: EngineContext, state: BoardView, card: CardInstance): boolean {
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    if (source.marked !== card.instanceId) continue;
+    // "If that character is in this area" — the clause only bites while the
+    // two are standing together.
+    if (source.cityIndex !== card.cityIndex) continue;
+    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+      if (ability.trigger !== 'always') continue;
+      if (ability.effect.do !== 'markedDiesIfItLeaves') continue;
+      if (!conditionHolds(ctx, state, source, ability.condition)) continue;
+      return true;
+    }
+  }
+  return false;
 }
 
 export function cannotAttack(ctx: EngineContext, state: BoardView, card: CardInstance): boolean {
@@ -1264,7 +1325,12 @@ export function canVanguard(
   cityIndex: number,
 ): CardInstance[] {
   return presenceIn(ctx, state, cityIndex, player).filter(
-    (card) => !card.locked && !cannotBattle(state, card) && !cannotAttack(ctx, state, card),
+    (card) =>
+      !card.locked &&
+      !cannotBattle(state, card) &&
+      !cannotAttack(ctx, state, card) &&
+      // Pinned out of this one city, but free to lead elsewhere (BK1-157).
+      !cannotAttackArea(ctx, state, card, cityIndex),
   );
 }
 
@@ -1287,7 +1353,8 @@ export function canCommit(
       !cannotBattle(state, card) &&
       // A character forbidden only to *attack* may still defend: that
       // restriction is on attacking, and the defender is not. Rules.md §11.
-      !(player === battle.attacker && cannotAttack(ctx, state, card)),
+      !(player === battle.attacker && cannotAttack(ctx, state, card)) &&
+      !(player === battle.attacker && cannotAttackArea(ctx, state, card, battle.city)),
   );
 }
 

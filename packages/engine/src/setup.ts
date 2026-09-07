@@ -174,6 +174,7 @@ export function createMatch(config: MatchConfig): GameState {
     resume: null,
     pending: null,
     revealed: {},
+    citiesSeen: {},
     rng,
     log: [{ type: 'MATCH_STARTED', firstPlayer }],
   };

@@ -544,6 +544,33 @@ export type Effect =
    */
   | { readonly do: 'reflectDamage'; readonly who: Selector }
   /**
+   * Remember the chosen character, so this card's continuous abilities can go
+   * on applying to it (BK1-157). Rules.md §13.
+   *
+   * Written down because the choice was made once, when the card was opened,
+   * and an Eternal has to keep answering for it — unlike a `target` selector,
+   * which only reaches the chosen card while the effect is resolving.
+   */
+  | { readonly do: 'mark' }
+  /**
+   * Show yourself where the Royal Capital is (BK1-022). Rules.md §5.
+   *
+   * Recorded in `GameState.citiesSeen` rather than turning the city face up:
+   * §5 has a city turn up only when a battle commences there, and flipping
+   * it would raise City Level for both players and show the opponent too.
+   */
+  | { readonly do: 'seeCapital' }
+  /**
+   * The marked character may not attack the area this card stands in
+   * (BK1-157). Rules.md §11. Continuous: read off the board.
+   */
+  | { readonly do: 'markedCannotAttackHere' }
+  /**
+   * The marked character is destroyed if it leaves this area (BK1-157).
+   * Rules.md §13. Continuous: checked where a character moves.
+   */
+  | { readonly do: 'markedDiesIfItLeaves' }
+  /**
    * Turn a Set Card face up at once, paying nothing and outside the City
    * Level gate (BK1-030). Rules.md §7 and §13.
    *
@@ -2514,6 +2541,39 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       target: { where: 'thisArea', maxLevel: 1 },
       effect: { do: 'reflectDamage', who: { scope: 'target' } },
       text: 'Target a level 1 or lower character in this area. Until end of turn any damage dealt by that character to any of your characters in this area is instead dealt to itself.',
+    },
+  ],
+
+  'BK1-157': [
+    {
+      trigger: 'open',
+      // "An enemy character" — anywhere on the board, since the pin is about
+      // where *this* card stands rather than where the target does.
+      target: { side: 'theirs', where: 'anywhere' },
+      // Written onto this card, because the two clauses below are continuous
+      // and have to keep answering for a choice made once (§13).
+      effect: { do: 'mark' },
+      text: 'When this card is opened, target an enemy character.',
+    },
+    {
+      trigger: 'always',
+      effect: { do: 'markedCannotAttackHere' },
+      text: 'That character cannot attack this area.',
+    },
+    {
+      trigger: 'always',
+      effect: { do: 'markedDiesIfItLeaves' },
+      text: 'If that character is in this area, destroy it if it were to move to another area.',
+    },
+  ],
+
+  'BK1-022': [
+    {
+      trigger: 'open',
+      // "To yourself" — the city stays face down for everybody, including
+      // its opponent, so City Level is untouched (§5).
+      effect: { do: 'seeCapital' },
+      text: 'When this card is opened, you reveal the capital to yourself.',
     },
   ],
 

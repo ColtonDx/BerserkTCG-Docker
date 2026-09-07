@@ -44,6 +44,7 @@ import {
   nextRangeBand,
   powerOf,
   cannotBattle,
+  diesIfItLeaves,
   presenceIn,
   quickCardRelevant,
   reachedBy,
@@ -1288,11 +1289,19 @@ function moveCharacter(
     );
   }
 
+  // BK1-157 — pinned in place: leaving destroys it. Checked before the move,
+  // because the clause is read off the two standing together (§13).
+  const doomedByLeaving = diesIfItLeaves(ctx, draft, card as CardInstance);
+
   // Rules.md §6 — moving locks the character.
   card.locked = true;
   card.cityIndex = city;
   arrived(draft, actor, city);
   events.push({ type: 'CHARACTER_MOVED', card: cardId, from, to: city });
+  if (doomedByLeaving) {
+    destroy(ctx, draft, card, events);
+    return ok(true);
+  }
   fireArrival(ctx, draft, card, events);
   return ok(true);
 }
@@ -2575,6 +2584,31 @@ function runEffect(
       }
       return pushed();
     }
+
+    case 'seeCapital': {
+      const capital = draft.cities.find((city) => city.royalCapital);
+      if (!capital) return false;
+      const already = draft.citiesSeen[controller] ?? [];
+      if (already.includes(capital.index)) return false;
+      draft.citiesSeen[controller] = toDraft([...already, capital.index]);
+      return true;
+    }
+
+    case 'mark': {
+      // The choice is made once and written down: an Eternal has to keep
+      // answering for it long after the effect resolved (BK1-157).
+      if (chosen === undefined) return false;
+      const self = draft.cards[source.instanceId];
+      if (!self) return false;
+      self.marked = chosen;
+      return true;
+    }
+
+    // Continuous by nature: read off the board by `cannotAttackArea` and by
+    // the move rules. Nothing to do when they resolve.
+    case 'markedCannotAttackHere':
+    case 'markedDiesIfItLeaves':
+      return true;
 
     case 'reflectDamage': {
       // Counters are numbers, so the protected side is stored as its seat

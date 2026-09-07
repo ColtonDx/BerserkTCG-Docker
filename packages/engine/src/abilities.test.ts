@@ -18,7 +18,7 @@ import {
   cityLevel,
   openLevelFor,
 } from './rules.js';
-import { isHidden, viewFor } from './view.js';
+import { isCityHidden, isHidden, viewFor } from './view.js';
 import type { CardInstance, GameAction, GameEvent, GameState } from './types.js';
 import { zoneSize } from './zones.js';
 
@@ -3449,5 +3449,131 @@ describe('BK1-027 turns a small striker on itself (Rules.md §11 ④)', () => {
     // The striker's blow came back at it: it dies, and the guard lives.
     expect(state.cards[striker.card]?.zone).toBe('trash');
     expect(state.cards[guard.card]?.zone).toBe('city');
+  });
+});
+
+describe('BK1-157 pins one enemy out of one area (Rules.md §11, §13)', () => {
+  it('stops it leading an attack here, but not elsewhere', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // The enemy stands in city 3, next to the watched city 2.
+    const pinned = place(state, other, RED, 3);
+    state = pinned.state;
+
+    const messenger = place(state, player, 'BK1-157', 2, { faceUp: false });
+    state = openable(messenger.state, player, messenger.card);
+    const open = engine
+      .legalActions(state, player)
+      .find(
+        (action) =>
+          action.type === 'OPEN_CARD' &&
+          action.card === messenger.card &&
+          action.targets?.[0] === pinned.card,
+      );
+    expect(open, 'the Messenger should point at an enemy').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // The choice is written onto the Eternal, which goes on answering for it.
+    expect(state.cards[messenger.card]?.marked).toBe(pinned.card);
+
+    // It may not lead an attack on the watched area...
+    expect(
+      canVanguard({ registry }, state, other, 2).some((c) => c.instanceId === pinned.card),
+    ).toBe(false);
+    // ...but its own city, and any other, are untouched.
+    expect(
+      canVanguard({ registry }, state, other, 3).some((c) => c.instanceId === pinned.card),
+    ).toBe(true);
+  });
+
+  it('destroys it if it walks out of the watched area', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // This time the enemy is standing in the watched city itself.
+    const pinned = place(state, other, RED, 2);
+    state = pinned.state;
+    const messenger = place(state, player, 'BK1-157', 2, { faceUp: false });
+    state = openable(messenger.state, player, messenger.card);
+    state = apply(
+      state,
+      player,
+      engine
+        .legalActions(state, player)
+        .find(
+          (action) =>
+            action.type === 'OPEN_CARD' &&
+            action.card === messenger.card &&
+            action.targets?.[0] === pinned.card,
+        ) as GameAction,
+    );
+
+    // Hand the turn over and walk it out.
+    let theirTurn = {
+      ...state,
+      turn: { ...state.turn, activePlayer: other, priorityPlayer: other },
+    };
+    theirTurn = atMain(theirTurn);
+    const move = engine
+      .legalActions(theirTurn, other)
+      .find((action) => action.type === 'MOVE_CHARACTER' && action.card === pinned.card);
+    expect(move, 'it should still be able to try to leave').toBeDefined();
+    theirTurn = apply(theirTurn, other, move as GameAction);
+
+    // "Destroy it if it were to move to another area" — it left, and died.
+    expect(theirTurn.cards[pinned.card]?.zone).toBe('trash');
+  });
+});
+
+describe('BK1-022 shows the capital to one player only (Rules.md §5)', () => {
+  it('tells its controller where it is and leaks nothing to the opponent', () => {
+    let state = started();
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    const capital = state.cities.find((city) => city.royalCapital);
+    expect(capital, 'a match has a Royal Capital').toBeDefined();
+    const capitalIndex = (capital as NonNullable<typeof capital>).index;
+    // It starts face down, which is what hides its position from everyone.
+    expect(state.cities[capitalIndex]?.faceUp).toBe(false);
+
+    // Before: neither seat can tell which city it is.
+    for (const seat of [player, other]) {
+      const before = viewFor({ registry }, state, seat);
+      for (const city of before.cities) {
+        expect(isCityHidden(city) ? city.royalCapital : undefined).toBeUndefined();
+      }
+    }
+
+    const rickert = place(state, player, 'BK1-022', 2, { faceUp: false });
+    state = openable(rickert.state, player, rickert.card);
+    const open = openOf(state, player, rickert.card);
+    expect(open, 'Rickert should be openable').toBeDefined();
+    state = apply(state, player, open as GameAction);
+
+    // Its controller now knows, and the flag is true for exactly one city.
+    const mine = viewFor({ registry }, state, player);
+    const flagged = mine.cities.filter((city) =>
+      isCityHidden(city) ? city.royalCapital === true : city.royalCapital,
+    );
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]?.index).toBe(capitalIndex);
+
+    // The opponent still learns nothing at all.
+    const theirs = viewFor({ registry }, state, other);
+    for (const city of theirs.cities) {
+      expect(isCityHidden(city) ? city.royalCapital : undefined).toBeUndefined();
+    }
+
+    // The capital itself is still face down: seeing it is not flipping it,
+    // so it adds nothing to City Level and shows the opponent nothing (§5).
+    // (`openable` turned another city up to allow a Level 1 open.)
+    expect(state.cities[capitalIndex]?.faceUp).toBe(false);
+    expect(state.cities.filter((city) => city.faceUp).map((city) => city.index)).not.toContain(
+      capitalIndex,
+    );
   });
 });

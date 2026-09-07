@@ -95,6 +95,16 @@ export interface HiddenCity {
   readonly faceUp: false;
   readonly occupiedBy: PlayerId | null;
   readonly hidden: true;
+  /**
+   * Whether this is the Royal Capital — present *only* for a player who has
+   * been shown it (BK1-022). Rules.md §5.
+   *
+   * The city is still face down and still hidden from everybody else, so the
+   * field is absent in every other view and the position stays secret. It is
+   * optional rather than always sent precisely so that forgetting to set it
+   * cannot leak anything.
+   */
+  readonly royalCapital?: boolean;
 }
 
 export type ViewCity = City | HiddenCity;
@@ -170,6 +180,7 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
   // Cards an effect has shown this player and that they may go on seeing
   // (BK1-141, BK1-142). Rules.md §13 — the exception to §7's redaction.
   const shown = new Set(state.revealed[viewer] ?? []);
+  const seenCities = new Set(state.citiesSeen[viewer] ?? []);
 
   for (const card of Object.values(state.cards)) {
     cards[card.instanceId] =
@@ -189,7 +200,7 @@ export function viewFor(ctx: EngineContext, state: GameState, viewer: PlayerId):
     viewer,
     seats: state.seats,
     players: state.players,
-    cities: state.cities.map(redactCity),
+    cities: state.cities.map((city) => redactCity(city, seenCities.has(city.index))),
     cityLevel: cityLevel(state),
     phases: state.phases,
     turn: state.turn,
@@ -297,9 +308,18 @@ function redactCard(card: CardInstance): HiddenCard {
  * A face-down city hides which city card it is — including whether it is the
  * Royal Capital. Rules.md §9.1.
  */
-function redactCity(city: City): ViewCity {
+function redactCity(city: City, seen: boolean): ViewCity {
   if (city.faceUp) return city;
-  return { index: city.index, faceUp: false, occupiedBy: city.occupiedBy, hidden: true };
+  const redacted: HiddenCity = {
+    index: city.index,
+    faceUp: false,
+    occupiedBy: city.occupiedBy,
+    hidden: true,
+  };
+  // A player shown the capital keeps knowing where it is (BK1-022), so the
+  // flag travels for them alone. Rules.md §5 — the printed exception to
+  // hiding it; everyone else still gets the city with no flag at all.
+  return seen ? { ...redacted, royalCapital: city.royalCapital } : redacted;
 }
 
 /**

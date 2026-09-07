@@ -64,6 +64,14 @@ export interface CardInstance {
    * goes to the Trash when the host does — see `rules.ts:refreshBoard`.
    */
   readonly attachedTo?: CardInstanceId;
+  /**
+   * The character an Eternal named when it was opened, for a continuous
+   * effect that goes on applying to one card (BK1-157). Rules.md §13.
+   *
+   * Separate from `attachedTo`: an attachment moves with its host and dies
+   * with it, while this is a card watching somebody from where it stands.
+   */
+  readonly marked?: CardInstanceId;
 }
 
 export interface PlayerState {
@@ -470,6 +478,16 @@ export interface GameState {
    * Set.
    */
   readonly revealed: Readonly<Record<string, readonly CardInstanceId[]>>;
+  /**
+   * Face-down cities a player has been shown, as `playerId -> city indexes`.
+   * Rules.md §5.
+   *
+   * A face-down city hides the Royal Capital's position from everyone, which
+   * is the whole reason `view.ts` redacts it. BK1-022 is the printed
+   * exception — "reveal the capital to yourself" — so the exception lives
+   * here, where `viewFor` can honour it for one player only.
+   */
+  readonly citiesSeen: Readonly<Record<string, readonly number[]>>;
   readonly rng: Rng;
   /** Append-only log of everything that happened, for replay and the UI feed. */
   readonly log: readonly GameEvent[];
