@@ -561,6 +561,11 @@ export type Effect =
    */
   | { readonly do: 'seeCapital' }
   /**
+   * Silence the reached cards' abilities until end of turn (BK1-151).
+   * Rules.md §14.
+   */
+  | { readonly do: 'negate'; readonly who: Selector }
+  /**
    * The marked character may not attack the area this card stands in
    * (BK1-157). Rules.md §11. Continuous: read off the board.
    */
@@ -875,6 +880,17 @@ export const REARGUARD = 'rearguard';
  */
 export const REFLECT = 'reflect';
 
+/**
+ * This card's abilities are negated for the rest of the turn (BK1-151).
+ * Rules.md §14 — "make a specified thing stop affecting the game".
+ *
+ * Swept with the boosts, so "until end of turn" needs no timer. Read by
+ * `rules.ts:abilitiesOf`, which every ability lookup goes through — a
+ * negation applied at some of them and not others would be silently wrong
+ * exactly where it was forgotten.
+ */
+export const NEGATED = 'negated';
+
 export const BOOST_COUNTERS: readonly string[] = [
   BOOST_POWER,
   BOOST_HP,
@@ -884,6 +900,7 @@ export const BOOST_COUNTERS: readonly string[] = [
   SEALED,
   REARGUARD,
   REFLECT,
+  NEGATED,
 ];
 
 const COUNTER_FOR: Readonly<Record<keyof StatLine, string>> = {
@@ -2574,6 +2591,22 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       // its opponent, so City Level is untouched (§5).
       effect: { do: 'seeCapital' },
       text: 'When this card is opened, you reveal the capital to yourself.',
+    },
+  ],
+
+  'BK1-151': [
+    {
+      trigger: 'open',
+      // "All abilities of normal effects within 1 distance" — both sides'
+      // (the line names neither), face-up Normal Effect cards standing in
+      // this area or the ones beside it (§15). Its own card is a Normal
+      // Effect too, and is excluded in the reducer: silencing itself would
+      // undo the silencing.
+      effect: {
+        do: 'negate',
+        who: { scope: 'others', side: 'any', maxDistance: 1, effectCards: 'normal' },
+      },
+      text: 'When this card is opened negate all abilities of normal effects with 1 distance until end of turn.',
     },
   ],
 

@@ -3,6 +3,7 @@ import { costTotal, parseCost } from './cards.js';
 import {
   counterFor,
   selects,
+  NEGATED,
   NO_BATTLE,
   REARGUARD,
   SEALED,
@@ -45,6 +46,19 @@ export interface EngineContext {
  * board, the cities and whose turn it is, and every reader in the chain has
  * to admit that up front.
  */
+/**
+ * A card's abilities, or none at all if it has been silenced. Rules.md §14.
+ *
+ * **Every** ability lookup goes through this rather than reading
+ * `definitionOf(...).abilities` directly, which is the whole point:
+ * negation (BK1-151) applied at some lookups and not others would be
+ * silently wrong exactly where it was forgotten, and nothing would fail.
+ */
+export function abilitiesOf(ctx: EngineContext, card: CardInstance): readonly Ability[] {
+  if ((card.counters[NEGATED] ?? 0) > 0) return [];
+  return definitionOf(ctx, card).abilities ?? [];
+}
+
 export type BoardView = Pick<GameState, 'cards' | 'cities' | 'turn' | 'seats'> & {
   /**
    * The battle in progress, when the caller has one to hand. Optional so the
@@ -109,7 +123,7 @@ export function openLevelFor(
   let level = cityLevel(state);
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'openLevel') continue;
       const affected =
         ability.effect.player === 'occupier'
@@ -365,7 +379,7 @@ function attachedBonus(
 ): number {
   let total = 0;
   for (const worn of attachmentsOn(ctx, state, card)) {
-    for (const ability of definitionOf(ctx, worn).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, worn)) {
       if (ability.effect.do !== 'attach') continue;
       total += ability.effect.grants[stat] ?? 0;
     }
@@ -384,7 +398,7 @@ export const attachmentsOn = (
       worn.attachedTo === card.instanceId &&
       worn.zone === 'city' &&
       worn.faceUp &&
-      (definitionOf(ctx, worn).abilities ?? []).some((ability) => ability.effect.do === 'attach'),
+      abilitiesOf(ctx, worn).some((ability) => ability.effect.do === 'attach'),
   );
 
 /**
@@ -403,7 +417,7 @@ function continuousBonus(
   let total = 0;
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'buff') continue;
       const change = ability.effect.stats[stat];
       if (change === undefined) continue;
@@ -435,7 +449,7 @@ export function damageReduction(
   let total = card.counters[SHIELD] ?? 0;
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'reduceDamage') continue;
       if (ability.effect.combatOnly === true && !options.combat) continue;
       if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
@@ -476,7 +490,7 @@ export function boostSources(
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
     if (source.instanceId === card.instanceId) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'buff') continue;
       const stats = ability.effect.stats;
       if (!stats.power && !stats.hp && !stats.move) continue;
@@ -706,7 +720,7 @@ export function quickCardRelevant(
   state: GameState,
   card: CardInstance,
 ): boolean {
-  return (definitionOf(ctx, card).abilities ?? []).some(
+  return abilitiesOf(ctx, card).some(
     (ability) =>
       (ability.trigger === 'open' || ability.trigger === 'always') &&
       quickRelevant(ctx, state, card, ability),
@@ -835,6 +849,10 @@ function effectRelevant(
       // Continuations, never printed on a card and never offered on their
       // own — they only ever run from inside a choice already under way.
       return false;
+    case 'negate':
+      // Silencing outlasts the moment and is worth doing wherever there is
+      // something to silence.
+      return reaches(effect.who);
     case 'seeCapital':
       // Knowing where the capital is bears on §1's whole win condition, so
       // it is worth having whenever it is still hidden from you.
@@ -886,7 +904,7 @@ export interface ActivatedAbility {
 }
 
 export const activatedAbilities = (ctx: EngineContext, card: CardInstance): ActivatedAbility[] =>
-  (definitionOf(ctx, card).abilities ?? [])
+  abilitiesOf(ctx, card)
     .map((ability, index) => ({ index, ability }))
     .filter((entry) => entry.ability.trigger === 'activated');
 
@@ -934,7 +952,7 @@ export function captureDrawFor(ctx: EngineContext, state: GameState, battle: Bat
   ];
   const raises: number[] = [];
   for (const card of speakers) {
-    for (const ability of definitionOf(ctx, card).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, card)) {
       if (ability.trigger !== 'always') continue;
       if (ability.effect.do !== 'captureDraw') continue;
       if (!conditionHolds(ctx, state, card, ability.condition, battle)) continue;
@@ -1024,7 +1042,7 @@ export const targetingAbilities = (
   card: CardInstance,
   trigger: Trigger,
 ): TargetingAbility[] =>
-  (definitionOf(ctx, card).abilities ?? []).filter(
+  abilitiesOf(ctx, card).filter(
     (ability): ability is TargetingAbility =>
       ability.trigger === trigger && ability.target !== undefined,
   );
@@ -1071,7 +1089,7 @@ export function cannotAttackArea(
     if (source.marked !== card.instanceId) continue;
     // "Cannot attack *this area*" — the one the watching card stands in.
     if (source.cityIndex !== cityIndex) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always') continue;
       if (ability.effect.do !== 'markedCannotAttackHere') continue;
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
@@ -1094,7 +1112,7 @@ export function diesIfItLeaves(ctx: EngineContext, state: BoardView, card: CardI
     // "If that character is in this area" — the clause only bites while the
     // two are standing together.
     if (source.cityIndex !== card.cityIndex) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always') continue;
       if (ability.effect.do !== 'markedDiesIfItLeaves') continue;
       if (!conditionHolds(ctx, state, source, ability.condition)) continue;
@@ -1107,7 +1125,7 @@ export function diesIfItLeaves(ctx: EngineContext, state: BoardView, card: CardI
 export function cannotAttack(ctx: EngineContext, state: BoardView, card: CardInstance): boolean {
   for (const source of Object.values(state.cards)) {
     if (source.zone !== 'city' || !source.faceUp) continue;
-    for (const ability of definitionOf(ctx, source).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, source)) {
       if (ability.trigger !== 'always' || ability.effect.do !== 'cannotAttack') continue;
       if (!selects(ability.effect.who, source, card, (c) => factsOf(ctx, c))) continue;
       if (conditionHolds(ctx, state, source, ability.condition)) return true;
@@ -1468,7 +1486,7 @@ export const askingAbilities = (
   card: CardInstance,
   trigger: Trigger,
 ): Ability[] =>
-  (definitionOf(ctx, card).abilities ?? []).filter(
+  abilitiesOf(ctx, card).filter(
     (ability) =>
       ability.trigger === trigger && (ability.target !== undefined || ability.area !== undefined),
   );

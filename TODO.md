@@ -86,39 +86,38 @@ Finished work is not listed — the code and `CLAUDE.md` describe what exists.
    abilities can finally ask for an area — BK1-131 is the first that does, and
    `useAbility` validates it rather than refusing.
 
-   **Thirteen BK1 lines are still unbuilt.** Four rulings settled the ones
-   that were only waiting on a reading: "area level" is City Level (§5 has
-   one global value and no per-city one); "cannot participate in battle"
-   means the character cannot be _chosen_ for a fight at all, so
-   `rules.ts:cannotBattle` is separate from `cannotAttack` and gates the
-   vanguard, both commit paths, and the occupier's automatic garrison —
-   `cannotAttack` still lets a character defend, which is the whole
-   difference; BK1-038 unlocks only your own Hawks; BK1-154 shields both
-   sides. That brought BK1-028, 033, 035, 036, 037, 038, 149 and 154 in, and
-   `Selector.where` gained `elsewhere` for "characters that are not in this
-   area".
+   **BK1 is complete: all 140 cards that carry printed text.** The rest of
+   the set is transcription — `Docs/Berserk_TCG_Cardlist.csv` has no effect
+   text yet for BK2 onwards, and a card with no entry stays inert rather
+   than being approximated.
 
-   What is left needs building rather than deciding:
+   The last few brought the machinery worth knowing about:
 
-   - **BK1-147** "target any number of characters" — the wire carries one
-     target per _ability_ and `legalActions` offers one action per legal
-     target, so "any number" would be a cross-product. It wants a pending
-     choice answered card by card instead.
-   - **BK1-151** "negate all abilities of normal effects within 1 distance"
-     needs negation checked at every ability lookup — seventeen sites across
-     `rules.ts` and `reducer.ts`. Anything less is silently wrong wherever it
-     was not applied.
-   - **BK1-022** "reveal the capital to yourself" needs the Royal Capital's
-     identity shown to one player without leaking it: `view.ts` hides
-     face-down cities from everyone, and that is what keeps its position
-     secret.
-   - **BK1-023**, **BK1-155**, **BK1-159** are deck manipulation — look at
-     the top _n_ and choose, set them anywhere, or reorder without shuffling.
-   - **BK1-027**, **BK1-029**, **BK1-030**, **BK1-031**, **BK1-034**,
-     **BK1-157**, **BK1-158** each want one new primitive: redirected damage,
-     a "while defending" buff, opening another Set Card as an effect, barring
-     a Set Card from being opened, "target attacking character", a
-     per-area attack restriction, and a trigger on the _opponent_ capturing.
+   - **`rules.ts:abilitiesOf` is now the only way to read a card's
+     abilities.** All twenty lookups across `rules.ts`, `reducer.ts` and
+     `legal.ts` go through it, which is what makes BK1-151's negation
+     honest: applied at some lookups and forgotten at others it would be
+     silently wrong exactly where it was missed, and nothing would fail.
+     Keep new lookups going through it.
+   - **`CardInstance.marked`** lets an Eternal remember the character it
+     named (BK1-157), separate from `attachedTo`: an attachment moves and
+     dies with its host, this is a card watching somebody from where it
+     stands. `cannotAttackArea` and `diesIfItLeaves` read it off the board.
+   - **`GameState.citiesSeen`** shows the Royal Capital to one player
+     (BK1-022) without turning the city face up — §5 flips a city only when
+     a battle commences there, and flipping would raise City Level for both
+     and show the opponent too. `HiddenCity.royalCapital` is optional so
+     that forgetting to set it cannot leak anything.
+   - **Pending choices answered card by card** cover "any number of
+     characters" (BK1-147): the wire carries one target per ability, so a
+     subset would have been a cross-product. `upTo` is what makes it "any
+     number".
+   - **`enemyCapture`** fires where a city changes hands, for everyone but
+     the captor, and hands the captured city over as the chosen area
+     (BK1-158).
+   - Counters that outlive a single effect and are swept with the boosts:
+     `SKIP_REFRESH`, `NO_BATTLE`, `SEALED`, `REARGUARD`, `REFLECT`,
+     `NEGATED`.
 
 2. **The priority stack** (`Rules.md` §14) is built for what a player does —
    an open, an ability used — with two narrowings noted in `DesignNotes`

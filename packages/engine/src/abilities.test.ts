@@ -7,6 +7,7 @@ import {
   boostSources,
   rangeOf,
   stillFighting,
+  abilitiesOf,
   cannotAttack,
   cannotBattle,
   canVanguard,
@@ -3575,5 +3576,87 @@ describe('BK1-022 shows the capital to one player only (Rules.md §5)', () => {
     expect(state.cities.filter((city) => city.faceUp).map((city) => city.index)).not.toContain(
       capitalIndex,
     );
+  });
+});
+
+describe('BK1-151 negates nearby Normal Effects (Rules.md §14)', () => {
+  it('silences a continuous ability in range and leaves a distant one alone', () => {
+    // The point of routing every ability lookup through `abilitiesOf` is that
+    // a negation cannot be honoured in some places and forgotten in others.
+    // BK1-156 is a Normal? No — it is Eternal, so a *Normal* Effect with a
+    // continuous ability is what this has to reach: BK1-135 is a character.
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // BK1-145 Hill Of Swords is Eternal, so it must survive; BK1-156
+    // Operation Liberation is Eternal too. Use them to prove the *duration*
+    // filter bites: only Normal Effects are silenced.
+    const eternal = place(state, other, 'BK1-156', 2);
+    state = eternal.state;
+    const enemy = place(state, other, RED, 2);
+    state = enemy.state;
+    state = {
+      ...state,
+      cities: state.cities.map((city, index) =>
+        index === 2 ? { ...city, occupiedBy: other } : city,
+      ),
+    };
+
+    // BK1-156 gives enemies of its controller -2/-0 in its area; the red
+    // Mercenary is 1/1, so the aura is visible as a floor at 0.
+    const beforePower = power(state, enemy.card);
+
+    const rescue = place(state, player, 'BK1-151', 2, { faceUp: false });
+    state = openable(rescue.state, player, rescue.card);
+    state = apply(state, player, openOf(state, player, rescue.card) as GameAction);
+
+    // An Eternal is not a Normal Effect, so it is untouched by this card.
+    expect(state.cards[eternal.card]?.counters['negated']).toBeUndefined();
+    expect(power(state, enemy.card)).toBe(beforePower);
+  });
+
+  it('silences a Normal Effect in range, and abilitiesOf is what enforces it', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    // BK1-093 Troll is a character with a continuous `captureDraw`; a
+    // negated card must lose that. Set the counter directly to test the one
+    // rule that matters: every lookup honours it.
+    const troll = place(state, player, 'BK1-093', 2);
+    state = troll.state;
+    expect(abilitiesOf({ registry }, cardOf(state, troll.card))).toHaveLength(1);
+
+    const silenced = {
+      ...state,
+      cards: {
+        ...state.cards,
+        [troll.card]: {
+          ...cardOf(state, troll.card),
+          counters: { ...cardOf(state, troll.card).counters, negated: 1 },
+        },
+      },
+    };
+    expect(abilitiesOf({ registry }, cardOf(silenced, troll.card))).toHaveLength(0);
+  });
+
+  it('reaches an adjacent area but not one two cities away', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+    const other = state.seats.find((seat) => seat !== player) as PlayerId;
+
+    // Two Normal Effects with abilities: one next door, one far off.
+    const near = place(state, other, 'BK1-105', 3);
+    state = near.state;
+    const far = place(state, other, 'BK1-105', 0);
+    state = far.state;
+
+    const rescue = place(state, player, 'BK1-151', 2, { faceUp: false });
+    state = openable(rescue.state, player, rescue.card);
+    state = apply(state, player, openOf(state, player, rescue.card) as GameAction);
+
+    // Distance 1 from city 2 reaches city 3, not city 0 (§15).
+    expect(state.cards[near.card]?.counters['negated']).toBe(1);
+    expect(state.cards[far.card]?.counters['negated']).toBeUndefined();
   });
 });

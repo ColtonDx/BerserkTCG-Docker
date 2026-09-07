@@ -3,6 +3,7 @@ import {
   counterFor,
   selects,
   BOOST_COUNTERS,
+  NEGATED,
   NO_BATTLE,
   REARGUARD,
   REFLECT,
@@ -27,6 +28,7 @@ import {
   activationCost,
   areasFor,
   askingAbilities,
+  abilitiesOf,
   battleResult,
   captureDrawFor,
   canActivate,
@@ -1166,7 +1168,7 @@ function openCard(
   }
   // "This card can only be opened if …" — Rules.md §13, `Ability.gate`. The
   // condition is read before anything is paid, so a shut gate costs nothing.
-  const shut = (def.abilities ?? []).find(
+  const shut = abilitiesOf(ctx, card as CardInstance).find(
     (ability) =>
       ability.trigger === 'open' &&
       ability.gate === true &&
@@ -1709,7 +1711,7 @@ function stackEffects(
 ): boolean {
   let asked = 0;
   let stacked = 0;
-  (definitionOf(ctx, source).abilities ?? []).forEach((ability, index) => {
+  abilitiesOf(ctx, source).forEach((ability, index) => {
     if (ability.trigger !== 'open') return;
     const asks = ability.target !== undefined || ability.area !== undefined;
     const at = asks ? asked++ : -1;
@@ -2135,7 +2137,7 @@ function fireAbilities(
   choices: Choices = { cards: [], areas: [] },
 ): void {
   let asked = 0;
-  for (const ability of definitionOf(ctx, source).abilities ?? []) {
+  for (const ability of abilitiesOf(ctx, source)) {
     if (ability.trigger !== trigger) continue;
     const index = ability.target !== undefined || ability.area !== undefined ? asked++ : -1;
     const chosen = index >= 0 ? choices.cards[index] : undefined;
@@ -2583,6 +2585,18 @@ function runEffect(
         drawInto(draft, controller, taken, events);
       }
       return pushed();
+    }
+
+    case 'negate': {
+      let silenced = 0;
+      for (const card of selected(ctx, draft, source, effect.who, chosen)) {
+        // Not the card doing the silencing: it is a Normal Effect resolving
+        // right now, and negating itself would undo the negation.
+        if (card.instanceId === source.instanceId) continue;
+        card.counters = { ...card.counters, [NEGATED]: 1 };
+        silenced++;
+      }
+      return silenced > 0;
     }
 
     case 'seeCapital': {
@@ -3203,7 +3217,7 @@ function fireEnemyCapture(
     if (watcher.zone !== 'city' || !watcher.faceUp) continue;
     // "Whenever your opponent captures an area" — so not the captor's own.
     if (watcher.controller === captor) continue;
-    for (const ability of definitionOf(ctx, watcher as CardInstance).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, watcher as CardInstance)) {
       if (ability.trigger !== 'enemyCapture') continue;
       if (!conditionHolds(ctx, draft, watcher as CardInstance, ability.condition, draft.battle)) {
         continue;
@@ -3234,7 +3248,7 @@ function fireArrival(
     if (watcher.zone !== 'city' || !watcher.faceUp) continue;
     if (watcher.cityIndex !== newcomer.cityIndex) continue;
     if (watcher.instanceId === newcomer.instanceId) continue;
-    for (const ability of definitionOf(ctx, watcher as CardInstance).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, watcher as CardInstance)) {
       if (ability.trigger !== 'arrival') continue;
       if (
         !conditionHolds(
@@ -3275,7 +3289,7 @@ function fireTurnTrigger(
   events: GameEvent[],
 ): void {
   for (const card of faceUpOnField(draft)) {
-    for (const ability of definitionOf(ctx, card as CardInstance).abilities ?? []) {
+    for (const ability of abilitiesOf(ctx, card as CardInstance)) {
       if (ability.trigger !== trigger) continue;
       // "Your turn" is the default; a card that says "the turn" answers to
       // both. See `Ability.turns`.

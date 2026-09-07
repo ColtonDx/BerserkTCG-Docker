@@ -6,6 +6,7 @@ import {
   activatedAbilities,
   activationCost,
   areasFor,
+  abilitiesOf,
   askingAbilities,
   conditionHolds,
   settable,
@@ -444,7 +445,7 @@ function openActions(
 
     // "This card can only be opened if …" — a shut gate is not an offer.
     // Rules.md §13, `Ability.gate`.
-    const gated = (def.abilities ?? []).some(
+    const gated = abilitiesOf(ctx, card).some(
       (ability) =>
         ability.trigger === 'open' &&
         ability.gate === true &&
