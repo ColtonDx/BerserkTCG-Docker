@@ -23,6 +23,7 @@ import {
   openLevelFor,
   definitionOf,
   isCharacter,
+  isQuickNow,
   searchable,
   uniqueConflict,
   validatePayment,
@@ -445,7 +446,9 @@ function openActions(
 
   for (const card of setCards) {
     const def = definitionOf(ctx, card);
-    if (scope.quickOnly && !def.quick) continue;
+    // A card may be Quick conditionally (BK3-042), so ask rather than read
+    // the printed flag.
+    if (scope.quickOnly && !isQuickNow(ctx, state, card)) continue;
     // Cards whose printed level or cost is not yet captured cannot be opened,
     // so they are never offered. Docs/CardData.md.
     if (def.level === null || def.cost === null) continue;

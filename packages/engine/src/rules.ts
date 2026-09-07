@@ -123,6 +123,48 @@ export function altersFor(
   );
 }
 
+/**
+ * Is this city a Demon City? Rules.md §5 — BK3-043 confers it.
+ *
+ * Read off the board like every other continuous ability: the area stops
+ * being one the instant the card conferring it leaves, and nothing is
+ * written onto the city.
+ */
+/**
+ * Is this card Quick right now? Rules.md §13.
+ *
+ * Normally the printed flag, but a card can gain it conditionally —
+ * "this card gains (Quick) if this area is a Demon City" (BK3-042). Asked
+ * by `legalActions` rather than reading `def.quick` directly, so the two
+ * kinds are offered on the same footing.
+ */
+export function isQuickNow(
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards' | 'cities' | 'turn' | 'seats'>,
+  card: CardInstance,
+): boolean {
+  if (definitionOf(ctx, card).quick) return true;
+  return abilitiesOf(ctx, card).some(
+    (ability) =>
+      ability.grantsQuick === true && conditionHolds(ctx, state, card, ability.condition),
+  );
+}
+
+export function isDemonCity(
+  ctx: EngineContext,
+  state: Pick<GameState, 'cards'>,
+  cityIndex: number,
+): boolean {
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== 'city' || !source.faceUp) continue;
+    if (source.cityIndex !== cityIndex) continue;
+    for (const ability of abilitiesOf(ctx, source)) {
+      if (ability.trigger === 'always' && ability.effect.do === 'demonCity') return true;
+    }
+  }
+  return false;
+}
+
 export function untargetable(
   ctx: EngineContext,
   state: Pick<GameState, 'cards'>,
@@ -1073,6 +1115,7 @@ function effectRelevant(
     case 'setCard':
       return reaches(effect.who);
     case 'untargetable':
+    case 'demonCity':
       return ability.trigger === 'always';
     case 'ifNotOccupied':
       return effect.effects.some((inner) =>
@@ -1500,6 +1543,14 @@ export function conditionHolds(
       const holder = cityOf(state, source)?.occupiedBy;
       return holder == null || holder === source.controller;
     }
+    case 'inDemonCity':
+      return source.cityIndex !== undefined && isDemonCity(ctx, state, source.cityIndex);
+    case 'occupiedDemonCity':
+      return (
+        source.cityIndex !== undefined &&
+        state.cities[source.cityIndex]?.occupiedBy === source.controller &&
+        isDemonCity(ctx, state, source.cityIndex)
+      );
     case 'openedByAlteration':
       return (source.counters[ALTERED] ?? 0) > 0;
     case 'openedNormally':

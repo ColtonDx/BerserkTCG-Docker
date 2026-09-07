@@ -290,7 +290,11 @@ export type Condition =
   /** It was opened by paying its Alteration (BK3-055). Rules.md §7. */
   | { readonly when: 'openedByAlteration' }
   /** It was *not* opened by Alteration — the other half of BK3-055. */
-  | { readonly when: 'openedNormally' };
+  | { readonly when: 'openedNormally' }
+  /** The area it stands in is a Demon City (BK3-042, -044). Rules.md §5. */
+  | { readonly when: 'inDemonCity' }
+  /** Its controller holds the area *and* it is a Demon City (BK3-045, -046). */
+  | { readonly when: 'occupiedDemonCity' };
 
 /**
  * What the ability does when it applies.
@@ -700,6 +704,15 @@ export type Effect =
    */
   | { readonly do: 'untargetable'; readonly who: Selector }
   /**
+   * The area this card stands in becomes a Demon City, in addition to
+   * whatever it already is (BK3-043). Rules.md §5.
+   *
+   * Continuous and read off the board by `rules.ts:isDemonCity`, so the area
+   * stops being one the moment the card leaves — nothing is written onto the
+   * city itself.
+   */
+  | { readonly do: 'demonCity' }
+  /**
    * The rest of a printed line, run only where its controller does *not*
    * hold the area (BK3-007). Rules.md §12.
    *
@@ -959,6 +972,14 @@ export type Trigger =
    */
   | 'selfMoved'
   /**
+   * This card has just been locked (BK3-052, BK3-059). Rules.md §6.
+   *
+   * Fired wherever a character is locked as a cost — moving, leading or
+   * joining a battle, paying for an ability — so the card answers for every
+   * way it can go down.
+   */
+  | 'selfLocked'
+  /**
    * The player chose to use it and paid for it. Rules.md §13's cost-bearing
    * ability: usable only in your own Main phase unless it is Quick.
    */
@@ -1092,6 +1113,15 @@ export interface Ability {
    * card in the set that has it.
    */
   readonly alteration?: boolean;
+  /**
+   * "This card gains (Quick) if …" — the card counts as Quick while this
+   * ability's condition holds (BK3-042, -044, -046). Rules.md §13.
+   *
+   * Read by `rules.ts:isQuickNow`, which is what `legalActions` asks rather
+   * than the printed flag, so a card that is conditionally Quick is offered
+   * in a Quick window exactly when its condition is met.
+   */
+  readonly grantsQuick?: boolean;
   /** The printed line this stands for. Display and review only. */
   readonly text: string;
 }
@@ -3883,6 +3913,142 @@ const ABILITIES: Readonly<Record<string, readonly Ability[]>> = {
       condition: { when: 'openedByAlteration' },
       effect: { do: 'buffPermanent', who: { scope: 'self' }, stats: { power: 2, hp: 2 } },
       text: 'When this character is opened using Alteration, it gains +2/+2 permanently',
+    },
+  ],
+
+  'BK3-043': [
+    {
+      trigger: 'always',
+      condition: { when: 'youOccupyThisArea' },
+      effect: {
+        do: 'buff',
+        who: { scope: 'any', side: 'yours', where: 'anywhere' },
+        stats: { power: 2, hp: 2 },
+      },
+      text: 'While you occupy this area, all characters you control gain +2/+2.',
+    },
+    {
+      trigger: 'always',
+      effect: { do: 'demonCity' },
+      text: 'This area becomes a Demon City in addition to its other types.',
+    },
+  ],
+  'BK3-044': [
+    {
+      trigger: 'open',
+      // "Search your opponent's library for 2 cards and send them to their
+      // graveyard" — the searcher does not get to look through a deck they
+      // do not own, so this takes the top, as every other mill does (§14).
+      effect: { do: 'mill', player: 'opponent', count: 2 },
+      then: [{ do: 'draw', player: 'you', count: 2 }],
+      text: 'When this card is opened, search your opponents library for 2 cards and send them to their graveyard. Then draw 2 cards.',
+    },
+    {
+      trigger: 'always',
+      grantsQuick: true,
+      condition: { when: 'inDemonCity' },
+      effect: { do: 'demonCity' },
+      text: 'This card gains (Quick) if the area is a Demon City.',
+    },
+  ],
+  'BK3-046': [
+    {
+      trigger: 'open',
+      // "Unlock all characters and move them to this area" — everyone, both
+      // sides, from anywhere on the board.
+      effect: { do: 'unlock', who: { scope: 'any', side: 'any', where: 'anywhere' } },
+      then: [
+        {
+          do: 'moveTo',
+          who: { scope: 'any', side: 'any', where: 'anywhere' },
+          where: 'sourceArea',
+        },
+      ],
+      text: 'When this card is opened, unlock all characters and move them to this area.',
+    },
+    {
+      trigger: 'always',
+      grantsQuick: true,
+      condition: { when: 'occupiedDemonCity' },
+      effect: { do: 'demonCity' },
+      text: 'This card gains (Quick) if you occupy this area and it is a demon city.',
+    },
+  ],
+  'BK3-047': [
+    {
+      trigger: 'open',
+      // "All combat damage from level 2 or lower characters in that area is
+      // reduced to 0" — a shield nothing can exceed, on everyone who might
+      // be struck by them. RULES: read as shielding the characters in the
+      // named area rather than muting the strikers, which the engine has no
+      // way to express; the two differ only when a small character strikes
+      // out of the area, which no card in the set does.
+      area: 'withinOne',
+      effect: {
+        do: 'reduceDamage',
+        who: { scope: 'any', side: 'any', where: 'anywhere', maxLevel: 2 },
+        amount: 99,
+        combatOnly: true,
+      },
+      then: [{ do: 'draw', player: 'you', count: 1 }],
+      text: 'When this card is opened, target an area within 1 distance. During this turn, all combat damage from level 2 or lower characters in that area is reduced to 0. Draw 1 card.',
+    },
+  ],
+  'BK3-052': [
+    {
+      trigger: 'selfLocked',
+      // "You may destroy 1 of your set cards. If you don't, destroy this
+      // card." Refusing is an instruction, so it is `chooseMode` and not a
+      // "you may" — see BK2-025.
+      effect: {
+        do: 'chooseMode',
+        prompt: 'Destroy one of your set cards? Declining destroys this character.',
+        effects: [
+          {
+            do: 'pickAndDestroy',
+            who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+            count: 1,
+            mandatory: true,
+          },
+        ],
+        orElse: [{ do: 'destroy', who: { scope: 'self' } }],
+      },
+      text: "Whenever this character locks, you may destroy 1 of your set cards. If you don't, destroy this card.",
+    },
+  ],
+  'BK3-059': [
+    {
+      trigger: 'selfLocked',
+      effect: {
+        do: 'chooseMode',
+        prompt: 'Destroy one of your set cards? Declining destroys this character.',
+        effects: [
+          {
+            do: 'pickAndDestroy',
+            who: { scope: 'any', side: 'yours', where: 'anywhere', faceDown: true },
+            count: 1,
+            mandatory: true,
+          },
+        ],
+        orElse: [{ do: 'destroy', who: { scope: 'self' } }],
+      },
+      text: "Whenever this character locks, you may destroy one of your set cards. If you don't, destroy this card.",
+    },
+  ],
+  'BK3-064': [
+    {
+      trigger: 'open',
+      effect: {
+        do: 'negate',
+        who: {
+          scope: 'others',
+          side: 'any',
+          where: 'anywhere',
+          effectCards: 'normal',
+          maxLevel: 1,
+        },
+      },
+      text: 'When this card is opened, Negate the effects of all level 1 normals until end of turn',
     },
   ],
 

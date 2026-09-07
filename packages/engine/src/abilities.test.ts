@@ -4266,3 +4266,28 @@ describe('Alteration opens a card by sacrificing its own kind (Rules.md §7)', (
     expect(hp(state, altered.card)).toBe(7);
   });
 });
+
+describe('BK3-052 answers for every way it goes down (Rules.md §6)', () => {
+  it('asks when the character locks to move, and destroys it on a refusal', () => {
+    let state = started(RED);
+    const player = state.turn.activePlayer;
+
+    const lancer = place(state, player, 'BK3-052', 2);
+    state = lancer.state;
+
+    // Moving locks it (§6), which is one of the ways the trigger fires.
+    const move = engine
+      .legalActions(atMain(state), player)
+      .find((action) => action.type === 'MOVE_CHARACTER' && action.card === lancer.card);
+    expect(move, 'the lancer should be able to move').toBeDefined();
+    state = apply(atMain(state), player, move as GameAction);
+
+    // A real either/or, not a "you may": refusing is an instruction.
+    expect(state.pending?.kind.zone).toBe('decision');
+    expect(state.cards[lancer.card]?.locked).toBe(true);
+
+    // With no set card to give up, declining costs the character.
+    state = apply(state, player, { type: 'ANSWER', accept: false });
+    expect(state.cards[lancer.card]?.zone).toBe('trash');
+  });
+});

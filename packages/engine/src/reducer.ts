@@ -676,7 +676,7 @@ function designateVanguard(
 
   const card = draft.cards[cardId];
   if (!card) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§11');
-  card.locked = true;
+  lockCard(ctx, draft, card, events);
   battle.vanguard = cardId;
   battle.participants = toDraft([cardId]);
 
@@ -788,7 +788,7 @@ function commitCharacter(
 
   const card = draft.cards[cardId];
   if (!card) return violation('CARD_NOT_IN_ZONE', 'No such card.', '§11');
-  card.locked = true;
+  lockCard(ctx, draft, card, events);
   battle.participants.push(cardId);
   battle.passes = 0;
   events.push({ type: 'CHARACTER_COMMITTED', card: cardId, player: actor });
@@ -1248,7 +1248,9 @@ function openCard(
   // turn. Rules.md §7 — cleared when the card leaves the field.
   card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
   // BK2-046 — while it stands, whatever is opened arrives locked (§6, §7).
-  if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
+  if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) {
+    lockCard(ctx, draft, card, events);
+  }
   if (!inBattle && !inWindow) draft.turn.openedThisTurn = true;
   events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
   // A character turning up here is an arrival, exactly as a move is (§13).
@@ -1339,7 +1341,7 @@ function moveCharacter(
   const doomedByLeaving = diesIfItLeaves(ctx, draft, card as CardInstance);
 
   // Rules.md §6 — moving locks the character.
-  card.locked = true;
+  lockCard(ctx, draft, card, events);
   card.cityIndex = city;
   arrived(draft, actor, city);
   events.push({ type: 'CHARACTER_MOVED', card: cardId, from, to: city });
@@ -2131,10 +2133,10 @@ function useAbility(
   }
   if (pay.length > 0) events.push({ type: 'COST_PAID', player: actor, cards: [...pay] });
 
-  if (cost?.lockSelf === true) card.locked = true;
+  if (cost?.lockSelf === true) lockCard(ctx, draft, card, events);
   if (lockedAlly !== undefined) {
     const ally = draft.cards[lockedAlly];
-    if (ally) ally.locked = true;
+    if (ally) lockCard(ctx, draft, ally, events);
   }
   // The sacrificed character goes at once — unlike `destroySelf`, nothing
   // about it is needed to resolve the effect, so there is no stack to fizzle.
@@ -2581,7 +2583,7 @@ function runEffect(
       moveToCity(draft, found.instanceId, city, { controller, faceUp: false });
       found.faceUp = true;
       found.counters[OPENED_ON_TURN] = turnOrdinal(draft);
-      if (opensLocked(ctx, draft)) found.locked = true;
+      if (opensLocked(ctx, draft)) lockCard(ctx, draft, found, events);
       events.push({ type: 'CARD_OPENED', player: controller, card: found.instanceId, city });
       // §11 ③ — it steps into the fight the destroyed character was in.
       if (effect.joinsBattle === true && draft.battle && draft.battle.city === city) {
@@ -2716,7 +2718,7 @@ function runEffect(
         // Unconditional: a character already locked still takes the mark,
         // because BK1-085 is about the *next* Refresh and not about now.
         if (!card.locked) touched++;
-        card.locked = true;
+        lockCard(ctx, draft, card, events);
         if (effect.skipRefresh !== undefined && effect.skipRefresh > 0) {
           const owed = (card.counters[SKIP_REFRESH] ?? 0) + effect.skipRefresh;
           card.counters = { ...card.counters, [SKIP_REFRESH]: owed };
@@ -2933,8 +2935,10 @@ function runEffect(
       return set > 0;
     }
 
-    // Continuous: read off the board by `rules.ts:untargetable`, never run.
+    // Continuous: read off the board by `rules.ts:untargetable` and
+    // `isDemonCity`, never run.
     case 'untargetable':
+    case 'demonCity':
       return true;
 
     case 'ifNotOccupied': {
@@ -3187,7 +3191,9 @@ function runEffect(
         if (card.faceUp || card.cityIndex === undefined) continue;
         card.faceUp = true;
         card.counters = { ...card.counters, [OPENED_ON_TURN]: turnOrdinal(draft) };
-        if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
+        if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) {
+          lockCard(ctx, draft, card, events);
+        }
         events.push({
           type: 'CARD_OPENED',
           player: card.controller,
@@ -3419,7 +3425,7 @@ function chooseCard(
       return violation('ILLEGAL_TARGET', 'That card was not offered.', '§13');
     }
     if (kind.action === 'lock') {
-      card.locked = true;
+      lockCard(ctx, draft, card, events);
       // Struck off, so each card is named once.
       pending.kind = toDraft({ ...kind, cards: kind.cards.filter((id) => id !== cardId) });
     } else if (kind.action === 'moveHere') {
@@ -3460,7 +3466,9 @@ function chooseCard(
     events.push({ type: 'CARD_SET', player: actor, card: cardId, city: kind.city });
     card.faceUp = true;
     card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
-    if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
+    if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) {
+      lockCard(ctx, draft, card, events);
+    }
     events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city: kind.city });
     fireArrival(ctx, draft, card, events);
     // The card's own on-open abilities fire, with nothing chosen for them:
@@ -3521,7 +3529,9 @@ function chooseCard(
         // what puts it there, not the turn's one open (§10 ③).
         card.faceUp = true;
         card.counters[OPENED_ON_TURN] = turnOrdinal(draft);
-        if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) card.locked = true;
+        if (isCharacter(ctx, card as CardInstance) && opensLocked(ctx, draft)) {
+          lockCard(ctx, draft, card, events);
+        }
         events.push({ type: 'CARD_OPENED', player: actor, card: cardId, city });
         fireArrival(ctx, draft, card, events);
         fireAbilities(ctx, draft, card as CardInstance, 'open', events);
@@ -3633,6 +3643,26 @@ function finishChoice(ctx: EngineContext, draft: Draft<GameState>, events: GameE
 /** Notes a character arriving in a city this turn, for cards that ask. */
 function arrived(draft: Draft<GameState>, player: PlayerId, city: number): void {
   draft.turn.arrivals = toDraft([...draft.turn.arrivals, { player, city }]);
+}
+
+/**
+ * Locks a character, firing whatever it has to say about going down.
+ * Rules.md §6.
+ *
+ * Every way a card is locked goes through this — moving, leading or joining
+ * a battle, paying for an ability, arriving under BK2-046 — because
+ * BK3-052 and BK3-059 answer for *all* of them, and a lock that skipped the
+ * trigger would be a card that works only some of the time.
+ */
+function lockCard(
+  ctx: EngineContext,
+  draft: Draft<GameState>,
+  card: Draft<CardInstance>,
+  events: GameEvent[],
+): void {
+  if (card.locked) return;
+  card.locked = true;
+  fireAbilities(ctx, draft, card as CardInstance, 'selfLocked', events);
 }
 
 /**
